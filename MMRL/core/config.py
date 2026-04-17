@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Iterable, List
-
 from yacs.config import CfgNode as CN
 from dassl.config import get_cfg_default
+
+from core.overrides import resolve_method_dataset_overrides
 
 
 def _as_legacy_clipadapter(cfg):
@@ -95,8 +95,8 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.N_SAMPLES = 3
     cfg.CLIP_ADAPTERS.KL_WEIGHT = 1e-4
 
-    if not hasattr(cfg, 'TASK'):
-        cfg.TASK = 'B2N'
+    cfg.DATASET.SUBSAMPLE_CLASSES = 'all'
+    cfg.TASK = 'B2N'
 
     _as_legacy_mmrl(cfg)
     _as_legacy_mmrlpp(cfg)
@@ -109,51 +109,35 @@ def _merge_if_exists(cfg, path: str | None):
         cfg.merge_from_file(path)
 
 
-def _apply_legacy_overrides(cfg):
-    # 保留原项目对 dataset / trainer / task 的真实覆盖逻辑
-    try:
-        from trainers.config import get_dataset_specified_config
-    except Exception:
-        return
-
-    method = cfg.METHOD.NAME
-    if method == 'MMRL':
-        trainer_name = 'MMRL'
-    elif method in {'MMRLpp', 'MMRLPP'}:
-        trainer_name = 'MMRLpp'
-    else:
-        return
-
-    opts = get_dataset_specified_config(cfg.DATASET.NAME, trainer_name, cfg.PROTOCOL.NAME)
+def _apply_method_dataset_overrides(cfg):
+    opts = resolve_method_dataset_overrides(
+        method_name=cfg.METHOD.NAME,
+        dataset_name=cfg.DATASET.NAME,
+        protocol_name=cfg.PROTOCOL.NAME,
+    )
     if opts:
         cfg.merge_from_list(opts)
-        _as_legacy_mmrl(cfg)
-        _as_legacy_mmrlpp(cfg)
 
 
 def finalize_cfg(cfg):
     cfg.TASK = cfg.PROTOCOL.NAME
+    _apply_method_dataset_overrides(cfg)
     _as_legacy_mmrl(cfg)
     _as_legacy_mmrlpp(cfg)
     _as_legacy_clipadapter(cfg)
-    _apply_legacy_overrides(cfg)
     cfg.freeze()
     return cfg
 
 
 def setup_cfg(args):
-
-
     cfg = get_refactor_defaults()
-
-    cfg.DATASET.SUBSAMPLE_CLASSES = "all"   # all / base / new
-    cfg.TASK = "B2N"                        # B2N / FS / CD
 
     _merge_if_exists(cfg, args.dataset_config_file)
     _merge_if_exists(cfg, args.runtime_config_file)
     _merge_if_exists(cfg, args.protocol_config_file)
     _merge_if_exists(cfg, args.method_config_file)
     _merge_if_exists(cfg, args.exp_config)
+
     if args.root:
         cfg.DATASET.ROOT = args.root
     if args.output_dir:
@@ -169,4 +153,5 @@ def setup_cfg(args):
         cfg.METHOD.EXEC_MODE = args.exec_mode
     if args.opts:
         cfg.merge_from_list(args.opts)
+
     return finalize_cfg(cfg)
