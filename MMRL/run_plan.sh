@@ -1,8 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+#BayesMMRL
+
 PROTOCOL=${1:-FS}
-METHOD=${2:-MMRL}
+METHOD=${2:-BayesMMRL}
 EXEC_MODE=${3:-online}
 DATASET=${4:-caltech101}
 SHOTS=${5:-1}
@@ -25,6 +27,7 @@ resolve_configs() {
   local method_cfg protocol_cfg runtime_cfg
   case "$METHOD" in
     MMRL) method_cfg="configs/methods/mmrl.yaml" ;;
+    BayesMMRL) method_cfg="configs/methods/bayesmmrl.yaml" ;;
     MMRLpp|MMRLPP) method_cfg="configs/methods/mmrlpp.yaml" ;;
     ClipAdapters|ClipADAPTER) method_cfg="configs/methods/clip_adapters.yaml" ;;
     *) echo "Unknown METHOD=$METHOD" >&2; exit 1 ;;
