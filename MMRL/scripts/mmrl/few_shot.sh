@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # custom config
-DATA=PATH/TO/YOUR/DATASETS
+DATA=DATASETS
 TRAINER=MMRL
 SHOTS=16
 

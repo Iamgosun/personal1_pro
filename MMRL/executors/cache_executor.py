@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+import datetime
+import numpy as np
+import time
+import torch
+from torch.cuda.amp import autocast
+from torch.utils.data import DataLoader
+
+from core.registry import EXECUTOR_REGISTRY
+from dassl.metrics import compute_accuracy
+from dassl.utils import AverageMeter, MetricMeter
+
+from features.cache_dataset import FeatureDataset
+from features.cache_manager import FeatureCacheManager
+from features.extractor import CLIPFeatureExtractor
+from .base_executor import BaseExecutor
+
+
+@EXECUTOR_REGISTRY.register('cache')
+class CacheExecutor(BaseExecutor):
+    exec_mode = 'cache'
+
+    def on_build(self, trainer):
+        self.cache_manager = FeatureCacheManager(trainer.cfg)
+        self.extractor = CLIPFeatureExtractor(trainer, self.cache_manager)
+        trainer.labels_train, trainer.logits_train, trainer.features_train = self.extractor.extract_split('train', reps=1, train_aug=False)
+        trainer.cache_train_loader = DataLoader(
+            FeatureDataset(trainer.features_train.cpu(), trainer.labels_train.cpu(), trainer.logits_train.cpu()),
+            batch_size=trainer.cfg.DATALOADER.TRAIN_X.BATCH_SIZE,
+            shuffle=True,
+            drop_last=False,
+            num_workers=0,
+        )
+        trainer.method.on_cache_ready(trainer)
+
+    def run_epoch(self, trainer):
+        trainer.set_model_mode('eval')
+        losses = MetricMeter()
+        batch_time = AverageMeter()
+        data_time = AverageMeter()
+        trainer.num_batches = len(trainer.cache_train_loader)
+        end = time.time()
+        for trainer.batch_idx, batch in enumerate(trainer.cache_train_loader):
+            data_time.update(time.time() - end)
+            loss_summary = self.forward_backward(trainer, batch)
+            batch_time.update(time.time() - end)
+            losses.update(loss_summary)
+            meet_freq = (trainer.batch_idx + 1) % trainer.cfg.TRAIN.PRINT_FREQ == 0
+            only_few_batches = trainer.num_batches < trainer.cfg.TRAIN.PRINT_FREQ
+            if meet_freq or only_few_batches:
+                nb_remain = trainer.num_batches - trainer.batch_idx - 1
+                nb_remain += (trainer.max_epoch - trainer.epoch - 1) * trainer.num_batches
+                eta_seconds = batch_time.avg * nb_remain
+                eta = str(datetime.timedelta(seconds=int(eta_seconds)))
+                print(f"epoch [{trainer.epoch + 1}/{trainer.max_epoch}] batch [{trainer.batch_idx + 1}/{trainer.num_batches}] {losses} eta {eta}")
+            n_iter = trainer.epoch * trainer.num_batches + trainer.batch_idx
+            for name, meter in losses.meters.items():
+                trainer.write_scalar('train/' + name, meter.avg, n_iter)
+            trainer.write_scalar('train/lr', trainer.get_current_lr(), n_iter)
+            end = time.time()
+        return loss_summary
+
+    def forward_backward(self, trainer, batch):
+        labels = batch['label'].to(trainer.device)
+        features = batch['features'].to(trainer.device)
+        prec = trainer.cfg.CLIP_ADAPTERS.PREC
+        payload = {'features': features, 'label': labels}
+        if prec == 'amp':
+            with autocast():
+                outputs = self.method.forward_train(payload)
+                loss = self.method.loss(outputs)
+            trainer.optim.zero_grad()
+            trainer.scaler.scale(loss).backward()
+            trainer.scaler.step(trainer.optim)
+            trainer.scaler.update()
+        else:
+            outputs = self.method.forward_train(payload)
+            loss = self.method.loss(outputs)
+            trainer.optim.zero_grad()
+            loss.backward()
+            trainer.optim.step()
+        loss_summary = {'loss': loss.item(), 'acc': compute_accuracy(outputs.logits, outputs.labels)[0].item()}
+        if (trainer.batch_idx + 1) == trainer.num_batches:
+            trainer.update_lr()
+        return loss_summary
