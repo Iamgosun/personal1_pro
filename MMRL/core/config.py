@@ -13,6 +13,12 @@ def _copy_mmrl_family(src, sec):
     sec.N_REP_TOKENS = src.N_REP_TOKENS
     sec.REP_LAYERS = src.REP_LAYERS
     sec.REP_DIM = src.REP_DIM
+    if hasattr(src, "LOSS_MAIN_WEIGHT"):
+        sec.LOSS_MAIN_WEIGHT = src.LOSS_MAIN_WEIGHT
+    if hasattr(src, "LOSS_REP_WEIGHT"):
+        sec.LOSS_REP_WEIGHT = src.LOSS_REP_WEIGHT
+    if hasattr(src, "LOSS_FUSE_WEIGHT"):
+        sec.LOSS_FUSE_WEIGHT = src.LOSS_FUSE_WEIGHT
 
 
 def _as_legacy_clipadapter(cfg):
@@ -111,13 +117,19 @@ def get_refactor_defaults():
     cfg.MMRL.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
     cfg.MMRL.REP_DIM = 512
 
+
     cfg.MMRL_MIX = CN()
     cfg.MMRL_MIX.PREC = "amp"
     cfg.MMRL_MIX.ALPHA = 0.7
     cfg.MMRL_MIX.REG_WEIGHT = 1.0
+    cfg.MMRL_MIX.LOSS_MAIN_WEIGHT = 1.0
+    cfg.MMRL_MIX.LOSS_REP_WEIGHT = 1.0
+    cfg.MMRL_MIX.LOSS_FUSE_WEIGHT = 0.2
     cfg.MMRL_MIX.N_REP_TOKENS = 5
     cfg.MMRL_MIX.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
     cfg.MMRL_MIX.REP_DIM = 512
+
+
 
     cfg.MMRLPP = CN()
     cfg.MMRLPP.PREC = "amp"
