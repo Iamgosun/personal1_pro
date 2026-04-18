@@ -12,22 +12,8 @@ from .base_executor import BaseExecutor
 class OnlineExecutor(BaseExecutor):
     exec_mode = "online"
 
-    def _resolve_precision(self, trainer):
-        method_name = trainer.cfg.METHOD.NAME
-
-        if method_name == "MMRL":
-            return trainer.cfg.MMRL.PREC
-
-        if method_name in {"MMRLpp", "MMRLPP"}:
-            return trainer.cfg.MMRLPP.PREC
-
-        if method_name == "BayesMMRL":
-            return trainer.cfg.BAYES_MMRL.PREC
-
-        return trainer.cfg.CLIP_ADAPTERS.PREC
-
     def forward_backward(self, trainer, batch):
-        prec = self._resolve_precision(trainer)
+        prec = self.method.get_precision()
 
         payload = {
             "img": batch["img"].to(trainer.device),
@@ -51,7 +37,7 @@ class OnlineExecutor(BaseExecutor):
             loss.backward()
             trainer.optim.step()
 
-        train_logits = outputs.aux_logits.get("fusion", outputs.logits)
+        train_logits = self.method.select_train_logits(outputs)
         loss_summary = {
             "loss": loss.item(),
             "acc": compute_accuracy(train_logits, outputs.labels)[0].item(),

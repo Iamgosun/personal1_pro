@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
-
 import torch.nn as nn
 
 from core.types import MethodOutputs
 
 
 class BaseMethod(nn.Module):
-    method_name = 'BaseMethod'
+    method_name = "BaseMethod"
 
     def __init__(self, cfg, dm, device):
         super().__init__()
@@ -32,6 +30,15 @@ class BaseMethod(nn.Module):
 
     def get_optimizer_target(self):
         return self.model
+
+    def get_precision(self) -> str:
+        return "fp32"
+
+    def select_train_logits(self, outputs):
+        return outputs.logits
+
+    def select_eval_logits(self, outputs, eval_ctx):
+        return outputs.logits
 
     def supports_online(self) -> bool:
         return True

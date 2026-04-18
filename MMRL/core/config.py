@@ -6,6 +6,15 @@ from dassl.config import get_cfg_default
 from core.overrides import resolve_method_dataset_overrides
 
 
+def _copy_mmrl_family(src, sec):
+    sec.PREC = src.PREC
+    sec.ALPHA = src.ALPHA
+    sec.REG_WEIGHT = src.REG_WEIGHT
+    sec.N_REP_TOKENS = src.N_REP_TOKENS
+    sec.REP_LAYERS = src.REP_LAYERS
+    sec.REP_DIM = src.REP_DIM
+
+
 def _as_legacy_clipadapter(cfg):
     if not hasattr(cfg.TRAINER, "ClipADAPTER"):
         cfg.TRAINER.ClipADAPTER = CN()
@@ -23,13 +32,14 @@ def _as_legacy_mmrl(cfg):
     if not hasattr(cfg.TRAINER, "MMRL"):
         cfg.TRAINER.MMRL = CN()
     sec = cfg.TRAINER.MMRL
-    src = cfg.MMRL
-    sec.PREC = src.PREC
-    sec.ALPHA = src.ALPHA
-    sec.REG_WEIGHT = src.REG_WEIGHT
-    sec.N_REP_TOKENS = src.N_REP_TOKENS
-    sec.REP_LAYERS = src.REP_LAYERS
-    sec.REP_DIM = src.REP_DIM
+    _copy_mmrl_family(cfg.MMRL, sec)
+
+
+def _as_legacy_mmrl_mix(cfg):
+    if not hasattr(cfg.TRAINER, "MMRLMix"):
+        cfg.TRAINER.MMRLMix = CN()
+    sec = cfg.TRAINER.MMRLMix
+    _copy_mmrl_family(cfg.MMRL_MIX, sec)
 
 
 def _as_legacy_mmrlpp(cfg):
@@ -67,6 +77,14 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.EVAL_USE_POSTERIOR_MEAN = src.EVAL_USE_POSTERIOR_MEAN
 
 
+def _sync_active_mmrl_family(cfg):
+    # Compatibility bridge:
+    # if some legacy helper still reads cfg.MMRL / cfg.TRAINER.MMRL,
+    # MMRLMix should behave like an "MMRL-family active variant".
+    if cfg.METHOD.NAME == "MMRLMix":
+        _copy_mmrl_family(cfg.MMRL_MIX, cfg.MMRL)
+
+
 def get_refactor_defaults():
     cfg = get_cfg_default()
     cfg.TRAINER.NAME = "RefactorRunner"
@@ -93,6 +111,14 @@ def get_refactor_defaults():
     cfg.MMRL.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
     cfg.MMRL.REP_DIM = 512
 
+    cfg.MMRL_MIX = CN()
+    cfg.MMRL_MIX.PREC = "amp"
+    cfg.MMRL_MIX.ALPHA = 0.7
+    cfg.MMRL_MIX.REG_WEIGHT = 1.0
+    cfg.MMRL_MIX.N_REP_TOKENS = 5
+    cfg.MMRL_MIX.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
+    cfg.MMRL_MIX.REP_DIM = 512
+
     cfg.MMRLPP = CN()
     cfg.MMRLPP.PREC = "amp"
     cfg.MMRLPP.ALPHA = 0.7
@@ -115,10 +141,7 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.N_MC_TEST = 5
     cfg.BAYES_MMRL.KL_WEIGHT = 1e-4
     cfg.BAYES_MMRL.PRIOR_STD = 0.02
-    # softplus(-3.9) ~= 0.02
     cfg.BAYES_MMRL.POSTERIOR_RHO_INIT = -3.9
-    # False: use MC averaging at test time by default
-    # True + N_MC_TEST=1: use posterior mean and enable eval cache
     cfg.BAYES_MMRL.EVAL_USE_POSTERIOR_MEAN = False
 
     cfg.CLIP_ADAPTERS = CN()
@@ -134,7 +157,9 @@ def get_refactor_defaults():
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"
     cfg.TASK = "B2N"
 
+    _sync_active_mmrl_family(cfg)
     _as_legacy_mmrl(cfg)
+    _as_legacy_mmrl_mix(cfg)
     _as_legacy_mmrlpp(cfg)
     _as_legacy_bayes_mmrl(cfg)
     _as_legacy_clipadapter(cfg)
@@ -159,10 +184,14 @@ def _apply_method_dataset_overrides(cfg):
 def finalize_cfg(cfg):
     cfg.TASK = cfg.PROTOCOL.NAME
     _apply_method_dataset_overrides(cfg)
+
+    _sync_active_mmrl_family(cfg)
     _as_legacy_mmrl(cfg)
+    _as_legacy_mmrl_mix(cfg)
     _as_legacy_mmrlpp(cfg)
     _as_legacy_bayes_mmrl(cfg)
     _as_legacy_clipadapter(cfg)
+
     cfg.freeze()
     return cfg
 

@@ -14,6 +14,7 @@ from core.registry import EXECUTOR_REGISTRY, METHOD_REGISTRY
 
 # ensure method / executor registration side effects
 import methods.mmrl  # noqa: F401
+import methods.mmrl_mix  # noqa: F401
 import methods.mmrlpp  # noqa: F401
 import methods.bayes_mmrl  # noqa: F401
 import methods.clip_adapters  # noqa: F401
@@ -47,16 +48,7 @@ class RefactorRunner(TrainerX):
         self.sched = build_lr_scheduler(self.optim, self.cfg.OPTIM)
         self.register_model("refactor_model", self.model, self.optim, self.sched)
 
-        prec = "fp32"
-        if self.cfg.METHOD.NAME == "MMRL":
-            prec = self.cfg.MMRL.PREC
-        elif self.cfg.METHOD.NAME in {"MMRLpp", "MMRLPP"}:
-            prec = self.cfg.MMRLPP.PREC
-        elif self.cfg.METHOD.NAME == "BayesMMRL":
-            prec = self.cfg.BAYES_MMRL.PREC
-        elif self.cfg.METHOD.NAME in {"ClipAdapters", "ClipADAPTER"}:
-            prec = self.cfg.CLIP_ADAPTERS.PREC
-
+        prec = self.method.get_precision()
         self.scaler = GradScaler() if prec == "amp" else None
 
         self.executor = EXECUTOR_REGISTRY.get(self.cfg.METHOD.EXEC_MODE)(self.method)

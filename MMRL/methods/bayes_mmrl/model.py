@@ -7,7 +7,7 @@ from backbones.freeze import freeze_all_but
 from core.registry import METHOD_REGISTRY
 from core.types import MethodOutputs
 from methods.base import BaseMethod
-from methods.mmrl.modules import MMRLLoss
+from methods.mmrl.loss import MMRLLoss
 
 from .loss import BayesMMRLLossAdapter
 from .modules import (
@@ -39,7 +39,9 @@ class BayesMMRLMethod(BaseMethod):
         self.eval_use_posterior_mean = bool(cfg.BAYES_MMRL.EVAL_USE_POSTERIOR_MEAN)
         self.kl_weight = float(cfg.BAYES_MMRL.KL_WEIGHT)
 
-        self.text_encoder_clip = CLIPTextEncoderPlain(clip_model_zero_shot).to(self.device)
+        self.text_encoder_clip = CLIPTextEncoderPlain(clip_model_zero_shot).to(
+            self.device
+        )
 
         with torch.no_grad():
             text_features_clip = build_zero_shot_text_features(
@@ -50,7 +52,9 @@ class BayesMMRLMethod(BaseMethod):
             ).to(self.device)
 
         self.image_encoder_clip = clip_model_zero_shot.visual.to(self.device)
-        self.model = BayesianCustomMMRLModel(cfg, classnames, clip_model).to(self.device)
+        self.model = BayesianCustomMMRLModel(cfg, classnames, clip_model).to(
+            self.device
+        )
 
         enabled = freeze_all_but(
             self.model,
@@ -64,6 +68,37 @@ class BayesMMRLMethod(BaseMethod):
         )
         self.loss = BayesMMRLLossAdapter()
         return self
+
+    def get_precision(self) -> str:
+        return self.cfg.BAYES_MMRL.PREC
+
+    def select_train_logits(self, outputs):
+        return outputs.aux_logits.get("fusion", outputs.logits)
+
+    def select_eval_logits(self, outputs, eval_ctx):
+        logits = outputs.logits
+        logits_fusion = outputs.aux_logits.get("fusion")
+        if logits_fusion is None:
+            return logits
+
+        protocol = eval_ctx.protocol
+        dataset = eval_ctx.dataset_name
+        sub_cls = eval_ctx.subsample_classes or "all"
+
+        if protocol == "B2N":
+            if sub_cls == "base":
+                return logits_fusion
+            return logits
+
+        if protocol == "FS":
+            return logits_fusion
+
+        if protocol == "CD":
+            if dataset == "ImageNet":
+                return logits_fusion
+            return logits
+
+        return logits
 
     def _build_outputs_from_samples(self, label, img_ref, sample_outputs):
         per_sample_losses = []
@@ -102,7 +137,9 @@ class BayesMMRLMethod(BaseMethod):
         logits_fusion_mean = torch.stack(logits_fusion_list, dim=0).mean(dim=0)
         image_features_mean = torch.stack(image_features_list, dim=0).mean(dim=0)
         text_features_mean = torch.stack(text_features_list, dim=0).mean(dim=0)
-        text_features_mean = text_features_mean / text_features_mean.norm(dim=-1, keepdim=True)
+        text_features_mean = text_features_mean / text_features_mean.norm(
+            dim=-1, keepdim=True
+        )
 
         return MethodOutputs(
             logits=logits_mean,
@@ -144,10 +181,12 @@ class BayesMMRLMethod(BaseMethod):
         if label is not None:
             label = label.to(self.device)
 
-        logits, logits_rep, logits_fusion, image_features, text_features = self.model.forward_eval(
-            image,
-            num_samples=self.n_mc_test,
-            use_posterior_mean=self.eval_use_posterior_mean,
+        logits, logits_rep, logits_fusion, image_features, text_features = (
+            self.model.forward_eval(
+                image,
+                num_samples=self.n_mc_test,
+                use_posterior_mean=self.eval_use_posterior_mean,
+            )
         )
         text_features = text_features[: self.num_classes]
 

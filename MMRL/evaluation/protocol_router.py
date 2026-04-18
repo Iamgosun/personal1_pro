@@ -8,17 +8,20 @@ def select_eval_logits(method_name: str, outputs, eval_ctx):
     dataset = eval_ctx.dataset_name
     sub_cls = eval_ctx.subsample_classes or "all"
 
-    if method_name in {"MMRL", "MMRLpp", "MMRLPP", "BayesMMRL"}:
+    if logits_fusion is None:
+        return logits
+
+    if method_name in {"MMRL", "MMRLMix", "MMRLpp", "MMRLPP", "BayesMMRL"}:
         if protocol == "B2N":
-            if sub_cls == "base" and logits_fusion is not None:
+            if sub_cls == "base":
                 return logits_fusion
             return logits
 
-        if protocol == "FS" and logits_fusion is not None:
+        if protocol == "FS":
             return logits_fusion
 
         if protocol == "CD":
-            if dataset == "ImageNet" and logits_fusion is not None:
+            if dataset == "ImageNet":
                 return logits_fusion
             return logits
 

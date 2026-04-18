@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import torch
+
 from core.types import EvalContext
 from evaluation.metrics import (
     build_classification_calibration_report,
     save_metric_report,
 )
-from evaluation.protocol_router import select_eval_logits
+from evaluation.protocol_router import select_eval_logits as legacy_select_eval_logits
 
 
 class BaseExecutor:
@@ -53,7 +55,13 @@ class BaseExecutor:
             label = batch["label"].to(trainer.device)
 
             outputs = self.method.forward_eval({"img": image, "label": label}, eval_ctx)
-            routed = select_eval_logits(self.method.method_name, outputs, eval_ctx)
+
+            if hasattr(self.method, "select_eval_logits"):
+                routed = self.method.select_eval_logits(outputs, eval_ctx)
+            else:
+                routed = legacy_select_eval_logits(
+                    self.method.method_name, outputs, eval_ctx
+                )
 
             trainer.evaluator.process(routed, label)
 
@@ -62,8 +70,8 @@ class BaseExecutor:
 
         legacy_results = trainer.evaluator.evaluate()
 
-        logits = all_logits[0] if len(all_logits) == 1 else __import__("torch").cat(all_logits, dim=0)
-        labels = all_labels[0] if len(all_labels) == 1 else __import__("torch").cat(all_labels, dim=0)
+        logits = all_logits[0] if len(all_logits) == 1 else torch.cat(all_logits, dim=0)
+        labels = all_labels[0] if len(all_labels) == 1 else torch.cat(all_labels, dim=0)
 
         report = build_classification_calibration_report(
             logits=logits,
