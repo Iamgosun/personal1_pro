@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, SequentialSampler
 
 from backbones.clip_loader import load_mmrl_clip_to_cpu
 from backbones.freeze import freeze_all_but
 from core.registry import METHOD_REGISTRY
 from core.types import MethodOutputs
+from data.build import build_split_dataset
 from methods.base import BaseMethod
 from methods.mmrl.loss import MMRLLoss
 
@@ -21,23 +24,137 @@ from .modules import (
 class BayesMMRLMethod(BaseMethod):
     method_name = "BayesMMRL"
 
+    def _resolve_trainable_substrings(self):
+        substrings = ["representation_learner"]
+        if self.bayes_target == "proj_rep":
+            substrings.append("image_encoder.bayes_proj_rep")
+        else:
+            substrings.append("image_encoder.proj_rep")
+        return substrings
+
+    def _build_support_loader(self):
+        dataset = build_split_dataset(
+            self.cfg,
+            self.dm.dataset.train_x,
+            is_train=False,
+        )
+        return DataLoader(
+            dataset,
+            batch_size=self.cfg.DATALOADER.TEST.BATCH_SIZE,
+            sampler=SequentialSampler(dataset),
+            num_workers=0,
+            pin_memory=torch.cuda.is_available(),
+            drop_last=False,
+        )
+
+    @torch.no_grad()
+    def _compute_support_image_class_prototypes(self):
+        loader = self._build_support_loader()
+        feat_dim = self.text_features_clip.shape[-1]
+
+        feat_sums = torch.zeros(
+            self.num_classes,
+            feat_dim,
+            device=self.device,
+            dtype=torch.float32,
+        )
+        counts = torch.zeros(
+            self.num_classes,
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+        for batch in loader:
+            images = batch["img"].to(self.device)
+            labels = batch["label"].to(self.device)
+
+            img_features = self.image_encoder_clip(images.type(self.dtype))
+            img_features = img_features / img_features.norm(dim=-1, keepdim=True)
+
+            feat_sums.index_add_(0, labels, img_features.float())
+            counts.index_add_(
+                0,
+                labels,
+                torch.ones_like(labels, dtype=torch.float32),
+            )
+
+        counts = counts.clamp_min(1.0).unsqueeze(-1)
+        protos = feat_sums / counts
+        protos = protos / protos.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+        return protos
+
+    @torch.no_grad()
+    def _build_rep_clip_prior(self):
+        bayes_cfg = self.cfg.BAYES_MMRL
+        rep_prior_mode = str(getattr(bayes_cfg, "REP_PRIOR_MODE", "zero"))
+        rep_dim = int(bayes_cfg.REP_DIM)
+        n_rep_tokens = int(bayes_cfg.N_REP_TOKENS)
+
+        text_basis = self.text_features_clip[: self.num_classes].float()
+        if text_basis.shape[-1] != rep_dim:
+            raise ValueError(
+                f"CLIP prior requires REP_DIM == CLIP embed dim, got {rep_dim} vs {text_basis.shape[-1]}"
+            )
+
+        if rep_prior_mode == "clip_text":
+            centers = text_basis
+        elif rep_prior_mode == "clip_joint":
+            image_basis = self._compute_support_image_class_prototypes()
+            blend = float(getattr(bayes_cfg, "CLIP_PRIOR_BLEND", 0.5))
+            centers = (1.0 - blend) * text_basis + blend * image_basis
+        else:
+            raise ValueError(f"Unsupported REP_PRIOR_MODE: {rep_prior_mode}")
+
+        centers = centers - centers.mean(dim=0, keepdim=True)
+
+        if torch.allclose(centers, torch.zeros_like(centers)):
+            centers = text_basis
+
+        _, _, vh = torch.linalg.svd(centers, full_matrices=False)
+        basis = vh[: min(n_rep_tokens, vh.shape[0])]
+
+        if basis.shape[0] < n_rep_tokens:
+            extra = torch.randn(
+                n_rep_tokens - basis.shape[0],
+                basis.shape[1],
+                device=basis.device,
+                dtype=basis.dtype,
+            )
+            basis = torch.cat([basis, extra], dim=0)
+
+        basis = F.normalize(basis, dim=-1)
+        scale = float(getattr(bayes_cfg, "CLIP_PRIOR_SCALE", 0.05))
+        return (scale * basis).detach()
+
     def build(self):
         cfg = self.cfg
+        bayes_cfg = cfg.BAYES_MMRL
         classnames = self.dm.dataset.classnames
         self.num_classes = len(classnames)
+        self.bayes_target = str(getattr(bayes_cfg, "BAYES_TARGET", "rep_tokens"))
 
         clip_model = load_mmrl_clip_to_cpu(cfg, "MMRL")
         clip_model_zero_shot = load_mmrl_clip_to_cpu(cfg, "CLIP")
 
-        if cfg.BAYES_MMRL.PREC in {"fp32", "amp"}:
+        if bayes_cfg.PREC in {"fp32", "amp"}:
             clip_model.float()
             clip_model_zero_shot.float()
 
         self.dtype = clip_model.dtype
-        self.n_mc_train = max(1, int(cfg.BAYES_MMRL.N_MC_TRAIN))
-        self.n_mc_test = max(1, int(cfg.BAYES_MMRL.N_MC_TEST))
-        self.eval_use_posterior_mean = bool(cfg.BAYES_MMRL.EVAL_USE_POSTERIOR_MEAN)
-        self.kl_weight = float(cfg.BAYES_MMRL.KL_WEIGHT)
+        self.n_mc_train = max(1, int(bayes_cfg.N_MC_TRAIN))
+        self.n_mc_test = max(1, int(bayes_cfg.N_MC_TEST))
+        self.eval_use_posterior_mean = bool(bayes_cfg.EVAL_USE_POSTERIOR_MEAN)
+
+        self.rep_kl_weight = float(
+            getattr(
+                bayes_cfg,
+                "REP_KL_WEIGHT",
+                getattr(bayes_cfg, "KL_WEIGHT", 1e-4),
+            )
+        )
+        self.proj_rep_kl_weight = float(
+            getattr(bayes_cfg, "PROJ_REP_KL_WEIGHT", 1e-6)
+        )
 
         self.text_encoder_clip = CLIPTextEncoderPlain(clip_model_zero_shot).to(
             self.device
@@ -45,26 +162,46 @@ class BayesMMRLMethod(BaseMethod):
 
         with torch.no_grad():
             text_features_clip = build_zero_shot_text_features(
-                cfg, classnames, clip_model_zero_shot, self.text_encoder_clip
+                cfg,
+                classnames,
+                clip_model_zero_shot,
+                self.text_encoder_clip,
             )
             self.text_features_clip = (
                 text_features_clip / text_features_clip.norm(dim=-1, keepdim=True)
             ).to(self.device)
 
         self.image_encoder_clip = clip_model_zero_shot.visual.to(self.device)
+
         self.model = BayesianCustomMMRLModel(cfg, classnames, clip_model).to(
             self.device
         )
 
+        rep_prior_mode = str(getattr(bayes_cfg, "REP_PRIOR_MODE", "zero"))
+        if self.bayes_target == "rep_tokens" and rep_prior_mode != "zero":
+            prior_mean = self._build_rep_clip_prior()
+            self.model.representation_learner.apply_rep_prior(
+                prior_mean=prior_mean.to(self.device),
+                init_mode=str(getattr(bayes_cfg, "REP_INIT_MODE", "prior_mean_noise")),
+                init_std=float(getattr(bayes_cfg, "REP_INIT_STD", 0.01)),
+                prior_std=float(
+                    getattr(
+                        bayes_cfg,
+                        "REP_PRIOR_STD",
+                        getattr(bayes_cfg, "PRIOR_STD", 0.05),
+                    )
+                ),
+            )
+
         enabled = freeze_all_but(
             self.model,
-            ["representation_learner", "image_encoder.proj_rep"],
+            self._resolve_trainable_substrings(),
         )
         print(f"[BayesMMRLMethod] trainable params: {enabled}")
 
         self.sample_loss = MMRLLoss(
-            reg_weight=cfg.BAYES_MMRL.REG_WEIGHT,
-            alpha=cfg.BAYES_MMRL.ALPHA,
+            reg_weight=bayes_cfg.REG_WEIGHT,
+            alpha=bayes_cfg.ALPHA,
         )
         self.loss = BayesMMRLLossAdapter()
         return self
@@ -129,7 +266,11 @@ class BayesMMRLMethod(BaseMethod):
             text_features_list.append(text_features)
 
         data_term = torch.stack(per_sample_losses, dim=0).mean(dim=0)
-        kl_term = self.kl_weight * self.model.representation_learner.kl_divergence()
+
+        raw_kl = self.model.kl_terms()
+        kl_rep_term = self.rep_kl_weight * raw_kl["rep_tokens"]
+        kl_proj_rep_term = self.proj_rep_kl_weight * raw_kl["proj_rep"]
+        kl_term = kl_rep_term + kl_proj_rep_term
         total_loss = data_term + kl_term
 
         logits_mean = torch.stack(logits_list, dim=0).mean(dim=0)
@@ -138,8 +279,11 @@ class BayesMMRLMethod(BaseMethod):
         image_features_mean = torch.stack(image_features_list, dim=0).mean(dim=0)
         text_features_mean = torch.stack(text_features_list, dim=0).mean(dim=0)
         text_features_mean = text_features_mean / text_features_mean.norm(
-            dim=-1, keepdim=True
+            dim=-1,
+            keepdim=True,
         )
+
+        extras = dict(self.model.posterior_stats())
 
         return MethodOutputs(
             logits=logits_mean,
@@ -156,12 +300,12 @@ class BayesMMRLMethod(BaseMethod):
             },
             losses={
                 "data_term": data_term,
+                "kl_rep_term": kl_rep_term,
+                "kl_proj_rep_term": kl_proj_rep_term,
                 "kl_term": kl_term,
                 "total": total_loss,
             },
-            extras={
-                "posterior_sigma": self.model.representation_learner.posterior_sigma().detach(),
-            },
+            extras=extras,
         )
 
     def forward_train(self, batch):
@@ -190,6 +334,8 @@ class BayesMMRLMethod(BaseMethod):
         )
         text_features = text_features[: self.num_classes]
 
+        extras = dict(self.model.posterior_stats())
+
         return MethodOutputs(
             logits=logits,
             labels=label,
@@ -201,7 +347,5 @@ class BayesMMRLMethod(BaseMethod):
                 "img": image_features,
                 "text": text_features,
             },
-            extras={
-                "posterior_sigma": self.model.representation_learner.posterior_sigma().detach(),
-            },
+            extras=extras,
         )
