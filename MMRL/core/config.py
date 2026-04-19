@@ -80,6 +80,8 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.KL_WEIGHT = src.KL_WEIGHT
     sec.PRIOR_STD = src.PRIOR_STD
     sec.POSTERIOR_RHO_INIT = src.POSTERIOR_RHO_INIT
+    sec.SIGMA_MODE = src.SIGMA_MODE
+    sec.EVAL_MODE = src.EVAL_MODE
     sec.EVAL_USE_POSTERIOR_MEAN = src.EVAL_USE_POSTERIOR_MEAN
 
 
@@ -117,7 +119,6 @@ def get_refactor_defaults():
     cfg.MMRL.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
     cfg.MMRL.REP_DIM = 512
 
-
     cfg.MMRL_MIX = CN()
     cfg.MMRL_MIX.PREC = "amp"
     cfg.MMRL_MIX.ALPHA = 0.7
@@ -128,8 +129,6 @@ def get_refactor_defaults():
     cfg.MMRL_MIX.N_REP_TOKENS = 5
     cfg.MMRL_MIX.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
     cfg.MMRL_MIX.REP_DIM = 512
-
-
 
     cfg.MMRLPP = CN()
     cfg.MMRLPP.PREC = "amp"
@@ -154,6 +153,19 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.KL_WEIGHT = 1e-4
     cfg.BAYES_MMRL.PRIOR_STD = 0.02
     cfg.BAYES_MMRL.POSTERIOR_RHO_INIT = -3.9
+
+    # 新增：控制 sigma 形式
+    # "global"    -> 单个全局 sigma
+    # "per_token" -> 每个 representation token 一个 sigma，形状 [K, 1]
+    cfg.BAYES_MMRL.SIGMA_MODE = "global"
+
+    # 新增：显式控制测试时的评估模式
+    # "mc_only"      -> 全部使用随机采样
+    # "mean_only"    -> 只用 posterior mean
+    # "mean_plus_mc" -> posterior mean + MC ensemble
+    cfg.BAYES_MMRL.EVAL_MODE = "mc_only"
+
+    # 兼容旧字段，保留
     cfg.BAYES_MMRL.EVAL_USE_POSTERIOR_MEAN = False
 
     cfg.CLIP_ADAPTERS = CN()

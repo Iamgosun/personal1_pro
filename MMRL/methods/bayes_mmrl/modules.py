@@ -25,10 +25,13 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
     Bayesian version of the shared representation learner.
 
     Only the shared token matrix R is randomized:
-        q(R) = N(mu, sigma^2 I)
+        q(R) = N(mu, sigma^2)
 
-    where sigma is a single global scalar (shared across all entries),
-    following your latest requirement of using a unified covariance scale.
+    Supported sigma parameterizations:
+        - global:    one scalar sigma shared by all entries
+        - per_token: one sigma per representation token, shape [K, 1]
+
+    Projection layers remain deterministic, same as original MMRL.
     """
 
     def __init__(self, cfg, classnames, clip_model):
@@ -40,6 +43,7 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
         rep_dim = bayes_cfg.REP_DIM
         self.dtype = clip_model.dtype
         self.rep_layers_length = len(bayes_cfg.REP_LAYERS)
+        self.sigma_mode = str(getattr(bayes_cfg, "SIGMA_MODE", "global"))
 
         text_dim = clip_model.ln_final.weight.shape[0]
         visual_dim = clip_model.visual.ln_post.weight.shape[0]
@@ -64,15 +68,26 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
             )
         self.register_buffer("prompt_embeddings", prompt_embeddings)
 
-        # Variational parameters for the shared representation R.
-        # Keep them in float32 for numerical stability even if the backbone uses fp16.
+        # Variational mean for shared representation R.
+        # Keep fp32 for stability.
         self.posterior_mean = nn.Parameter(
             torch.empty(n_rep_tokens, rep_dim, dtype=torch.float32)
         )
         nn.init.normal_(self.posterior_mean, std=float(bayes_cfg.PRIOR_STD))
 
+        # Variational rho -> sigma = softplus(rho) + eps
+        # Support:
+        #   global    : shape []
+        #   per_token : shape [K, 1]
+        if self.sigma_mode == "global":
+            rho_shape = ()
+        elif self.sigma_mode == "per_token":
+            rho_shape = (n_rep_tokens, 1)
+        else:
+            raise ValueError(f"Unsupported SIGMA_MODE: {self.sigma_mode}")
+
         self.posterior_rho = nn.Parameter(
-            torch.tensor(float(bayes_cfg.POSTERIOR_RHO_INIT), dtype=torch.float32)
+            torch.full(rho_shape, float(bayes_cfg.POSTERIOR_RHO_INIT), dtype=torch.float32)
         )
 
         # Deterministic trainable projection layers, unchanged from original MMRL.
@@ -91,24 +106,27 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
 
     def kl_divergence(self) -> torch.Tensor:
         """
-        KL[q(r) || p(r)] with:
-            q(r) = N(mu, sigma^2 I)
-            p(r) = N(0, sigma_p^2 I)
-        where sigma is a single scalar and mu is a full matrix.
+        KL[q(R) || p(R)] with:
+            q(R) = N(mu, sigma^2)
+            p(R) = N(0, prior_std^2)
+
+        Supports:
+            - global sigma:    sigma shape []
+            - per-token sigma: sigma shape [K, 1]
         """
-        sigma = self.posterior_sigma()
-        prior_var = sigma.new_tensor(self.prior_std ** 2)
-        sigma2 = sigma.pow(2)
+        mu = self.posterior_mean.float()          # [K, d_r]
+        sigma = self.posterior_sigma().float()    # [] or [K, 1]
 
-        d = self.posterior_mean.numel()
-        mu_sq_sum = self.posterior_mean.float().pow(2).sum()
+        prior_var = mu.new_tensor(self.prior_std ** 2)
+        sigma2_expand = sigma.pow(2).expand_as(mu)
 
-        return 0.5 * (
-            d * sigma2 / prior_var
-            + mu_sq_sum / prior_var
-            - d
-            - d * torch.log(sigma2 / prior_var)
+        kl = 0.5 * (
+            sigma2_expand / prior_var
+            + mu.pow(2) / prior_var
+            - 1.0
+            - torch.log(sigma2_expand / prior_var)
         )
+        return kl.sum()
 
     def _project_rep_tokens(
         self, rep_tokens: torch.Tensor
@@ -130,9 +148,9 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
         return self._project_rep_tokens(self.posterior_mean)
 
     def project_sample_tokens(self) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-        mu = self.posterior_mean.float()
-        sigma = self.posterior_sigma()
-        eps = torch.randn_like(mu)
+        mu = self.posterior_mean.float()   # [K, d_r]
+        sigma = self.posterior_sigma()     # [] or [K, 1]
+        eps = torch.randn_like(mu)         # [K, d_r]
         sampled_rep_tokens = mu + sigma * eps
         return self._project_rep_tokens(sampled_rep_tokens)
 
@@ -146,7 +164,10 @@ class BayesianCustomMMRLModel(nn.Module):
     """
     Bayesian MMRL model:
     - training: Monte Carlo samples over shared representation R
-    - evaluation: posterior mean or MC averaging
+    - evaluation:
+        * mc_only
+        * mean_only
+        * mean_plus_mc
     """
 
     def __init__(self, cfg, classnames, clip_model):
@@ -154,11 +175,14 @@ class BayesianCustomMMRLModel(nn.Module):
         bayes_cfg = cfg.BAYES_MMRL
 
         self.alpha = bayes_cfg.ALPHA
-        self.eval_use_posterior_mean = bool(bayes_cfg.EVAL_USE_POSTERIOR_MEAN)
+        self.eval_mode = str(getattr(bayes_cfg, "EVAL_MODE", "mc_only"))
+        self.eval_use_posterior_mean = bool(
+            getattr(bayes_cfg, "EVAL_USE_POSTERIOR_MEAN", False)
+        )  # backward compatibility
         self.n_mc_test = max(1, int(bayes_cfg.N_MC_TEST))
 
         # Do NOT cast the representation learner wholesale to clip_model.dtype.
-        # We keep variational params in fp32 for stability.
+        # Keep variational params in fp32 for stability.
         self.representation_learner = BayesianMultiModalRepresentationLearner(
             cfg, classnames, clip_model
         )
@@ -207,7 +231,9 @@ class BayesianCustomMMRLModel(nn.Module):
             [image.type(self.dtype), list(compound_rep_tokens_visual)]
         )
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-        image_features_rep = image_features_rep / image_features_rep.norm(dim=-1, keepdim=True)
+        image_features_rep = image_features_rep / image_features_rep.norm(
+            dim=-1, keepdim=True
+        )
 
         logits = 100.0 * image_features @ text_features.t()
         logits_rep = 100.0 * image_features_rep @ text_features.t()
@@ -225,7 +251,9 @@ class BayesianCustomMMRLModel(nn.Module):
             [image.type(self.dtype), list(compound_rep_tokens_visual)]
         )
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-        image_features_rep = image_features_rep / image_features_rep.norm(dim=-1, keepdim=True)
+        image_features_rep = image_features_rep / image_features_rep.norm(
+            dim=-1, keepdim=True
+        )
 
         logits = 100.0 * image_features @ text_features.t()
         logits_rep = 100.0 * image_features_rep @ text_features.t()
@@ -284,27 +312,43 @@ class BayesianCustomMMRLModel(nn.Module):
             num_samples = self.n_mc_test
         num_samples = max(1, int(num_samples))
 
-        if use_posterior_mean is None:
-            use_posterior_mean = self.eval_use_posterior_mean
+        # Backward compatibility:
+        # if caller explicitly passes use_posterior_mean, keep old semantics.
+        if use_posterior_mean is not None:
+            if use_posterior_mean and num_samples == 1:
+                eval_mode = "mean_only"
+            elif use_posterior_mean and num_samples > 1:
+                eval_mode = "mean_plus_mc"
+            else:
+                eval_mode = "mc_only"
+        else:
+            eval_mode = self.eval_mode
 
-        # Fast deterministic inference with cache.
-        if use_posterior_mean and num_samples == 1:
+            # Safety fallback if old config is still used.
+            if eval_mode is None:
+                eval_mode = "mean_only" if self.eval_use_posterior_mean else "mc_only"
+
+        if eval_mode == "mean_only":
             text_features, rep_visual = self._get_cached_mean_eval_state()
             return self._forward_with_cached_text(image, rep_visual, text_features)
 
-        # Otherwise do MC averaging. If use_posterior_mean=True and num_samples>1,
-        # include the posterior mean as the first member in the ensemble.
-        sample_outputs = []
+        if eval_mode == "mc_only":
+            sample_outputs = []
+            for _ in range(num_samples):
+                rep_text, rep_visual = self.representation_learner.project_sample_tokens()
+                sample_outputs.append(self._encode_with_tokens(image, rep_text, rep_visual))
+            return self._aggregate_outputs(sample_outputs)
 
-        if use_posterior_mean:
+        if eval_mode == "mean_plus_mc":
+            sample_outputs = []
+
             rep_text, rep_visual = self.representation_learner.project_mean_tokens()
             sample_outputs.append(self._encode_with_tokens(image, rep_text, rep_visual))
-            remaining = num_samples - 1
-        else:
-            remaining = num_samples
 
-        for _ in range(remaining):
-            rep_text, rep_visual = self.representation_learner.project_sample_tokens()
-            sample_outputs.append(self._encode_with_tokens(image, rep_text, rep_visual))
+            for _ in range(max(0, num_samples - 1)):
+                rep_text, rep_visual = self.representation_learner.project_sample_tokens()
+                sample_outputs.append(self._encode_with_tokens(image, rep_text, rep_visual))
 
-        return self._aggregate_outputs(sample_outputs)
+            return self._aggregate_outputs(sample_outputs)
+
+        raise ValueError(f"Unsupported EVAL_MODE: {eval_mode}")

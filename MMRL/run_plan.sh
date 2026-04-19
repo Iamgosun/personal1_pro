@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Usage:
-#   NGPU=2 bash run_plan_parallel.sh FS MMRLMix online caltech101 1 "1 2 3 4"
+#   NGPU=2 bash run_plan_parallel.sh FS "MMRL BayesMMRL" online "caltech101 oxfordpets ucf101" "1 2 3 4" "1 2 3"
 #
 # Optional env:
 #   NGPU=2
@@ -14,25 +14,32 @@ set -euo pipefail
 #   SEEDS="1 2 3"
 #   SKIP_EXISTING=1        # default: 1
 #   SLEEP_SEC=2            # scheduler polling interval
-# MMRLMix  BayesMMRL
+#
+# Supported methods:
+#   MMRL MMRLMix BayesMMRL MMRLpp ClipAdapters
+#
+# Example datasets:
+#   caltech101 oxfordpets ucf101
+
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-MMRLMix}
+METHODS_ARG=${2:- BayesMMRL}
 EXEC_MODE=${3:-online}
-DATASET=${4:-caltech101}
-SHOTS_ARG=${5:-8 16}
-SEEDS_ARG=${6:-${SEEDS:-1 2 3}}
+DATASETS_ARG=${4:-ucf101 }
+SHOTS_ARG=${5:-"1 "}
+SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
 OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-default}
 
-NGPU=${NGPU:-2}
-GPU_IDS=${GPU_IDS:-0 1}
+NGPU=${NGPU:-1}
+GPU_IDS=${GPU_IDS:-0}
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}
 
 read -r -a METHODS <<< "$METHODS_ARG"
+read -r -a DATASET_LIST <<< "$DATASETS_ARG"
 read -r -a SHOT_LIST <<< "$SHOTS_ARG"
 read -r -a SEED_LIST <<< "$SEEDS_ARG"
 
@@ -88,19 +95,21 @@ init_gpu_list() {
 
 build_outdir() {
   local method=$1
-  local shot=$2
-  local seed=$3
+  local dataset=$2
+  local shot=$3
+  local seed=$4
 
   read -r phase _subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
-  echo "${OUTPUT_ROOT}/${method}/${PROTOCOL}/${phase}/${DATASET}/shots_${shot}/${BACKBONE//\//-}/${TAG}/seed${seed}"
+  echo "${OUTPUT_ROOT}/${method}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/${TAG}/seed${seed}"
 }
 
 build_logfile() {
   local method=$1
-  local shot=$2
-  local seed=$3
+  local dataset=$2
+  local shot=$3
+  local seed=$4
   local outdir
-  outdir="$(build_outdir "$method" "$shot" "$seed")"
+  outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed")"
   echo "${outdir}/run.log"
 }
 
@@ -108,8 +117,9 @@ write_log_header() {
   local logfile=$1
   local gpu_id=$2
   local method=$3
-  local shot=$4
-  local seed=$5
+  local dataset=$4
+  local shot=$5
+  local seed=$6
 
   {
     echo "============================================================"
@@ -118,7 +128,7 @@ write_log_header() {
     echo "METHOD: ${method}"
     echo "PROTOCOL: ${PROTOCOL}"
     echo "EXEC_MODE: ${EXEC_MODE}"
-    echo "DATASET: ${DATASET}"
+    echo "DATASET: ${dataset}"
     echo "SHOTS: ${shot}"
     echo "SEED: ${seed}"
     echo "DATA_ROOT: ${DATA_ROOT}"
@@ -132,14 +142,15 @@ write_log_header() {
 launch_one_case() {
   local gpu_id=$1
   local method=$2
-  local shot=$3
-  local seed=$4
+  local dataset=$3
+  local shot=$4
+  local seed=$5
 
   read -r phase subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
   read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
 
   local outdir logfile statusfile
-  outdir="$(build_outdir "$method" "$shot" "$seed")"
+  outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed")"
   logfile="${outdir}/run.log"
   statusfile="${outdir}/job_status.txt"
 
@@ -151,11 +162,11 @@ launch_one_case() {
   fi
 
   : > "$logfile"
-  write_log_header "$logfile" "$gpu_id" "$method" "$shot" "$seed"
+  write_log_header "$logfile" "$gpu_id" "$method" "$dataset" "$shot" "$seed"
 
   if CUDA_VISIBLE_DEVICES="${gpu_id}" python run.py \
       --root "${DATA_ROOT}" \
-      --dataset-config-file "configs/datasets/${DATASET}.yaml" \
+      --dataset-config-file "configs/datasets/${dataset}.yaml" \
       --method-config-file "${method_cfg}" \
       --protocol-config-file "${protocol_cfg}" \
       --runtime-config-file "${runtime_cfg}" \
@@ -206,24 +217,21 @@ cleanup_children() {
   done
 }
 
-
 print_finish_status() {
   local rc=$1
   local gpu_id=$2
   local method=$3
-  local shot=$4
-  local seed=$5
-  local logfile=$6
+  local dataset=$4
+  local shot=$5
+  local seed=$6
+  local logfile=$7
 
-  # 注意：这里必须输出到 stderr，而不是 stdout
-  # 因为 wait_for_any_slot 需要用 stdout 返回 slot 编号
   if [[ "$rc" -eq 0 ]]; then
-    echo "[OK]   gpu=${gpu_id} method=${method} dataset=${DATASET} shot=${shot} seed=${seed}" >&2
+    echo "[OK]   gpu=${gpu_id} method=${method} dataset=${dataset} shot=${shot} seed=${seed}" >&2
   else
-    echo "[FAIL] gpu=${gpu_id} method=${method} dataset=${DATASET} shot=${shot} seed=${seed} log=${logfile}" >&2
+    echo "[FAIL] gpu=${gpu_id} method=${method} dataset=${dataset} shot=${shot} seed=${seed} log=${logfile}" >&2
   fi
 }
-
 
 READY_SLOT=""
 
@@ -250,11 +258,12 @@ wait_for_any_slot() {
 
         local gpu_id="${SLOT_GPU[$idx]}"
         local method="${SLOT_METHOD[$idx]}"
+        local dataset="${SLOT_DATASET[$idx]}"
         local shot="${SLOT_SHOT[$idx]}"
         local seed="${SLOT_SEED[$idx]}"
         local logfile="${SLOT_LOG[$idx]}"
 
-        print_finish_status "$rc" "$gpu_id" "$method" "$shot" "$seed" "$logfile"
+        print_finish_status "$rc" "$gpu_id" "$method" "$dataset" "$shot" "$seed" "$logfile"
 
         if [[ "$rc" -ne 0 ]]; then
           FAILED_JOBS=$((FAILED_JOBS + 1))
@@ -263,6 +272,7 @@ wait_for_any_slot() {
         RUNNING_PIDS[$idx]=""
         SLOT_GPU[$idx]=""
         SLOT_METHOD[$idx]=""
+        SLOT_DATASET[$idx]=""
         SLOT_SHOT[$idx]=""
         SLOT_SEED[$idx]=""
         SLOT_LOG[$idx]=""
@@ -290,11 +300,12 @@ wait_all_jobs() {
 
       local gpu_id="${SLOT_GPU[$idx]}"
       local method="${SLOT_METHOD[$idx]}"
+      local dataset="${SLOT_DATASET[$idx]}"
       local shot="${SLOT_SHOT[$idx]}"
       local seed="${SLOT_SEED[$idx]}"
       local logfile="${SLOT_LOG[$idx]}"
 
-      print_finish_status "$rc" "$gpu_id" "$method" "$shot" "$seed" "$logfile"
+      print_finish_status "$rc" "$gpu_id" "$method" "$dataset" "$shot" "$seed" "$logfile"
 
       if [[ "$rc" -ne 0 ]]; then
         FAILED_JOBS=$((FAILED_JOBS + 1))
@@ -303,6 +314,7 @@ wait_all_jobs() {
       RUNNING_PIDS[$idx]=""
       SLOT_GPU[$idx]=""
       SLOT_METHOD[$idx]=""
+      SLOT_DATASET[$idx]=""
       SLOT_SHOT[$idx]=""
       SLOT_SEED[$idx]=""
       SLOT_LOG[$idx]=""
@@ -316,6 +328,7 @@ main() {
   declare -ga RUNNING_PIDS
   declare -ga SLOT_GPU
   declare -ga SLOT_METHOD
+  declare -ga SLOT_DATASET
   declare -ga SLOT_SHOT
   declare -ga SLOT_SEED
   declare -ga SLOT_LOG
@@ -328,6 +341,7 @@ main() {
     RUNNING_PIDS[$i]=""
     SLOT_GPU[$i]=""
     SLOT_METHOD[$i]=""
+    SLOT_DATASET[$i]=""
     SLOT_SHOT[$i]=""
     SLOT_SEED[$i]=""
     SLOT_LOG[$i]=""
@@ -335,35 +349,38 @@ main() {
 
   trap 'echo "[INTERRUPT] stopping child jobs..."; cleanup_children; exit 130' INT TERM
 
-  local method shot seed
+  local method dataset shot seed
   for method in "${METHODS[@]}"; do
-    for shot in "${SHOT_LIST[@]}"; do
-      for seed in "${SEED_LIST[@]}"; do
-        local outdir logfile statusfile
-        outdir="$(build_outdir "$method" "$shot" "$seed")"
-        logfile="${outdir}/run.log"
-        statusfile="${outdir}/job_status.txt"
+    for dataset in "${DATASET_LIST[@]}"; do
+      for shot in "${SHOT_LIST[@]}"; do
+        for seed in "${SEED_LIST[@]}"; do
+          local outdir logfile statusfile
+          outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed")"
+          logfile="${outdir}/run.log"
+          statusfile="${outdir}/job_status.txt"
 
           if [[ "$SKIP_EXISTING" == "1" && -f "${outdir}/test_metrics.json" ]]; then
-          mkdir -p "$outdir"
-          echo "SKIP" > "$statusfile"
-          echo "[SKIP] method=${method} dataset=${DATASET} shot=${shot} seed=${seed}"
-          continue
-        fi
+            mkdir -p "$outdir"
+            echo "SKIP" > "$statusfile"
+            echo "[SKIP] method=${method} dataset=${dataset} shot=${shot} seed=${seed}"
+            continue
+          fi
 
-        wait_for_any_slot
-        local slot="$READY_SLOT"
-        local gpu_id="${GPU_LIST[$slot]}"
+          wait_for_any_slot
+          local slot="$READY_SLOT"
+          local gpu_id="${GPU_LIST[$slot]}"
 
-        (
-          launch_one_case "$gpu_id" "$method" "$shot" "$seed"
-        ) &
-        RUNNING_PIDS[$slot]=$!
-        SLOT_GPU[$slot]="$gpu_id"
-        SLOT_METHOD[$slot]="$method"
-        SLOT_SHOT[$slot]="$shot"
-        SLOT_SEED[$slot]="$seed"
-        SLOT_LOG[$slot]="$logfile"
+          (
+            launch_one_case "$gpu_id" "$method" "$dataset" "$shot" "$seed"
+          ) &
+          RUNNING_PIDS[$slot]=$!
+          SLOT_GPU[$slot]="$gpu_id"
+          SLOT_METHOD[$slot]="$method"
+          SLOT_DATASET[$slot]="$dataset"
+          SLOT_SHOT[$slot]="$shot"
+          SLOT_SEED[$slot]="$seed"
+          SLOT_LOG[$slot]="$logfile"
+        done
       done
     done
   done
