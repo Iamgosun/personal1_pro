@@ -31,6 +31,7 @@ class CacheExecutor(BaseExecutor):
             shuffle=True,
             drop_last=False,
             num_workers=0,
+            pin_memory=torch.cuda.is_available(),
         )
         trainer.method.on_cache_ready(trainer)
 
@@ -64,7 +65,19 @@ class CacheExecutor(BaseExecutor):
     def forward_backward(self, trainer, batch):
         labels = batch['label'].to(trainer.device)
         features = batch['features'].to(trainer.device)
-        prec = trainer.cfg.CLIP_ADAPTERS.PREC
+        prec = self.method.get_precision()
+
+        if hasattr(self.method, "set_kl_normalizer"):
+            self.method.set_kl_normalizer(getattr(trainer, "num_batches", 1))
+
+        if hasattr(self.method, "set_kl_beta"):
+            warmup_epochs = int(getattr(self.method, "kl_warmup_epochs", 0))
+            if warmup_epochs > 0:
+                kl_beta = min(1.0, float(trainer.epoch) / float(warmup_epochs))
+            else:
+                kl_beta = 1.0
+            self.method.set_kl_beta(kl_beta)
+
         payload = {'features': features, 'label': labels}
         if prec == 'amp':
             with autocast():
@@ -80,7 +93,30 @@ class CacheExecutor(BaseExecutor):
             trainer.optim.zero_grad()
             loss.backward()
             trainer.optim.step()
-        loss_summary = {'loss': loss.item(), 'acc': compute_accuracy(outputs.logits, outputs.labels)[0].item()}
+
+        train_logits = self.method.select_train_logits(outputs)
+        loss_summary = {
+            'loss': loss.item(),
+            'acc': compute_accuracy(train_logits, outputs.labels)[0].item(),
+        }
+
+        if hasattr(outputs, "losses") and outputs.losses is not None:
+            for key in [
+                "data_term",
+                "raw_kl_rep",
+                "raw_kl_proj_rep",
+                "kl_rep_term",
+                "kl_proj_rep_term",
+                "kl_term",
+                "kl_normalizer",
+                "kl_beta",
+            ]:
+                if key in outputs.losses:
+                    value = outputs.losses[key]
+                    if torch.is_tensor(value):
+                        value = value.detach().item()
+                    loss_summary[key] = float(value)
+
         if (trainer.batch_idx + 1) == trainer.num_batches:
             trainer.update_lr()
         return loss_summary

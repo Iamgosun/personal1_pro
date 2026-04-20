@@ -19,12 +19,12 @@ set -euo pipefail
 #   MMRL MMRLMix BayesMMRL MMRLpp ClipAdapters
 #
 # Example datasets:
-#   caltech101 oxfordpets ucf101
+#   caltech101 oxford_pets ucf101
 
 PROTOCOL=${1:-FS}
 METHODS_ARG=${2:- MMRL BayesMMRL}
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-  ucf101 }
+DATASETS_ARG=${4:-  oxford_pets }
 SHOTS_ARG=${5:-"1 2 4 8 16 "}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 

@@ -40,18 +40,30 @@ def _canonical_eval_mode(mode: str | None) -> str:
     raise ValueError(f"Unsupported EVAL_MODE: {mode}")
 
 
+def _softplus_inverse(x: torch.Tensor) -> torch.Tensor:
+    eps = torch.finfo(x.dtype).eps
+    x = x.clamp_min(eps)
+    return torch.log(torch.expm1(x))
+
+
 class BayesianTensorParameter(nn.Module):
     """
-    Generic Bayesian tensor parameter with diagonal Gaussian posterior:
+    Generic Bayesian tensor parameter with Gaussian posterior / prior:
 
-        q(W) = N(mu, sigma^2)
-        p(W) = N(prior_mean, prior_std^2 I)
+        q(W) = N(mu_q, sigma_q^2)
+        p(W) = N(mu_p, sigma_p^2)
 
-    Supported sigma modes for 2D tensors:
+    and we support initializing q_0 = p exactly.
+
+    Supported sigma modes for 2D tensors used in this repo:
         - global
-        - per_token / row   -> [shape[0], 1]
-        - per_dim   / col   -> [1, shape[1]]
-        - full              -> shape
+        - per_token / row
+        - per_dim / col
+        - full
+
+    For your current A/B/C definitions, you only need:
+        - rep_tokens : global / per_token
+        - proj_rep   : global / row
     """
 
     def __init__(
@@ -59,30 +71,33 @@ class BayesianTensorParameter(nn.Module):
         shape: Tuple[int, int],
         sigma_mode: str,
         prior_std: float,
-        posterior_rho_init: float,
-        init_std: float = 0.02,
         min_sigma: float = 1e-6,
     ):
         super().__init__()
         self.shape = tuple(shape)
         self.sigma_mode = str(sigma_mode)
-        self.prior_std = float(prior_std)
         self.min_sigma = float(min_sigma)
 
-        self.posterior_mean = nn.Parameter(
-            torch.empty(*self.shape, dtype=torch.float32)
-        )
-        nn.init.normal_(self.posterior_mean, std=float(init_std))
-
         rho_shape = self._resolve_rho_shape(self.shape, self.sigma_mode)
+        rho_storage_shape = rho_shape if len(rho_shape) > 0 else ()
+
+        self.posterior_mean = nn.Parameter(
+            torch.zeros(self.shape, dtype=torch.float32)
+        )
         self.posterior_rho = nn.Parameter(
-            torch.full(rho_shape, float(posterior_rho_init), dtype=torch.float32)
+            torch.zeros(rho_storage_shape, dtype=torch.float32)
         )
 
         self.register_buffer(
             "prior_mean",
-            torch.zeros(*self.shape, dtype=torch.float32),
+            torch.zeros(self.shape, dtype=torch.float32),
         )
+        self.register_buffer(
+            "prior_std_base",
+            torch.full(rho_storage_shape, float(prior_std), dtype=torch.float32),
+        )
+
+        self.initialize_posterior_as_prior()
 
     @staticmethod
     def _resolve_rho_shape(shape: Tuple[int, int], sigma_mode: str):
@@ -99,25 +114,11 @@ class BayesianTensorParameter(nn.Module):
     def posterior_sigma(self) -> torch.Tensor:
         return F.softplus(self.posterior_rho.float()) + self.min_sigma
 
-    def expanded_sigma(self) -> torch.Tensor:
+    def expanded_posterior_sigma(self) -> torch.Tensor:
         return self.posterior_sigma().expand_as(self.posterior_mean)
 
-    def reset_posterior_random(self, init_std: float):
-        with torch.no_grad():
-            nn.init.normal_(self.posterior_mean, std=float(init_std))
-
-    def set_posterior_from_tensor(self, tensor: torch.Tensor, noise_std: float = 0.0):
-        tensor = tensor.detach().float()
-        if tuple(tensor.shape) != self.shape:
-            raise ValueError(
-                f"Shape mismatch: expected {self.shape}, got {tuple(tensor.shape)}"
-            )
-        with torch.no_grad():
-            self.posterior_mean.copy_(tensor)
-            if float(noise_std) > 0:
-                self.posterior_mean.add_(
-                    torch.randn_like(self.posterior_mean) * float(noise_std)
-                )
+    def prior_sigma(self) -> torch.Tensor:
+        return self.prior_std_base.float().expand_as(self.posterior_mean)
 
     def set_prior_mean(self, tensor: torch.Tensor):
         tensor = tensor.detach().float()
@@ -128,25 +129,69 @@ class BayesianTensorParameter(nn.Module):
         with torch.no_grad():
             self.prior_mean.copy_(tensor)
 
+    def set_prior_std(self, std: float | torch.Tensor):
+        if torch.is_tensor(std):
+            std_tensor = std.detach().float()
+            if tuple(std_tensor.shape) != tuple(self.prior_std_base.shape):
+                raise ValueError(
+                    "Prior std shape mismatch: "
+                    f"expected {tuple(self.prior_std_base.shape)}, "
+                    f"got {tuple(std_tensor.shape)}"
+                )
+            target = std_tensor
+        else:
+            target = torch.full_like(self.prior_std_base, float(std), dtype=torch.float32)
+
+        if torch.any(target <= 0):
+            raise ValueError("prior std must be strictly positive")
+
+        with torch.no_grad():
+            self.prior_std_base.copy_(target)
+
+    def initialize_posterior_as_prior(self):
+        """
+        Enforce q_0 = p exactly:
+            posterior_mean <- prior_mean
+            posterior_sigma <- prior_sigma
+        """
+        with torch.no_grad():
+            self.posterior_mean.copy_(self.prior_mean)
+
+            sigma_target = (self.prior_std_base.float() - self.min_sigma).clamp_min(1e-12)
+            rho_target = _softplus_inverse(sigma_target)
+            self.posterior_rho.copy_(rho_target)
+
+    def configure_prior_and_initialize(
+        self,
+        prior_mean: torch.Tensor,
+        prior_std: float | torch.Tensor,
+    ):
+        self.set_prior_mean(prior_mean)
+        self.set_prior_std(prior_std)
+        self.initialize_posterior_as_prior()
+
     def sample_tensor(self, use_posterior_mean: bool = False) -> torch.Tensor:
         if use_posterior_mean:
             return self.posterior_mean.float()
         eps = torch.randn_like(self.posterior_mean)
-        return self.posterior_mean.float() + self.expanded_sigma() * eps
+        return self.posterior_mean.float() + self.expanded_posterior_sigma() * eps
 
     def kl_divergence(self) -> torch.Tensor:
-        mu = self.posterior_mean.float()
-        sigma2 = self.expanded_sigma().pow(2)
-        prior_var = mu.new_tensor(self.prior_std ** 2)
-        prior_mean = self.prior_mean.float()
+        mu_q = self.posterior_mean.float()
+        sigma_q2 = self.expanded_posterior_sigma().pow(2)
+
+        mu_p = self.prior_mean.float()
+        sigma_p2 = self.prior_sigma().pow(2)
 
         kl = 0.5 * (
-            sigma2 / prior_var
-            + (mu - prior_mean).pow(2) / prior_var
+            sigma_q2 / sigma_p2
+            + (mu_q - mu_p).pow(2) / sigma_p2
             - 1.0
-            - torch.log(sigma2 / prior_var)
+            - torch.log(sigma_q2 / sigma_p2)
         )
         return kl.sum()
+
+
 
 
 class DeterministicRepresentationLearnerAdapter(nn.Module):
@@ -194,16 +239,20 @@ class DeterministicRepresentationLearnerAdapter(nn.Module):
         return self.base()
 
 
+
+
 class BayesianMultiModalRepresentationLearner(nn.Module):
     """
     Bayesian version of shared representation learner.
 
-    Supported modes:
-        - Scheme A: zero isotropic prior over R
-        - Scheme B: CLIP-informed prior over R
+    A/B schemes:
+        random variable is R in shape [N_REP_TOKENS, REP_DIM]
 
-    The trainable modality projection layers remain deterministic,
-    same as original MMRL.
+    Scheme A:
+        p(R) = N(0, Sigma_R), q_0(R) = p(R)
+
+    Scheme B:
+        p(R) = N(M_clip_joint, Sigma_R), q_0(R) = p(R)
     """
 
     def __init__(self, cfg, classnames, clip_model):
@@ -216,23 +265,13 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
         self.dtype = clip_model.dtype
         self.rep_layers_length = len(bayes_cfg.REP_LAYERS)
 
-        rep_sigma_mode = str(
-            _get_with_fallback(bayes_cfg, "REP_SIGMA_MODE", "SIGMA_MODE", "per_token")
-        )
-        rep_prior_std = float(
-            _get_with_fallback(bayes_cfg, "REP_PRIOR_STD", "PRIOR_STD", 0.05)
-        )
-        rep_init_std = float(
-            getattr(bayes_cfg, "REP_INIT_STD", rep_prior_std)
-        )
-        rep_rho_init = float(
-            _get_with_fallback(
-                bayes_cfg,
-                "REP_POSTERIOR_RHO_INIT",
-                "POSTERIOR_RHO_INIT",
-                -3.9,
+        rep_sigma_mode = str(getattr(bayes_cfg, "REP_SIGMA_MODE", "global"))
+        if rep_sigma_mode not in {"global", "per_token"}:
+            raise ValueError(
+                f"REP_SIGMA_MODE must be one of {{'global', 'per_token'}}, got {rep_sigma_mode}"
             )
-        )
+
+        rep_prior_std = float(getattr(bayes_cfg, "REP_PRIOR_STD", 0.05))
 
         text_dim = clip_model.ln_final.weight.shape[0]
         visual_dim = clip_model.visual.ln_post.weight.shape[0]
@@ -261,8 +300,13 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
             shape=(n_rep_tokens, rep_dim),
             sigma_mode=rep_sigma_mode,
             prior_std=rep_prior_std,
-            posterior_rho_init=rep_rho_init,
-            init_std=rep_init_std,
+        )
+
+        # default A-style initialization: zero-mean prior with q_0 = p
+        zero_prior = torch.zeros(n_rep_tokens, rep_dim, dtype=torch.float32)
+        self.rep_posterior.configure_prior_and_initialize(
+            prior_mean=zero_prior,
+            prior_std=rep_prior_std,
         )
 
         self.compound_rep_tokens_r2vproj = _get_clones(
@@ -284,30 +328,15 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
     def kl_divergence(self):
         return self.rep_posterior.kl_divergence()
 
-    def apply_rep_prior(
+    def configure_rep_prior_and_initialize(
         self,
         prior_mean: torch.Tensor,
-        init_mode: str = "prior_mean_noise",
-        init_std: float = 0.01,
-        prior_std: float | None = None,
+        prior_std: float,
     ):
-        if prior_std is not None:
-            self.rep_posterior.prior_std = float(prior_std)
-
-        self.rep_posterior.set_prior_mean(prior_mean)
-
-        init_mode = str(init_mode)
-        if init_mode == "prior_mean":
-            self.rep_posterior.set_posterior_from_tensor(prior_mean, noise_std=0.0)
-        elif init_mode == "prior_mean_noise":
-            self.rep_posterior.set_posterior_from_tensor(
-                prior_mean,
-                noise_std=float(init_std),
-            )
-        elif init_mode == "normal":
-            self.rep_posterior.reset_posterior_random(init_std)
-        else:
-            raise ValueError(f"Unsupported REP_INIT_MODE: {init_mode}")
+        self.rep_posterior.configure_prior_and_initialize(
+            prior_mean=prior_mean,
+            prior_std=prior_std,
+        )
 
     def _project_rep_tokens(
         self,
@@ -350,7 +379,10 @@ class BayesianVisualEncoderWrapper(nn.Module):
     """
     Bayesian wrapper for the representation visual projection P_v^r.
 
-    This avoids modifying clip/model_mmrl.py directly.
+    Scheme C:
+        random variable is proj_rep
+        prior mean = pretrained proj_rep
+        q_0 = p exactly
     """
 
     def __init__(self, base_visual: nn.Module, cfg):
@@ -362,36 +394,23 @@ class BayesianVisualEncoderWrapper(nn.Module):
         bayes_cfg = cfg.BAYES_MMRL
 
         sigma_mode = str(getattr(bayes_cfg, "PROJ_REP_SIGMA_MODE", "row"))
-        prior_std = float(getattr(bayes_cfg, "PROJ_REP_PRIOR_STD", 0.01))
-        rho_init = float(getattr(bayes_cfg, "PROJ_REP_POSTERIOR_RHO_INIT", -5.5))
-        init_mode = str(getattr(bayes_cfg, "PROJ_REP_INIT_MODE", "pretrained_mean"))
-        init_std = float(getattr(bayes_cfg, "PROJ_REP_INIT_STD", 0.0))
+        if sigma_mode not in {"global", "row"}:
+            raise ValueError(
+                f"PROJ_REP_SIGMA_MODE must be one of {{'global', 'row'}}, got {sigma_mode}"
+            )
 
+        prior_std = float(getattr(bayes_cfg, "PROJ_REP_PRIOR_STD", 0.01))
         pretrained_proj_rep = self.base.proj_rep.detach().float()
 
         self.bayes_proj_rep = BayesianTensorParameter(
             shape=tuple(pretrained_proj_rep.shape),
             sigma_mode=sigma_mode,
             prior_std=prior_std,
-            posterior_rho_init=rho_init,
-            init_std=max(init_std, 1e-6),
         )
-
-        # prior stays zero-mean isotropic by default; only posterior init changes
-        if init_mode == "pretrained_mean":
-            self.bayes_proj_rep.set_posterior_from_tensor(
-                pretrained_proj_rep,
-                noise_std=0.0,
-            )
-        elif init_mode == "pretrained_mean_noise":
-            self.bayes_proj_rep.set_posterior_from_tensor(
-                pretrained_proj_rep,
-                noise_std=init_std,
-            )
-        elif init_mode == "normal":
-            self.bayes_proj_rep.reset_posterior_random(init_std)
-        else:
-            raise ValueError(f"Unsupported PROJ_REP_INIT_MODE: {init_mode}")
+        self.bayes_proj_rep.configure_prior_and_initialize(
+            prior_mean=pretrained_proj_rep,
+            prior_std=prior_std,
+        )
 
     def posterior_sigma(self):
         return self.bayes_proj_rep.posterior_sigma()
@@ -447,6 +466,7 @@ class BayesianVisualEncoderWrapper(nn.Module):
     def forward(self, inputs, use_posterior_mean: bool = False):
         proj_rep = self._resolve_proj_rep(use_posterior_mean=use_posterior_mean)
         return self._forward_vit_with_proj(inputs, proj_rep)
+
 
 
 class BayesianCustomMMRLModel(nn.Module):

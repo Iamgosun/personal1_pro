@@ -64,6 +64,8 @@ def _as_legacy_mmrlpp(cfg):
     sec.RES_LORA_DIM = src.RES_LORA_DIM
 
 
+
+
 def _as_legacy_bayes_mmrl(cfg):
     if not hasattr(cfg.TRAINER, "BayesMMRL"):
         cfg.TRAINER.BayesMMRL = CN()
@@ -87,9 +89,6 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.REP_SIGMA_MODE = src.REP_SIGMA_MODE
     sec.REP_PRIOR_MODE = src.REP_PRIOR_MODE
     sec.REP_PRIOR_STD = src.REP_PRIOR_STD
-    sec.REP_INIT_MODE = src.REP_INIT_MODE
-    sec.REP_INIT_STD = src.REP_INIT_STD
-    sec.REP_POSTERIOR_RHO_INIT = src.REP_POSTERIOR_RHO_INIT
     sec.REP_KL_WEIGHT = src.REP_KL_WEIGHT
 
     sec.CLIP_PRIOR_SCALE = src.CLIP_PRIOR_SCALE
@@ -97,16 +96,14 @@ def _as_legacy_bayes_mmrl(cfg):
 
     sec.PROJ_REP_SIGMA_MODE = src.PROJ_REP_SIGMA_MODE
     sec.PROJ_REP_PRIOR_STD = src.PROJ_REP_PRIOR_STD
-    sec.PROJ_REP_INIT_MODE = src.PROJ_REP_INIT_MODE
-    sec.PROJ_REP_INIT_STD = src.PROJ_REP_INIT_STD
-    sec.PROJ_REP_POSTERIOR_RHO_INIT = src.PROJ_REP_POSTERIOR_RHO_INIT
     sec.PROJ_REP_KL_WEIGHT = src.PROJ_REP_KL_WEIGHT
 
-    # backward-compatible aliases
-    sec.KL_WEIGHT = src.KL_WEIGHT
-    sec.PRIOR_STD = src.PRIOR_STD
-    sec.POSTERIOR_RHO_INIT = src.POSTERIOR_RHO_INIT
-    sec.SIGMA_MODE = src.SIGMA_MODE
+    # lightweight backward-compatible aliases
+    sec.KL_WEIGHT = src.REP_KL_WEIGHT
+    sec.PRIOR_STD = src.REP_PRIOR_STD
+    sec.SIGMA_MODE = src.REP_SIGMA_MODE
+
+
 
 
 def _sync_active_mmrl_family(cfg):
@@ -162,6 +159,7 @@ def get_refactor_defaults():
     cfg.MMRLPP.PROJ_LORA_DIM = 64
     cfg.MMRLPP.RES_LORA_DIM = 4
 
+
     cfg.BAYES_MMRL = CN()
     cfg.BAYES_MMRL.PREC = "amp"
     cfg.BAYES_MMRL.ALPHA = 0.7
@@ -170,47 +168,41 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
     cfg.BAYES_MMRL.REP_DIM = 512
 
-    # which part is Bayesian
-    # "rep_tokens" -> Bayes on R
-    # "proj_rep"   -> Bayes on P_v^r
+    # which parameter block is Bayesian
+    # "rep_tokens" -> schemes A/B
+    # "proj_rep"   -> scheme C
     cfg.BAYES_MMRL.BAYES_TARGET = "rep_tokens"
 
     cfg.BAYES_MMRL.N_MC_TRAIN = 3
     cfg.BAYES_MMRL.N_MC_TEST = 5
 
-    # normalized eval modes
-    # "posterior_mean" -> deterministic posterior mean
-    # "mc_predictive"  -> standard posterior predictive, avg probabilities
-    # "mean_plus_mc"   -> diagnostic mode
-    cfg.BAYES_MMRL.EVAL_MODE = "mc_predictive"
+    # eval modes
+    cfg.BAYES_MMRL.EVAL_MODE = "mc_predictive"   # posterior_mean | mc_predictive | mean_plus_mc
     cfg.BAYES_MMRL.EVAL_USE_POSTERIOR_MEAN = False
 
-    # ----- Bayes on representation tokens R -----
-    cfg.BAYES_MMRL.REP_SIGMA_MODE = "per_token"  # global | per_token | per_dim | full
-    cfg.BAYES_MMRL.REP_PRIOR_MODE = "zero"       # zero | clip_text | clip_joint
+    # ----- schemes A/B: Bayes on representation tokens R -----
+    # q_0(R) = p(R) is enforced automatically in code
+    cfg.BAYES_MMRL.REP_SIGMA_MODE = "global"     # global | per_token
+    cfg.BAYES_MMRL.REP_PRIOR_MODE = "zero"       # zero | clip_joint
     cfg.BAYES_MMRL.REP_PRIOR_STD = 0.05
-    cfg.BAYES_MMRL.REP_INIT_MODE = "normal"      # normal | prior_mean | prior_mean_noise
-    cfg.BAYES_MMRL.REP_INIT_STD = 0.02
-    cfg.BAYES_MMRL.REP_POSTERIOR_RHO_INIT = -3.9
     cfg.BAYES_MMRL.REP_KL_WEIGHT = 5e-4
 
-    # used only when REP_PRIOR_MODE is clip_text / clip_joint
+    # used only when REP_PRIOR_MODE == clip_joint
     cfg.BAYES_MMRL.CLIP_PRIOR_SCALE = 0.05
     cfg.BAYES_MMRL.CLIP_PRIOR_BLEND = 0.5
 
-    # ----- Bayes on proj_rep -----
-    cfg.BAYES_MMRL.PROJ_REP_SIGMA_MODE = "row"   # global | row | col | full
+    # ----- scheme C: Bayes on proj_rep -----
+    # prior mean = pretrained proj_rep, and q_0(W) = p(W)
+    cfg.BAYES_MMRL.PROJ_REP_SIGMA_MODE = "row"   # global | row
     cfg.BAYES_MMRL.PROJ_REP_PRIOR_STD = 0.01
-    cfg.BAYES_MMRL.PROJ_REP_INIT_MODE = "pretrained_mean"  # normal | pretrained_mean | pretrained_mean_noise
-    cfg.BAYES_MMRL.PROJ_REP_INIT_STD = 0.0
-    cfg.BAYES_MMRL.PROJ_REP_POSTERIOR_RHO_INIT = -5.5
     cfg.BAYES_MMRL.PROJ_REP_KL_WEIGHT = 1e-6
 
-    # backward-compatible aliases
+    # lightweight backward-compatible aliases
     cfg.BAYES_MMRL.KL_WEIGHT = cfg.BAYES_MMRL.REP_KL_WEIGHT
     cfg.BAYES_MMRL.PRIOR_STD = cfg.BAYES_MMRL.REP_PRIOR_STD
-    cfg.BAYES_MMRL.POSTERIOR_RHO_INIT = cfg.BAYES_MMRL.REP_POSTERIOR_RHO_INIT
     cfg.BAYES_MMRL.SIGMA_MODE = cfg.BAYES_MMRL.REP_SIGMA_MODE
+
+
 
     cfg.CLIP_ADAPTERS = CN()
     cfg.CLIP_ADAPTERS.PREC = "fp32"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import torch
 from torch.cuda.amp import autocast
 
 from core.registry import EXECUTOR_REGISTRY
@@ -19,6 +20,17 @@ class OnlineExecutor(BaseExecutor):
             "img": batch["img"].to(trainer.device),
             "label": batch["label"].to(trainer.device),
         }
+
+        if hasattr(self.method, "set_kl_normalizer"):
+            self.method.set_kl_normalizer(getattr(trainer, "num_batches", 1))
+
+        if hasattr(self.method, "set_kl_beta"):
+            warmup_epochs = int(getattr(self.method, "kl_warmup_epochs", 0))
+            if warmup_epochs > 0:
+                kl_beta = min(1.0, float(trainer.epoch) / float(warmup_epochs))
+            else:
+                kl_beta = 1.0
+            self.method.set_kl_beta(kl_beta)
 
         if prec == "amp":
             with autocast():
@@ -42,6 +54,23 @@ class OnlineExecutor(BaseExecutor):
             "loss": loss.item(),
             "acc": compute_accuracy(train_logits, outputs.labels)[0].item(),
         }
+
+        if hasattr(outputs, "losses") and outputs.losses is not None:
+            for key in [
+                "data_term",
+                "raw_kl_rep",
+                "raw_kl_proj_rep",
+                "kl_rep_term",
+                "kl_proj_rep_term",
+                "kl_term",
+                "kl_normalizer",
+                "kl_beta",
+            ]:
+                if key in outputs.losses:
+                    value = outputs.losses[key]
+                    if torch.is_tensor(value):
+                        value = value.detach().item()
+                    loss_summary[key] = float(value)
 
         if (trainer.batch_idx + 1) == trainer.num_batches:
             trainer.update_lr()

@@ -83,12 +83,28 @@ class BayesMMRLMethod(BaseMethod):
         protos = protos / protos.norm(dim=-1, keepdim=True).clamp_min(1e-6)
         return protos
 
+
+
     @torch.no_grad()
-    def _build_rep_clip_prior(self):
+    def _build_rep_prior_mean(self):
         bayes_cfg = self.cfg.BAYES_MMRL
         rep_prior_mode = str(getattr(bayes_cfg, "REP_PRIOR_MODE", "zero"))
         rep_dim = int(bayes_cfg.REP_DIM)
         n_rep_tokens = int(bayes_cfg.N_REP_TOKENS)
+
+        if rep_prior_mode == "zero":
+            return torch.zeros(
+                n_rep_tokens,
+                rep_dim,
+                device=self.device,
+                dtype=torch.float32,
+            )
+
+        if rep_prior_mode != "clip_joint":
+            raise ValueError(
+                f"Unsupported REP_PRIOR_MODE: {rep_prior_mode}. "
+                "Expected one of {'zero', 'clip_joint'}."
+            )
 
         text_basis = self.text_features_clip[: self.num_classes].float()
         if text_basis.shape[-1] != rep_dim:
@@ -96,14 +112,9 @@ class BayesMMRLMethod(BaseMethod):
                 f"CLIP prior requires REP_DIM == CLIP embed dim, got {rep_dim} vs {text_basis.shape[-1]}"
             )
 
-        if rep_prior_mode == "clip_text":
-            centers = text_basis
-        elif rep_prior_mode == "clip_joint":
-            image_basis = self._compute_support_image_class_prototypes()
-            blend = float(getattr(bayes_cfg, "CLIP_PRIOR_BLEND", 0.5))
-            centers = (1.0 - blend) * text_basis + blend * image_basis
-        else:
-            raise ValueError(f"Unsupported REP_PRIOR_MODE: {rep_prior_mode}")
+        image_basis = self._compute_support_image_class_prototypes()
+        blend = float(getattr(bayes_cfg, "CLIP_PRIOR_BLEND", 0.5))
+        centers = (1.0 - blend) * text_basis + blend * image_basis
 
         centers = centers - centers.mean(dim=0, keepdim=True)
 
@@ -126,6 +137,21 @@ class BayesMMRLMethod(BaseMethod):
         scale = float(getattr(bayes_cfg, "CLIP_PRIOR_SCALE", 0.05))
         return (scale * basis).detach()
 
+    def _assert_initial_kl_zero(
+        self,
+        kl_value: torch.Tensor,
+        name: str,
+        atol: float = 1e-6,
+    ):
+        kl_scalar = float(kl_value.detach().cpu().item())
+        if abs(kl_scalar) > atol:
+            raise RuntimeError(
+                f"Expected initial KL({name}) ~= 0 because q0=p, "
+                f"but got {kl_scalar:.8e}"
+            )
+
+
+
     def build(self):
         cfg = self.cfg
         bayes_cfg = cfg.BAYES_MMRL
@@ -145,16 +171,8 @@ class BayesMMRLMethod(BaseMethod):
         self.n_mc_test = max(1, int(bayes_cfg.N_MC_TEST))
         self.eval_use_posterior_mean = bool(bayes_cfg.EVAL_USE_POSTERIOR_MEAN)
 
-        self.rep_kl_weight = float(
-            getattr(
-                bayes_cfg,
-                "REP_KL_WEIGHT",
-                getattr(bayes_cfg, "KL_WEIGHT", 1e-4),
-            )
-        )
-        self.proj_rep_kl_weight = float(
-            getattr(bayes_cfg, "PROJ_REP_KL_WEIGHT", 1e-6)
-        )
+        self.rep_kl_weight = float(getattr(bayes_cfg, "REP_KL_WEIGHT", 1e-4))
+        self.proj_rep_kl_weight = float(getattr(bayes_cfg, "PROJ_REP_KL_WEIGHT", 1e-6))
 
         self.text_encoder_clip = CLIPTextEncoderPlain(clip_model_zero_shot).to(
             self.device
@@ -177,21 +195,31 @@ class BayesMMRLMethod(BaseMethod):
             self.device
         )
 
-        rep_prior_mode = str(getattr(bayes_cfg, "REP_PRIOR_MODE", "zero"))
-        if self.bayes_target == "rep_tokens" and rep_prior_mode != "zero":
-            prior_mean = self._build_rep_clip_prior()
-            self.model.representation_learner.apply_rep_prior(
+        # ------------------------------------------------------------------
+        # unify initialization:
+        #   A/B: random variable = R
+        #        p(R)=N(m0, Sigma), q0(R)=p(R)
+        #   C  : random variable = proj_rep
+        #        p(W)=N(W_pretrained, Sigma), q0(W)=p(W)
+        # ------------------------------------------------------------------
+        if self.bayes_target == "rep_tokens":
+            prior_mean = self._build_rep_prior_mean()
+            prior_std = float(getattr(bayes_cfg, "REP_PRIOR_STD", 0.05))
+
+            self.model.representation_learner.configure_rep_prior_and_initialize(
                 prior_mean=prior_mean.to(self.device),
-                init_mode=str(getattr(bayes_cfg, "REP_INIT_MODE", "prior_mean_noise")),
-                init_std=float(getattr(bayes_cfg, "REP_INIT_STD", 0.01)),
-                prior_std=float(
-                    getattr(
-                        bayes_cfg,
-                        "REP_PRIOR_STD",
-                        getattr(bayes_cfg, "PRIOR_STD", 0.05),
-                    )
-                ),
+                prior_std=prior_std,
             )
+
+            init_kl = self.model.kl_terms()["rep_tokens"]
+            self._assert_initial_kl_zero(init_kl, "rep_tokens")
+
+        elif self.bayes_target == "proj_rep":
+            init_kl = self.model.kl_terms()["proj_rep"]
+            self._assert_initial_kl_zero(init_kl, "proj_rep")
+
+        else:
+            raise ValueError(f"Unsupported BAYES_TARGET: {self.bayes_target}")
 
         enabled = freeze_all_but(
             self.model,
@@ -205,6 +233,24 @@ class BayesMMRLMethod(BaseMethod):
         )
         self.loss = BayesMMRLLossAdapter()
         return self
+
+
+
+    def set_kl_normalizer(self, normalizer):
+        try:
+            normalizer = float(normalizer)
+        except (TypeError, ValueError):
+            normalizer = 1.0
+
+        self.kl_normalizer = max(1.0, normalizer)
+
+    def set_kl_beta(self, beta):
+        try:
+            beta = float(beta)
+        except (TypeError, ValueError):
+            beta = 1.0
+
+        self.kl_beta = min(1.0, max(0.0, beta))
 
     def get_precision(self) -> str:
         return self.cfg.BAYES_MMRL.PREC
@@ -268,8 +314,20 @@ class BayesMMRLMethod(BaseMethod):
         data_term = torch.stack(per_sample_losses, dim=0).mean(dim=0)
 
         raw_kl = self.model.kl_terms()
-        kl_rep_term = self.rep_kl_weight * raw_kl["rep_tokens"]
-        kl_proj_rep_term = self.proj_rep_kl_weight * raw_kl["proj_rep"]
+
+        kl_normalizer = float(getattr(self, "kl_normalizer", 1.0))
+        kl_normalizer = max(1.0, kl_normalizer)
+
+        kl_beta = float(getattr(self, "kl_beta", 1.0))
+        kl_beta = min(1.0, max(0.0, kl_beta))
+
+        raw_kl_rep = raw_kl["rep_tokens"]
+        raw_kl_proj_rep = raw_kl["proj_rep"]
+
+        kl_rep_term = kl_beta * self.rep_kl_weight * raw_kl_rep / kl_normalizer
+        kl_proj_rep_term = (
+            kl_beta * self.proj_rep_kl_weight * raw_kl_proj_rep / kl_normalizer
+        )
         kl_term = kl_rep_term + kl_proj_rep_term
         total_loss = data_term + kl_term
 
@@ -300,10 +358,14 @@ class BayesMMRLMethod(BaseMethod):
             },
             losses={
                 "data_term": data_term,
+                "raw_kl_rep": raw_kl_rep,
+                "raw_kl_proj_rep": raw_kl_proj_rep,
                 "kl_rep_term": kl_rep_term,
                 "kl_proj_rep_term": kl_proj_rep_term,
                 "kl_term": kl_term,
                 "total": total_loss,
+                "kl_normalizer": data_term.detach().new_tensor(kl_normalizer),
+                "kl_beta": data_term.detach().new_tensor(kl_beta),
             },
             extras=extras,
         )

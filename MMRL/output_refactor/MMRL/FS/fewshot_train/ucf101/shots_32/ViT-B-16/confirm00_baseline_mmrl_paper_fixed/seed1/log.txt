@@ -1,0 +1,722 @@
+***************
+** Arguments **
+***************
+dataset_config_file: configs/datasets/ucf101.yaml
+eval_only: False
+exec_mode: online
+exp_config: 
+load_epoch: None
+method: MMRL
+method_config_file: configs/methods/mmrl.yaml
+model_dir: 
+no_train: False
+opts: ['DATASET.NUM_SHOTS', '32', 'DATASET.SUBSAMPLE_CLASSES', 'all', 'MODEL.BACKBONE.NAME', 'ViT-B/16', 'MMRL.ALPHA', '0.7', 'MMRL.REG_WEIGHT', '0.5', 'MMRL.N_REP_TOKENS', '5', 'MMRL.REP_LAYERS', '[6,7,8,9,10,11,12]', 'MMRL.REP_DIM', '512']
+output_dir: output_sweeps/bayes_mmrl_search_seq_v3_two_stage/coarse3/confirm_stage/MMRL/FS/fewshot_train/ucf101/shots_32/ViT-B-16/confirm00_baseline_mmrl_paper_fixed/seed1
+protocol: FS
+protocol_config_file: configs/protocols/fs.yaml
+root: DATASETS
+runtime_config_file: configs/runtime/default.yaml
+seed: 1
+trainer: RefactorRunner
+************
+** Config **
+************
+BAYES_MMRL:
+  ALPHA: 0.7
+  BAYES_TARGET: rep_tokens
+  CLIP_PRIOR_BLEND: 0.5
+  CLIP_PRIOR_SCALE: 0.05
+  EVAL_MODE: mc_predictive
+  EVAL_USE_POSTERIOR_MEAN: False
+  KL_WEIGHT: 0.0005
+  N_MC_TEST: 5
+  N_MC_TRAIN: 3
+  N_REP_TOKENS: 5
+  POSTERIOR_RHO_INIT: -3.9
+  PREC: amp
+  PRIOR_STD: 0.05
+  PROJ_REP_INIT_MODE: pretrained_mean
+  PROJ_REP_INIT_STD: 0.0
+  PROJ_REP_KL_WEIGHT: 1e-06
+  PROJ_REP_POSTERIOR_RHO_INIT: -5.5
+  PROJ_REP_PRIOR_STD: 0.01
+  PROJ_REP_SIGMA_MODE: row
+  REG_WEIGHT: 1.0
+  REP_DIM: 512
+  REP_INIT_MODE: normal
+  REP_INIT_STD: 0.02
+  REP_KL_WEIGHT: 0.0005
+  REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+  REP_POSTERIOR_RHO_INIT: -3.9
+  REP_PRIOR_MODE: zero
+  REP_PRIOR_STD: 0.05
+  REP_SIGMA_MODE: per_token
+  SIGMA_MODE: per_token
+CLIP_ADAPTERS:
+  ALLOW_CACHE: True
+  CONSTRAINT: none
+  ENHANCED_BASE: none
+  INIT: ZS
+  KL_WEIGHT: 0.0001
+  N_SAMPLES: 3
+  PREC: fp32
+  TYPE: MP
+DATALOADER:
+  K_TRANSFORMS: 1
+  NUM_WORKERS: 8
+  RETURN_IMG0: False
+  TEST:
+    BATCH_SIZE: 250
+    SAMPLER: SequentialSampler
+  TRAIN_U:
+    BATCH_SIZE: 32
+    N_DOMAIN: 0
+    N_INS: 16
+    SAME_AS_X: True
+    SAMPLER: RandomSampler
+  TRAIN_X:
+    BATCH_SIZE: 32
+    N_DOMAIN: 0
+    N_INS: 16
+    SAMPLER: RandomSampler
+DATASET:
+  ALL_AS_UNLABELED: False
+  CIFAR_C_LEVEL: 1
+  CIFAR_C_TYPE: 
+  NAME: UCF101
+  NUM_LABELED: -1
+  NUM_SHOTS: 32
+  ROOT: DATASETS
+  SOURCE_DOMAINS: ()
+  STL10_FOLD: -1
+  SUBSAMPLE_CLASSES: all
+  TARGET_DOMAINS: ()
+  VAL_PERCENT: 0.1
+INPUT:
+  COLORJITTER_B: 0.4
+  COLORJITTER_C: 0.4
+  COLORJITTER_H: 0.1
+  COLORJITTER_S: 0.4
+  CROP_PADDING: 4
+  CUTOUT_LEN: 16
+  CUTOUT_N: 1
+  GB_K: 21
+  GB_P: 0.5
+  GN_MEAN: 0.0
+  GN_STD: 0.15
+  INTERPOLATION: bicubic
+  NO_TRANSFORM: False
+  PIXEL_MEAN: [0.48145466, 0.4578275, 0.40821073]
+  PIXEL_STD: [0.26862954, 0.26130258, 0.27577711]
+  RANDAUGMENT_M: 10
+  RANDAUGMENT_N: 2
+  RGS_P: 0.2
+  RRCROP_SCALE: (0.5, 1)
+  SIZE: (224, 224)
+  TRANSFORMS: ('random_resized_crop', 'random_flip', 'normalize')
+METHOD:
+  EXEC_MODE: online
+  FAMILY: internal_adaptation
+  NAME: MMRL
+  TAG: default
+MMRL:
+  ALPHA: 0.7
+  N_REP_TOKENS: 5
+  PREC: amp
+  REG_WEIGHT: 3.0
+  REP_DIM: 512
+  REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+MMRLPP:
+  ALPHA: 0.7
+  BETA: 0.9
+  N_REP_TOKENS: 5
+  PREC: amp
+  PROJ_LORA_DIM: 64
+  REG_WEIGHT: 1.0
+  REP_DIM: 512
+  REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+  RES_LORA_DIM: 4
+MMRL_MIX:
+  ALPHA: 0.7
+  LOSS_FUSE_WEIGHT: 0.2
+  LOSS_MAIN_WEIGHT: 1.0
+  LOSS_REP_WEIGHT: 1.0
+  N_REP_TOKENS: 5
+  PREC: amp
+  REG_WEIGHT: 1.0
+  REP_DIM: 512
+  REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+MODEL:
+  BACKBONE:
+    NAME: ViT-B/16
+    PRETRAINED: True
+  HEAD:
+    ACTIVATION: relu
+    BN: True
+    DROPOUT: 0.0
+    HIDDEN_LAYERS: ()
+    NAME: 
+  INIT_WEIGHTS: 
+OPTIM:
+  ADAM_BETA1: 0.9
+  ADAM_BETA2: 0.999
+  BASE_LR_MULT: 0.1
+  GAMMA: 0.1
+  LR: 0.001
+  LR_SCHEDULER: cosine
+  MAX_EPOCH: 50
+  MOMENTUM: 0.9
+  NAME: adamw
+  NEW_LAYERS: ()
+  RMSPROP_ALPHA: 0.99
+  SGD_DAMPNING: 0
+  SGD_NESTEROV: False
+  STAGED_LR: False
+  STEPSIZE: (-1,)
+  WARMUP_CONS_LR: 1e-05
+  WARMUP_EPOCH: 1
+  WARMUP_MIN_LR: 1e-05
+  WARMUP_RECOUNT: True
+  WARMUP_TYPE: constant
+  WEIGHT_DECAY: 0.0005
+OUTPUT_DIR: output_sweeps/bayes_mmrl_search_seq_v3_two_stage/coarse3/confirm_stage/MMRL/FS/fewshot_train/ucf101/shots_32/ViT-B-16/confirm00_baseline_mmrl_paper_fixed/seed1
+PROTOCOL:
+  NAME: FS
+  PHASE: fewshot_train
+RESUME: 
+RUNTIME:
+  OUTPUT_ROOT: output_refactor
+  USE_DASSL_TRAINER_BRIDGE: True
+SEED: 1
+TASK: FS
+TEST:
+  COMPUTE_CMAT: False
+  EVALUATOR: Classification
+  FINAL_MODEL: last_step
+  NO_TEST: False
+  PER_CLASS_RESULT: False
+  SPLIT: test
+TRAIN:
+  CHECKPOINT_FREQ: 0
+  COUNT_ITER: train_x
+  PRINT_FREQ: 20
+TRAINER:
+  BayesMMRL:
+    ALPHA: 0.7
+    BAYES_TARGET: rep_tokens
+    CLIP_PRIOR_BLEND: 0.5
+    CLIP_PRIOR_SCALE: 0.05
+    EVAL_MODE: mc_predictive
+    EVAL_USE_POSTERIOR_MEAN: False
+    KL_WEIGHT: 0.0005
+    N_MC_TEST: 5
+    N_MC_TRAIN: 3
+    N_REP_TOKENS: 5
+    POSTERIOR_RHO_INIT: -3.9
+    PREC: amp
+    PRIOR_STD: 0.05
+    PROJ_REP_INIT_MODE: pretrained_mean
+    PROJ_REP_INIT_STD: 0.0
+    PROJ_REP_KL_WEIGHT: 1e-06
+    PROJ_REP_POSTERIOR_RHO_INIT: -5.5
+    PROJ_REP_PRIOR_STD: 0.01
+    PROJ_REP_SIGMA_MODE: row
+    REG_WEIGHT: 1.0
+    REP_DIM: 512
+    REP_INIT_MODE: normal
+    REP_INIT_STD: 0.02
+    REP_KL_WEIGHT: 0.0005
+    REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+    REP_POSTERIOR_RHO_INIT: -3.9
+    REP_PRIOR_MODE: zero
+    REP_PRIOR_STD: 0.05
+    REP_SIGMA_MODE: per_token
+    SIGMA_MODE: per_token
+  CDAC:
+    CLASS_LR_MULTI: 10
+    P_THRESH: 0.95
+    RAMPUP_COEF: 30
+    RAMPUP_ITRS: 1000
+    STRONG_TRANSFORMS: ()
+    TOPK_MATCH: 5
+  CROSSGRAD:
+    ALPHA_D: 0.5
+    ALPHA_F: 0.5
+    EPS_D: 1.0
+    EPS_F: 1.0
+  ClipADAPTER:
+    ALLOW_CACHE: True
+    CONSTRAINT: none
+    ENHANCED_BASE: none
+    INIT: ZS
+    PREC: fp32
+    TYPE: MP
+  DAEL:
+    CONF_THRE: 0.95
+    STRONG_TRANSFORMS: ()
+    WEIGHT_U: 0.5
+  DAELDG:
+    CONF_THRE: 0.95
+    STRONG_TRANSFORMS: ()
+    WEIGHT_U: 0.5
+  DDAIG:
+    ALPHA: 0.5
+    CLAMP: False
+    CLAMP_MAX: 1.0
+    CLAMP_MIN: -1.0
+    G_ARCH: 
+    LMDA: 0.3
+    WARMUP: 0
+  DOMAINMIX:
+    ALPHA: 1.0
+    BETA: 1.0
+    TYPE: crossdomain
+  ENTMIN:
+    LMDA: 0.001
+  FIXMATCH:
+    CONF_THRE: 0.95
+    STRONG_TRANSFORMS: ()
+    WEIGHT_U: 1.0
+  M3SDA:
+    LMDA: 0.5
+    N_STEP_F: 4
+  MCD:
+    N_STEP_F: 4
+  MEANTEACHER:
+    EMA_ALPHA: 0.999
+    RAMPUP: 5
+    WEIGHT_U: 1.0
+  MIXMATCH:
+    MIXUP_BETA: 0.75
+    RAMPUP: 20000
+    TEMP: 2.0
+    WEIGHT_U: 100.0
+  MME:
+    LMDA: 0.1
+  MMRL:
+    ALPHA: 0.7
+    N_REP_TOKENS: 5
+    PREC: amp
+    REG_WEIGHT: 3.0
+    REP_DIM: 512
+    REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+  MMRLMix:
+    ALPHA: 0.7
+    LOSS_FUSE_WEIGHT: 0.2
+    LOSS_MAIN_WEIGHT: 1.0
+    LOSS_REP_WEIGHT: 1.0
+    N_REP_TOKENS: 5
+    PREC: amp
+    REG_WEIGHT: 1.0
+    REP_DIM: 512
+    REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+  MMRLpp:
+    ALPHA: 0.7
+    BETA: 0.9
+    N_REP_TOKENS: 5
+    PREC: amp
+    PROJ_LORA_DIM: 64
+    REG_WEIGHT: 1.0
+    REP_DIM: 512
+    REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+    RES_LORA_DIM: 4
+  NAME: RefactorRunner
+  SE:
+    CONF_THRE: 0.95
+    EMA_ALPHA: 0.999
+    RAMPUP: 300
+USE_CUDA: True
+VERBOSE: True
+VERSION: 1
+Collecting env info ...
+** System info **
+PyTorch version: 2.4.0+cu121
+Is debug build: False
+CUDA used to build PyTorch: 12.1
+ROCM used to build PyTorch: N/A
+
+OS: Ubuntu 22.04.1 LTS (x86_64)
+GCC version: (Ubuntu 11.3.0-1ubuntu1~22.04) 11.3.0
+Clang version: Could not collect
+CMake version: version 3.22.1
+Libc version: glibc-2.35
+
+Python version: 3.10.20 (main, Mar 11 2026, 17:46:40) [GCC 14.3.0] (64-bit runtime)
+Python platform: Linux-5.15.0-153-generic-x86_64-with-glibc2.35
+Is CUDA available: True
+CUDA runtime version: 11.8.89
+CUDA_MODULE_LOADING set to: LAZY
+GPU models and configuration: 
+GPU 0: NVIDIA vGPU-48GB
+GPU 1: NVIDIA vGPU-48GB
+GPU 2: NVIDIA vGPU-48GB
+
+Nvidia driver version: 580.76.05
+cuDNN version: Probably one of the following:
+/usr/lib/x86_64-linux-gnu/libcudnn.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_adv_infer.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_adv_train.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_cnn_infer.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_cnn_train.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_ops_infer.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_ops_train.so.8.6.0
+HIP runtime version: N/A
+MIOpen runtime version: N/A
+Is XNNPACK available: True
+
+CPU:
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           46 bits physical, 57 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  128
+On-line CPU(s) list:                     0-127
+Vendor ID:                               GenuineIntel
+Model name:                              Intel(R) Xeon(R) Gold 6459C
+CPU family:                              6
+Model:                                   143
+Thread(s) per core:                      2
+Core(s) per socket:                      32
+Socket(s):                               2
+Stepping:                                8
+Frequency boost:                         enabled
+CPU max MHz:                             3900.0000
+CPU min MHz:                             800.0000
+BogoMIPS:                                6000.00
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cat_l2 cdp_l3 invpcid_single intel_ppin cdp_l2 ssbd mba ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb intel_pt avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local split_lock_detect avx_vnni avx512_bf16 wbnoinvd dtherm ida arat pln pts avx512vbmi umip pku ospke waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg tme avx512_vpopcntdq la57 rdpid bus_lock_detect cldemote movdiri movdir64b enqcmd fsrm md_clear serialize tsxldtrk pconfig arch_lbr amx_bf16 avx512_fp16 amx_tile amx_int8 flush_l1d arch_capabilities
+Virtualization:                          VT-x
+L1d cache:                               3 MiB (64 instances)
+L1i cache:                               2 MiB (64 instances)
+L2 cache:                                128 MiB (64 instances)
+L3 cache:                                120 MiB (2 instances)
+NUMA node(s):                            2
+NUMA node0 CPU(s):                       0-31,64-95
+NUMA node1 CPU(s):                       32-63,96-127
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl and seccomp
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; Enhanced / Automatic IBRS; IBPB disabled; PBRSB-eIBRS SW sequence; BHI BHI_DIS_S
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsx async abort:           Not affected
+
+Versions of relevant libraries:
+[pip3] flake8==3.7.9
+[pip3] numpy==2.2.6
+[pip3] torch==2.4.0
+[pip3] torchaudio==2.4.0
+[pip3] torchvision==0.19.0
+[pip3] triton==3.0.0
+[conda] numpy                     2.2.6                    pypi_0    pypi
+[conda] torch                     2.4.0                    pypi_0    pypi
+[conda] torchaudio                2.4.0                    pypi_0    pypi
+[conda] torchvision               0.19.0                   pypi_0    pypi
+[conda] triton                    3.0.0                    pypi_0    pypi
+        Pillow (12.2.0)
+
+Loading trainer: RefactorRunner
+Loading dataset: UCF101
+Reading split from /root/autodl-tmp/MMRL/DATASETS/ucf101/split_zhou_UCF101.json
+Creating a 32-shot dataset
+Creating a 4-shot dataset
+Saving preprocessed few-shot data to /root/autodl-tmp/MMRL/DATASETS/ucf101/split_fewshot/shot_32-seed_1.pkl
+Building transform_train
++ random resized crop (size=(224, 224), scale=(0.5, 1))
++ random flip
++ to torch tensor of range [0, 1]
++ normalization (mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
+Building transform_test
++ resize the smaller edge to 224
++ 224x224 center crop
++ to torch tensor of range [0, 1]
++ normalization (mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
+---------  ------
+Dataset    UCF101
+# classes  101
+# train_x  3,232
+# val      404
+# test     3,783
+---------  ------
+[MMRL] trainable params: {'representation_learner.compound_rep_tokens_r2tproj.6.weight', 'representation_learner.compound_rep_tokens_r2vproj.0.weight', 'representation_learner.compound_rep_tokens_r2vproj.2.weight', 'representation_learner.compound_rep_tokens_r2vproj.3.weight', 'representation_learner.compound_rep_tokens_r2tproj.2.bias', 'representation_learner.compound_rep_tokens_r2tproj.3.weight', 'representation_learner.compound_rep_tokens_r2tproj.0.weight', 'representation_learner.compound_rep_tokens_r2tproj.2.weight', 'representation_learner.compound_rep_tokens_r2vproj.1.bias', 'representation_learner.compound_rep_tokens_r2vproj.6.bias', 'representation_learner.compound_rep_tokens_r2tproj.4.weight', 'representation_learner.compound_rep_tokens_r2tproj.6.bias', 'representation_learner.compound_rep_tokens', 'representation_learner.compound_rep_tokens_r2tproj.5.bias', 'representation_learner.compound_rep_tokens_r2vproj.4.bias', 'representation_learner.compound_rep_tokens_r2tproj.1.bias', 'representation_learner.compound_rep_tokens_r2vproj.3.bias', 'representation_learner.compound_rep_tokens_r2vproj.4.weight', 'representation_learner.compound_rep_tokens_r2vproj.1.weight', 'image_encoder.proj_rep', 'representation_learner.compound_rep_tokens_r2tproj.3.bias', 'representation_learner.compound_rep_tokens_r2vproj.5.weight', 'representation_learner.compound_rep_tokens_r2tproj.4.bias', 'representation_learner.compound_rep_tokens_r2tproj.1.weight', 'representation_learner.compound_rep_tokens_r2vproj.6.weight', 'representation_learner.compound_rep_tokens_r2vproj.0.bias', 'representation_learner.compound_rep_tokens_r2vproj.5.bias', 'representation_learner.compound_rep_tokens_r2tproj.0.bias', 'representation_learner.compound_rep_tokens_r2tproj.5.weight', 'representation_learner.compound_rep_tokens_r2vproj.2.bias'}
+Loading evaluator: Classification
+No checkpoint found, train from scratch
+Initialize tensorboard (log_dir=output_sweeps/bayes_mmrl_search_seq_v3_two_stage/coarse3/confirm_stage/MMRL/FS/fewshot_train/ucf101/shots_32/ViT-B-16/confirm00_baseline_mmrl_paper_fixed/seed1/tensorboard)
+epoch [1/50] batch [20/101] time 0.068 (0.117) data 0.000 (0.027) loss 3.2242 (3.4686) acc 59.3750 (56.7188) lr 1.0000e-05 eta 0:09:46
+epoch [1/50] batch [40/101] time 0.068 (0.092) data 0.000 (0.014) loss 2.7922 (3.3034) acc 71.8750 (59.3750) lr 1.0000e-05 eta 0:07:42
+epoch [1/50] batch [60/101] time 0.068 (0.084) data 0.000 (0.009) loss 2.7922 (3.1967) acc 53.1250 (58.3854) lr 1.0000e-05 eta 0:07:00
+epoch [1/50] batch [80/101] time 0.067 (0.081) data 0.000 (0.007) loss 2.6972 (3.0763) acc 46.8750 (59.6484) lr 1.0000e-05 eta 0:06:40
+epoch [1/50] batch [100/101] time 0.068 (0.078) data 0.000 (0.006) loss 2.6710 (2.9856) acc 56.2500 (60.5312) lr 1.0000e-05 eta 0:06:27
+epoch [2/50] batch [20/101] time 0.091 (0.086) data 0.000 (0.017) loss 1.3724 (1.7922) acc 65.6250 (69.0625) lr 1.0000e-03 eta 0:07:03
+epoch [2/50] batch [40/101] time 0.084 (0.079) data 0.000 (0.009) loss 1.0253 (1.4805) acc 71.8750 (71.5625) lr 1.0000e-03 eta 0:06:25
+epoch [2/50] batch [60/101] time 0.078 (0.077) data 0.000 (0.006) loss 0.8232 (1.3099) acc 78.1250 (73.1250) lr 1.0000e-03 eta 0:06:16
+epoch [2/50] batch [80/101] time 0.076 (0.076) data 0.000 (0.005) loss 1.0478 (1.2366) acc 71.8750 (74.2188) lr 1.0000e-03 eta 0:06:12
+epoch [2/50] batch [100/101] time 0.068 (0.076) data 0.000 (0.004) loss 0.6452 (1.1540) acc 81.2500 (75.7500) lr 1.0000e-03 eta 0:06:07
+epoch [3/50] batch [20/101] time 0.076 (0.091) data 0.000 (0.022) loss 0.6358 (0.7461) acc 90.6250 (83.2812) lr 9.9901e-04 eta 0:07:20
+epoch [3/50] batch [40/101] time 0.071 (0.081) data 0.000 (0.011) loss 0.5938 (0.7454) acc 90.6250 (83.2031) lr 9.9901e-04 eta 0:06:27
+epoch [3/50] batch [60/101] time 0.079 (0.079) data 0.001 (0.008) loss 0.7255 (0.7218) acc 87.5000 (84.0104) lr 9.9901e-04 eta 0:06:19
+epoch [3/50] batch [80/101] time 0.076 (0.077) data 0.000 (0.006) loss 0.6956 (0.7136) acc 84.3750 (84.8438) lr 9.9901e-04 eta 0:06:09
+epoch [3/50] batch [100/101] time 0.078 (0.077) data 0.000 (0.005) loss 0.7092 (0.7052) acc 87.5000 (84.9062) lr 9.9901e-04 eta 0:06:05
+epoch [4/50] batch [20/101] time 0.068 (0.090) data 0.000 (0.021) loss 0.4658 (0.5754) acc 96.8750 (90.0000) lr 9.9606e-04 eta 0:07:06
+epoch [4/50] batch [40/101] time 0.071 (0.081) data 0.000 (0.011) loss 0.8268 (0.6120) acc 87.5000 (89.5312) lr 9.9606e-04 eta 0:06:19
+epoch [4/50] batch [60/101] time 0.068 (0.079) data 0.000 (0.007) loss 0.7400 (0.5967) acc 87.5000 (89.6354) lr 9.9606e-04 eta 0:06:09
+epoch [4/50] batch [80/101] time 0.068 (0.078) data 0.000 (0.006) loss 0.8584 (0.5986) acc 84.3750 (89.6094) lr 9.9606e-04 eta 0:06:03
+epoch [4/50] batch [100/101] time 0.074 (0.077) data 0.000 (0.005) loss 0.4739 (0.5973) acc 96.8750 (89.5000) lr 9.9606e-04 eta 0:05:55
+epoch [5/50] batch [20/101] time 0.068 (0.089) data 0.000 (0.019) loss 0.6214 (0.5637) acc 90.6250 (90.9375) lr 9.9114e-04 eta 0:06:51
+epoch [5/50] batch [40/101] time 0.069 (0.080) data 0.000 (0.009) loss 0.5803 (0.5393) acc 96.8750 (91.2500) lr 9.9114e-04 eta 0:06:10
+epoch [5/50] batch [60/101] time 0.069 (0.078) data 0.000 (0.006) loss 0.3171 (0.5245) acc 96.8750 (91.8750) lr 9.9114e-04 eta 0:05:58
+epoch [5/50] batch [80/101] time 0.067 (0.077) data 0.000 (0.005) loss 0.6579 (0.5359) acc 90.6250 (91.4453) lr 9.9114e-04 eta 0:05:50
+epoch [5/50] batch [100/101] time 0.091 (0.076) data 0.000 (0.004) loss 0.7839 (0.5333) acc 75.0000 (91.5000) lr 9.9114e-04 eta 0:05:47
+epoch [6/50] batch [20/101] time 0.069 (0.087) data 0.000 (0.017) loss 0.4754 (0.4541) acc 90.6250 (94.6875) lr 9.8429e-04 eta 0:06:33
+epoch [6/50] batch [40/101] time 0.072 (0.079) data 0.000 (0.009) loss 0.5047 (0.4379) acc 93.7500 (95.0000) lr 9.8429e-04 eta 0:05:56
+epoch [6/50] batch [60/101] time 0.077 (0.078) data 0.000 (0.006) loss 0.4741 (0.4490) acc 90.6250 (94.6875) lr 9.8429e-04 eta 0:05:48
+epoch [6/50] batch [80/101] time 0.078 (0.077) data 0.000 (0.005) loss 0.3379 (0.4517) acc 93.7500 (94.2969) lr 9.8429e-04 eta 0:05:43
+epoch [6/50] batch [100/101] time 0.075 (0.076) data 0.000 (0.004) loss 0.3950 (0.4606) acc 93.7500 (93.9688) lr 9.8429e-04 eta 0:05:38
+epoch [7/50] batch [20/101] time 0.068 (0.090) data 0.000 (0.019) loss 0.2885 (0.4228) acc 96.8750 (97.0312) lr 9.7553e-04 eta 0:06:39
+epoch [7/50] batch [40/101] time 0.068 (0.081) data 0.000 (0.010) loss 0.5436 (0.4320) acc 90.6250 (96.2500) lr 9.7553e-04 eta 0:05:58
+epoch [7/50] batch [60/101] time 0.068 (0.078) data 0.000 (0.007) loss 0.5240 (0.4295) acc 93.7500 (96.1458) lr 9.7553e-04 eta 0:05:41
+epoch [7/50] batch [80/101] time 0.084 (0.076) data 0.000 (0.005) loss 0.4071 (0.4278) acc 96.8750 (95.5469) lr 9.7553e-04 eta 0:05:32
+epoch [7/50] batch [100/101] time 0.068 (0.076) data 0.000 (0.004) loss 0.3998 (0.4313) acc 96.8750 (95.2812) lr 9.7553e-04 eta 0:05:28
+epoch [8/50] batch [20/101] time 0.068 (0.097) data 0.000 (0.025) loss 0.3392 (0.3802) acc 100.0000 (96.8750) lr 9.6489e-04 eta 0:06:58
+epoch [8/50] batch [40/101] time 0.070 (0.083) data 0.000 (0.013) loss 0.5528 (0.3952) acc 93.7500 (96.4062) lr 9.6489e-04 eta 0:05:57
+epoch [8/50] batch [60/101] time 0.088 (0.080) data 0.000 (0.009) loss 0.4524 (0.4078) acc 96.8750 (96.0938) lr 9.6489e-04 eta 0:05:41
+epoch [8/50] batch [80/101] time 0.069 (0.078) data 0.000 (0.007) loss 0.3245 (0.4219) acc 96.8750 (95.9375) lr 9.6489e-04 eta 0:05:32
+epoch [8/50] batch [100/101] time 0.075 (0.077) data 0.000 (0.005) loss 0.4026 (0.4237) acc 96.8750 (95.7812) lr 9.6489e-04 eta 0:05:25
+epoch [9/50] batch [20/101] time 0.069 (0.091) data 0.000 (0.022) loss 0.3105 (0.4292) acc 96.8750 (95.0000) lr 9.5241e-04 eta 0:06:24
+epoch [9/50] batch [40/101] time 0.068 (0.080) data 0.000 (0.011) loss 0.4854 (0.4039) acc 96.8750 (95.7031) lr 9.5241e-04 eta 0:05:37
+epoch [9/50] batch [60/101] time 0.074 (0.078) data 0.000 (0.008) loss 0.2805 (0.4070) acc 100.0000 (95.3125) lr 9.5241e-04 eta 0:05:24
+epoch [9/50] batch [80/101] time 0.068 (0.076) data 0.000 (0.006) loss 0.5854 (0.4055) acc 96.8750 (95.4297) lr 9.5241e-04 eta 0:05:17
+epoch [9/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.005) loss 0.4610 (0.4082) acc 96.8750 (95.4375) lr 9.5241e-04 eta 0:05:10
+epoch [10/50] batch [20/101] time 0.068 (0.085) data 0.000 (0.016) loss 0.3689 (0.3681) acc 100.0000 (96.5625) lr 9.3815e-04 eta 0:05:50
+epoch [10/50] batch [40/101] time 0.068 (0.079) data 0.000 (0.008) loss 0.2806 (0.3815) acc 96.8750 (95.7031) lr 9.3815e-04 eta 0:05:23
+epoch [10/50] batch [60/101] time 0.073 (0.077) data 0.000 (0.006) loss 0.2560 (0.3780) acc 100.0000 (96.0417) lr 9.3815e-04 eta 0:05:12
+epoch [10/50] batch [80/101] time 0.068 (0.075) data 0.000 (0.004) loss 0.3578 (0.3736) acc 93.7500 (96.2891) lr 9.3815e-04 eta 0:05:05
+epoch [10/50] batch [100/101] time 0.079 (0.075) data 0.000 (0.003) loss 0.4479 (0.3724) acc 93.7500 (96.3750) lr 9.3815e-04 eta 0:05:02
+epoch [11/50] batch [20/101] time 0.068 (0.085) data 0.000 (0.016) loss 0.4075 (0.3489) acc 96.8750 (97.3438) lr 9.2216e-04 eta 0:05:42
+epoch [11/50] batch [40/101] time 0.068 (0.077) data 0.000 (0.008) loss 0.3627 (0.3529) acc 93.7500 (97.5781) lr 9.2216e-04 eta 0:05:08
+epoch [11/50] batch [60/101] time 0.084 (0.076) data 0.000 (0.006) loss 0.3224 (0.3522) acc 96.8750 (97.6562) lr 9.2216e-04 eta 0:05:01
+epoch [11/50] batch [80/101] time 0.068 (0.075) data 0.000 (0.004) loss 0.2219 (0.3489) acc 100.0000 (97.5781) lr 9.2216e-04 eta 0:04:57
+epoch [11/50] batch [100/101] time 0.068 (0.074) data 0.000 (0.004) loss 0.5005 (0.3468) acc 96.8750 (97.5000) lr 9.2216e-04 eta 0:04:52
+epoch [12/50] batch [20/101] time 0.069 (0.088) data 0.000 (0.018) loss 0.2606 (0.2931) acc 96.8750 (98.4375) lr 9.0451e-04 eta 0:05:46
+epoch [12/50] batch [40/101] time 0.068 (0.080) data 0.000 (0.009) loss 0.2796 (0.2986) acc 96.8750 (98.3594) lr 9.0451e-04 eta 0:05:11
+epoch [12/50] batch [60/101] time 0.073 (0.077) data 0.000 (0.006) loss 0.4005 (0.3156) acc 96.8750 (97.9167) lr 9.0451e-04 eta 0:04:57
+epoch [12/50] batch [80/101] time 0.075 (0.075) data 0.000 (0.005) loss 0.4910 (0.3260) acc 96.8750 (97.7734) lr 9.0451e-04 eta 0:04:49
+epoch [12/50] batch [100/101] time 0.079 (0.074) data 0.000 (0.004) loss 0.2878 (0.3261) acc 96.8750 (97.7188) lr 9.0451e-04 eta 0:04:43
+epoch [13/50] batch [20/101] time 0.068 (0.085) data 0.000 (0.015) loss 0.3551 (0.2923) acc 100.0000 (98.7500) lr 8.8526e-04 eta 0:05:23
+epoch [13/50] batch [40/101] time 0.068 (0.078) data 0.000 (0.008) loss 0.4824 (0.3183) acc 100.0000 (98.4375) lr 8.8526e-04 eta 0:04:55
+epoch [13/50] batch [60/101] time 0.094 (0.076) data 0.000 (0.005) loss 0.3991 (0.3204) acc 93.7500 (98.1250) lr 8.8526e-04 eta 0:04:45
+epoch [13/50] batch [80/101] time 0.068 (0.075) data 0.000 (0.004) loss 0.4338 (0.3178) acc 96.8750 (98.0859) lr 8.8526e-04 eta 0:04:40
+epoch [13/50] batch [100/101] time 0.068 (0.074) data 0.000 (0.003) loss 0.3450 (0.3176) acc 93.7500 (97.9688) lr 8.8526e-04 eta 0:04:35
+epoch [14/50] batch [20/101] time 0.071 (0.087) data 0.000 (0.017) loss 0.1893 (0.3105) acc 100.0000 (97.8125) lr 8.6448e-04 eta 0:05:22
+epoch [14/50] batch [40/101] time 0.068 (0.079) data 0.000 (0.009) loss 0.3401 (0.3092) acc 93.7500 (98.2031) lr 8.6448e-04 eta 0:04:52
+epoch [14/50] batch [60/101] time 0.068 (0.076) data 0.001 (0.006) loss 0.2324 (0.3164) acc 100.0000 (97.8125) lr 8.6448e-04 eta 0:04:39
+epoch [14/50] batch [80/101] time 0.081 (0.076) data 0.000 (0.005) loss 0.3385 (0.3121) acc 93.7500 (97.7344) lr 8.6448e-04 eta 0:04:37
+epoch [14/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.004) loss 0.2980 (0.3110) acc 100.0000 (97.8438) lr 8.6448e-04 eta 0:04:34
+epoch [15/50] batch [20/101] time 0.073 (0.092) data 0.000 (0.018) loss 0.2671 (0.2944) acc 100.0000 (98.1250) lr 8.4227e-04 eta 0:05:31
+epoch [15/50] batch [40/101] time 0.073 (0.082) data 0.000 (0.010) loss 0.3062 (0.3050) acc 100.0000 (98.2031) lr 8.4227e-04 eta 0:04:55
+epoch [15/50] batch [60/101] time 0.068 (0.078) data 0.000 (0.006) loss 0.4982 (0.3104) acc 87.5000 (97.9167) lr 8.4227e-04 eta 0:04:40
+epoch [15/50] batch [80/101] time 0.077 (0.077) data 0.000 (0.005) loss 0.1721 (0.3031) acc 100.0000 (98.1641) lr 8.4227e-04 eta 0:04:34
+epoch [15/50] batch [100/101] time 0.068 (0.076) data 0.000 (0.004) loss 0.3167 (0.2979) acc 100.0000 (98.1875) lr 8.4227e-04 eta 0:04:29
+epoch [16/50] batch [20/101] time 0.076 (0.088) data 0.000 (0.018) loss 0.2765 (0.2846) acc 90.6250 (97.8125) lr 8.1871e-04 eta 0:05:08
+epoch [16/50] batch [40/101] time 0.068 (0.081) data 0.000 (0.009) loss 0.2233 (0.2911) acc 100.0000 (97.9688) lr 8.1871e-04 eta 0:04:41
+epoch [16/50] batch [60/101] time 0.074 (0.078) data 0.006 (0.006) loss 0.4084 (0.2994) acc 93.7500 (98.2292) lr 8.1871e-04 eta 0:04:30
+epoch [16/50] batch [80/101] time 0.080 (0.077) data 0.000 (0.005) loss 0.3236 (0.2971) acc 100.0000 (98.2812) lr 8.1871e-04 eta 0:04:24
+epoch [16/50] batch [100/101] time 0.091 (0.075) data 0.000 (0.004) loss 0.1894 (0.2956) acc 100.0000 (98.2812) lr 8.1871e-04 eta 0:04:19
+epoch [17/50] batch [20/101] time 0.069 (0.085) data 0.001 (0.015) loss 0.3158 (0.2379) acc 100.0000 (99.8438) lr 7.9389e-04 eta 0:04:49
+epoch [17/50] batch [40/101] time 0.068 (0.078) data 0.000 (0.008) loss 0.2150 (0.2485) acc 100.0000 (99.6094) lr 7.9389e-04 eta 0:04:24
+epoch [17/50] batch [60/101] time 0.083 (0.076) data 0.000 (0.005) loss 0.2529 (0.2639) acc 100.0000 (99.3229) lr 7.9389e-04 eta 0:04:16
+epoch [17/50] batch [80/101] time 0.069 (0.076) data 0.000 (0.004) loss 0.2353 (0.2715) acc 100.0000 (99.1406) lr 7.9389e-04 eta 0:04:13
+epoch [17/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.003) loss 0.3024 (0.2751) acc 100.0000 (99.0000) lr 7.9389e-04 eta 0:04:10
+epoch [18/50] batch [20/101] time 0.068 (0.086) data 0.000 (0.017) loss 0.2482 (0.2576) acc 100.0000 (98.7500) lr 7.6791e-04 eta 0:04:45
+epoch [18/50] batch [40/101] time 0.070 (0.079) data 0.000 (0.009) loss 0.2692 (0.2678) acc 96.8750 (98.7500) lr 7.6791e-04 eta 0:04:19
+epoch [18/50] batch [60/101] time 0.068 (0.077) data 0.000 (0.006) loss 0.3126 (0.2710) acc 96.8750 (98.6979) lr 7.6791e-04 eta 0:04:10
+epoch [18/50] batch [80/101] time 0.082 (0.076) data 0.014 (0.005) loss 0.2768 (0.2771) acc 100.0000 (98.6328) lr 7.6791e-04 eta 0:04:06
+epoch [18/50] batch [100/101] time 0.074 (0.075) data 0.000 (0.004) loss 0.2528 (0.2795) acc 100.0000 (98.6875) lr 7.6791e-04 eta 0:04:03
+epoch [19/50] batch [20/101] time 0.068 (0.084) data 0.000 (0.015) loss 0.2620 (0.2435) acc 96.8750 (98.9062) lr 7.4088e-04 eta 0:04:30
+epoch [19/50] batch [40/101] time 0.079 (0.079) data 0.000 (0.008) loss 0.2623 (0.2432) acc 100.0000 (98.9844) lr 7.4088e-04 eta 0:04:12
+epoch [19/50] batch [60/101] time 0.068 (0.077) data 0.000 (0.005) loss 0.2224 (0.2492) acc 100.0000 (99.0104) lr 7.4088e-04 eta 0:04:05
+epoch [19/50] batch [80/101] time 0.075 (0.076) data 0.000 (0.004) loss 0.2230 (0.2531) acc 100.0000 (98.9062) lr 7.4088e-04 eta 0:03:59
+epoch [19/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.003) loss 0.2036 (0.2535) acc 100.0000 (98.8438) lr 7.4088e-04 eta 0:03:55
+epoch [20/50] batch [20/101] time 0.068 (0.086) data 0.000 (0.015) loss 0.2738 (0.2597) acc 100.0000 (99.2188) lr 7.1289e-04 eta 0:04:26
+epoch [20/50] batch [40/101] time 0.075 (0.078) data 0.000 (0.008) loss 0.3254 (0.2614) acc 100.0000 (99.1406) lr 7.1289e-04 eta 0:04:00
+epoch [20/50] batch [60/101] time 0.068 (0.076) data 0.000 (0.005) loss 0.2651 (0.2561) acc 100.0000 (99.1146) lr 7.1289e-04 eta 0:03:52
+epoch [20/50] batch [80/101] time 0.068 (0.075) data 0.000 (0.004) loss 0.2876 (0.2615) acc 100.0000 (98.9453) lr 7.1289e-04 eta 0:03:49
+epoch [20/50] batch [100/101] time 0.068 (0.076) data 0.000 (0.003) loss 0.2121 (0.2609) acc 100.0000 (99.0000) lr 7.1289e-04 eta 0:03:48
+epoch [21/50] batch [20/101] time 0.068 (0.086) data 0.000 (0.014) loss 0.2507 (0.2441) acc 96.8750 (98.5938) lr 6.8406e-04 eta 0:04:20
+epoch [21/50] batch [40/101] time 0.076 (0.080) data 0.003 (0.008) loss 0.2269 (0.2592) acc 100.0000 (98.6719) lr 6.8406e-04 eta 0:03:58
+epoch [21/50] batch [60/101] time 0.068 (0.077) data 0.000 (0.005) loss 0.2132 (0.2543) acc 100.0000 (98.7500) lr 6.8406e-04 eta 0:03:48
+epoch [21/50] batch [80/101] time 0.074 (0.076) data 0.001 (0.004) loss 0.1584 (0.2607) acc 100.0000 (98.5938) lr 6.8406e-04 eta 0:03:45
+epoch [21/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.003) loss 0.2015 (0.2637) acc 100.0000 (98.5625) lr 6.8406e-04 eta 0:03:40
+epoch [22/50] batch [20/101] time 0.069 (0.089) data 0.000 (0.016) loss 0.1994 (0.2371) acc 100.0000 (99.5312) lr 6.5451e-04 eta 0:04:18
+epoch [22/50] batch [40/101] time 0.077 (0.081) data 0.000 (0.008) loss 0.1932 (0.2412) acc 100.0000 (99.6094) lr 6.5451e-04 eta 0:03:53
+epoch [22/50] batch [60/101] time 0.068 (0.077) data 0.000 (0.006) loss 0.2724 (0.2453) acc 100.0000 (99.3750) lr 6.5451e-04 eta 0:03:42
+epoch [22/50] batch [80/101] time 0.068 (0.076) data 0.000 (0.004) loss 0.3103 (0.2445) acc 96.8750 (99.2969) lr 6.5451e-04 eta 0:03:35
+epoch [22/50] batch [100/101] time 0.083 (0.075) data 0.000 (0.003) loss 0.2222 (0.2446) acc 96.8750 (99.2812) lr 6.5451e-04 eta 0:03:33
+epoch [23/50] batch [20/101] time 0.068 (0.086) data 0.000 (0.016) loss 0.1858 (0.2494) acc 100.0000 (98.4375) lr 6.2434e-04 eta 0:04:01
+epoch [23/50] batch [40/101] time 0.068 (0.079) data 0.000 (0.008) loss 0.1950 (0.2460) acc 100.0000 (98.8281) lr 6.2434e-04 eta 0:03:39
+epoch [23/50] batch [60/101] time 0.069 (0.077) data 0.000 (0.005) loss 0.1697 (0.2382) acc 100.0000 (99.0104) lr 6.2434e-04 eta 0:03:34
+epoch [23/50] batch [80/101] time 0.068 (0.078) data 0.000 (0.004) loss 0.3212 (0.2381) acc 100.0000 (99.0625) lr 6.2434e-04 eta 0:03:33
+epoch [23/50] batch [100/101] time 0.083 (0.077) data 0.000 (0.003) loss 0.3242 (0.2393) acc 96.8750 (99.0000) lr 6.2434e-04 eta 0:03:31
+epoch [24/50] batch [20/101] time 0.069 (0.089) data 0.000 (0.016) loss 0.2492 (0.2370) acc 100.0000 (99.2188) lr 5.9369e-04 eta 0:04:01
+epoch [24/50] batch [40/101] time 0.068 (0.080) data 0.000 (0.008) loss 0.1563 (0.2335) acc 100.0000 (99.2969) lr 5.9369e-04 eta 0:03:36
+epoch [24/50] batch [60/101] time 0.069 (0.078) data 0.000 (0.005) loss 0.2049 (0.2344) acc 100.0000 (99.4271) lr 5.9369e-04 eta 0:03:27
+epoch [24/50] batch [80/101] time 0.079 (0.076) data 0.000 (0.004) loss 0.2551 (0.2361) acc 100.0000 (99.2969) lr 5.9369e-04 eta 0:03:22
+epoch [24/50] batch [100/101] time 0.092 (0.075) data 0.000 (0.003) loss 0.2181 (0.2359) acc 100.0000 (99.3750) lr 5.9369e-04 eta 0:03:18
+epoch [25/50] batch [20/101] time 0.068 (0.083) data 0.000 (0.015) loss 0.1835 (0.2150) acc 100.0000 (99.6875) lr 5.6267e-04 eta 0:03:37
+epoch [25/50] batch [40/101] time 0.068 (0.078) data 0.000 (0.007) loss 0.1887 (0.2246) acc 100.0000 (99.6094) lr 5.6267e-04 eta 0:03:22
+epoch [25/50] batch [60/101] time 0.068 (0.077) data 0.000 (0.006) loss 0.2482 (0.2295) acc 96.8750 (99.4271) lr 5.6267e-04 eta 0:03:17
+epoch [25/50] batch [80/101] time 0.068 (0.075) data 0.000 (0.004) loss 0.2781 (0.2274) acc 96.8750 (99.4141) lr 5.6267e-04 eta 0:03:11
+epoch [25/50] batch [100/101] time 0.069 (0.075) data 0.000 (0.004) loss 0.2155 (0.2265) acc 100.0000 (99.3438) lr 5.6267e-04 eta 0:03:08
+epoch [26/50] batch [20/101] time 0.076 (0.091) data 0.000 (0.018) loss 0.1662 (0.2311) acc 100.0000 (99.0625) lr 5.3140e-04 eta 0:03:48
+epoch [26/50] batch [40/101] time 0.068 (0.081) data 0.000 (0.009) loss 0.2644 (0.2320) acc 96.8750 (99.2188) lr 5.3140e-04 eta 0:03:21
+epoch [26/50] batch [60/101] time 0.079 (0.078) data 0.000 (0.007) loss 0.2409 (0.2273) acc 100.0000 (99.3750) lr 5.3140e-04 eta 0:03:13
+epoch [26/50] batch [80/101] time 0.068 (0.076) data 0.000 (0.005) loss 0.2275 (0.2230) acc 100.0000 (99.4141) lr 5.3140e-04 eta 0:03:06
+epoch [26/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.004) loss 0.2706 (0.2272) acc 100.0000 (99.3750) lr 5.3140e-04 eta 0:03:02
+epoch [27/50] batch [20/101] time 0.068 (0.092) data 0.000 (0.019) loss 0.2497 (0.2372) acc 100.0000 (98.7500) lr 5.0000e-04 eta 0:03:40
+epoch [27/50] batch [40/101] time 0.068 (0.082) data 0.000 (0.009) loss 0.1885 (0.2280) acc 100.0000 (99.2188) lr 5.0000e-04 eta 0:03:16
+epoch [27/50] batch [60/101] time 0.068 (0.079) data 0.000 (0.007) loss 0.1917 (0.2279) acc 100.0000 (99.1667) lr 5.0000e-04 eta 0:03:06
+epoch [27/50] batch [80/101] time 0.091 (0.077) data 0.000 (0.005) loss 0.2207 (0.2240) acc 100.0000 (99.2969) lr 5.0000e-04 eta 0:03:00
+epoch [27/50] batch [100/101] time 0.068 (0.076) data 0.000 (0.004) loss 0.2148 (0.2250) acc 100.0000 (99.2500) lr 5.0000e-04 eta 0:02:56
+epoch [28/50] batch [20/101] time 0.068 (0.087) data 0.000 (0.016) loss 0.2092 (0.2098) acc 100.0000 (99.2188) lr 4.6860e-04 eta 0:03:19
+epoch [28/50] batch [40/101] time 0.068 (0.078) data 0.000 (0.008) loss 0.3101 (0.2204) acc 96.8750 (99.2188) lr 4.6860e-04 eta 0:02:58
+epoch [28/50] batch [60/101] time 0.077 (0.077) data 0.000 (0.006) loss 0.1734 (0.2176) acc 100.0000 (99.2708) lr 4.6860e-04 eta 0:02:53
+epoch [28/50] batch [80/101] time 0.091 (0.075) data 0.000 (0.004) loss 0.3588 (0.2234) acc 96.8750 (99.1016) lr 4.6860e-04 eta 0:02:49
+epoch [28/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.004) loss 0.2636 (0.2231) acc 100.0000 (99.0000) lr 4.6860e-04 eta 0:02:45
+epoch [29/50] batch [20/101] time 0.068 (0.088) data 0.000 (0.017) loss 0.3590 (0.2182) acc 96.8750 (99.0625) lr 4.3733e-04 eta 0:03:14
+epoch [29/50] batch [40/101] time 0.079 (0.080) data 0.000 (0.008) loss 0.2375 (0.2113) acc 96.8750 (99.3750) lr 4.3733e-04 eta 0:02:55
+epoch [29/50] batch [60/101] time 0.068 (0.077) data 0.000 (0.006) loss 0.2194 (0.2076) acc 100.0000 (99.5312) lr 4.3733e-04 eta 0:02:47
+epoch [29/50] batch [80/101] time 0.068 (0.075) data 0.000 (0.005) loss 0.2463 (0.2094) acc 100.0000 (99.5312) lr 4.3733e-04 eta 0:02:41
+epoch [29/50] batch [100/101] time 0.071 (0.075) data 0.000 (0.004) loss 0.2275 (0.2097) acc 100.0000 (99.5312) lr 4.3733e-04 eta 0:02:38
+epoch [30/50] batch [20/101] time 0.068 (0.087) data 0.000 (0.015) loss 0.1732 (0.1932) acc 100.0000 (99.6875) lr 4.0631e-04 eta 0:03:02
+epoch [30/50] batch [40/101] time 0.068 (0.078) data 0.000 (0.008) loss 0.1408 (0.1975) acc 100.0000 (99.5312) lr 4.0631e-04 eta 0:02:42
+epoch [30/50] batch [60/101] time 0.068 (0.077) data 0.000 (0.005) loss 0.2630 (0.2010) acc 100.0000 (99.6875) lr 4.0631e-04 eta 0:02:39
+epoch [30/50] batch [80/101] time 0.069 (0.075) data 0.000 (0.004) loss 0.1880 (0.2041) acc 100.0000 (99.7656) lr 4.0631e-04 eta 0:02:33
+epoch [30/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.003) loss 0.2583 (0.2060) acc 100.0000 (99.7812) lr 4.0631e-04 eta 0:02:32
+epoch [31/50] batch [20/101] time 0.068 (0.088) data 0.000 (0.016) loss 0.1458 (0.1892) acc 100.0000 (99.6875) lr 3.7566e-04 eta 0:02:55
+epoch [31/50] batch [40/101] time 0.076 (0.080) data 0.000 (0.008) loss 0.2920 (0.1987) acc 100.0000 (99.2188) lr 3.7566e-04 eta 0:02:38
+epoch [31/50] batch [60/101] time 0.075 (0.078) data 0.000 (0.006) loss 0.1858 (0.2108) acc 100.0000 (99.3229) lr 3.7566e-04 eta 0:02:33
+epoch [31/50] batch [80/101] time 0.074 (0.076) data 0.000 (0.004) loss 0.3188 (0.2118) acc 100.0000 (99.4922) lr 3.7566e-04 eta 0:02:28
+epoch [31/50] batch [100/101] time 0.090 (0.076) data 0.000 (0.004) loss 0.1531 (0.2123) acc 100.0000 (99.5312) lr 3.7566e-04 eta 0:02:26
+epoch [32/50] batch [20/101] time 0.069 (0.091) data 0.000 (0.019) loss 0.2517 (0.2122) acc 100.0000 (99.3750) lr 3.4549e-04 eta 0:02:52
+epoch [32/50] batch [40/101] time 0.068 (0.081) data 0.000 (0.009) loss 0.1980 (0.2151) acc 100.0000 (99.2188) lr 3.4549e-04 eta 0:02:31
+epoch [32/50] batch [60/101] time 0.069 (0.079) data 0.000 (0.006) loss 0.2117 (0.2130) acc 100.0000 (99.2708) lr 3.4549e-04 eta 0:02:26
+epoch [32/50] batch [80/101] time 0.073 (0.077) data 0.000 (0.005) loss 0.2018 (0.2063) acc 100.0000 (99.4141) lr 3.4549e-04 eta 0:02:22
+epoch [32/50] batch [100/101] time 0.077 (0.076) data 0.000 (0.004) loss 0.1685 (0.2047) acc 100.0000 (99.4375) lr 3.4549e-04 eta 0:02:17
+epoch [33/50] batch [20/101] time 0.068 (0.086) data 0.000 (0.015) loss 0.1702 (0.1897) acc 100.0000 (99.8438) lr 3.1594e-04 eta 0:02:34
+epoch [33/50] batch [40/101] time 0.089 (0.079) data 0.000 (0.007) loss 0.2552 (0.1993) acc 100.0000 (99.7656) lr 3.1594e-04 eta 0:02:19
+epoch [33/50] batch [60/101] time 0.068 (0.077) data 0.000 (0.005) loss 0.2834 (0.1973) acc 96.8750 (99.7396) lr 3.1594e-04 eta 0:02:14
+epoch [33/50] batch [80/101] time 0.069 (0.075) data 0.000 (0.004) loss 0.1980 (0.2002) acc 100.0000 (99.5703) lr 3.1594e-04 eta 0:02:10
+epoch [33/50] batch [100/101] time 0.073 (0.075) data 0.000 (0.003) loss 0.1774 (0.2031) acc 100.0000 (99.5938) lr 3.1594e-04 eta 0:02:09
+epoch [34/50] batch [20/101] time 0.067 (0.087) data 0.000 (0.013) loss 0.2082 (0.1887) acc 100.0000 (99.8438) lr 2.8711e-04 eta 0:02:27
+epoch [34/50] batch [40/101] time 0.068 (0.079) data 0.000 (0.007) loss 0.1553 (0.1906) acc 100.0000 (99.7656) lr 2.8711e-04 eta 0:02:11
+epoch [34/50] batch [60/101] time 0.069 (0.077) data 0.000 (0.005) loss 0.1954 (0.1933) acc 96.8750 (99.6875) lr 2.8711e-04 eta 0:02:07
+epoch [34/50] batch [80/101] time 0.068 (0.077) data 0.000 (0.004) loss 0.1898 (0.1932) acc 100.0000 (99.7266) lr 2.8711e-04 eta 0:02:05
+epoch [34/50] batch [100/101] time 0.068 (0.076) data 0.000 (0.003) loss 0.2459 (0.1987) acc 100.0000 (99.7500) lr 2.8711e-04 eta 0:02:02
+epoch [35/50] batch [20/101] time 0.084 (0.090) data 0.000 (0.016) loss 0.2098 (0.2035) acc 96.8750 (99.5312) lr 2.5912e-04 eta 0:02:23
+epoch [35/50] batch [40/101] time 0.078 (0.082) data 0.000 (0.008) loss 0.1665 (0.1930) acc 100.0000 (99.6094) lr 2.5912e-04 eta 0:02:08
+epoch [35/50] batch [60/101] time 0.078 (0.080) data 0.000 (0.005) loss 0.1429 (0.1928) acc 100.0000 (99.6354) lr 2.5912e-04 eta 0:02:03
+epoch [35/50] batch [80/101] time 0.068 (0.078) data 0.000 (0.004) loss 0.1650 (0.1933) acc 100.0000 (99.7266) lr 2.5912e-04 eta 0:01:59
+epoch [35/50] batch [100/101] time 0.067 (0.077) data 0.000 (0.003) loss 0.2191 (0.1940) acc 100.0000 (99.7500) lr 2.5912e-04 eta 0:01:56
+epoch [36/50] batch [20/101] time 0.068 (0.088) data 0.000 (0.016) loss 0.1747 (0.1862) acc 100.0000 (99.8438) lr 2.3209e-04 eta 0:02:12
+epoch [36/50] batch [40/101] time 0.077 (0.080) data 0.000 (0.008) loss 0.1419 (0.1962) acc 100.0000 (99.6875) lr 2.3209e-04 eta 0:01:58
+epoch [36/50] batch [60/101] time 0.068 (0.079) data 0.000 (0.005) loss 0.1622 (0.1956) acc 100.0000 (99.5833) lr 2.3209e-04 eta 0:01:54
+epoch [36/50] batch [80/101] time 0.068 (0.078) data 0.000 (0.004) loss 0.2135 (0.1974) acc 100.0000 (99.6094) lr 2.3209e-04 eta 0:01:51
+epoch [36/50] batch [100/101] time 0.072 (0.077) data 0.000 (0.003) loss 0.2698 (0.2005) acc 100.0000 (99.5938) lr 2.3209e-04 eta 0:01:48
+epoch [37/50] batch [20/101] time 0.068 (0.086) data 0.000 (0.016) loss 0.2184 (0.1901) acc 100.0000 (99.5312) lr 2.0611e-04 eta 0:01:59
+epoch [37/50] batch [40/101] time 0.068 (0.078) data 0.000 (0.008) loss 0.1963 (0.1919) acc 96.8750 (99.6094) lr 2.0611e-04 eta 0:01:47
+epoch [37/50] batch [60/101] time 0.073 (0.077) data 0.000 (0.005) loss 0.2306 (0.1867) acc 96.8750 (99.6875) lr 2.0611e-04 eta 0:01:44
+epoch [37/50] batch [80/101] time 0.082 (0.076) data 0.000 (0.004) loss 0.2243 (0.1900) acc 100.0000 (99.6875) lr 2.0611e-04 eta 0:01:41
+epoch [37/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.003) loss 0.2028 (0.1945) acc 100.0000 (99.6875) lr 2.0611e-04 eta 0:01:38
+epoch [38/50] batch [20/101] time 0.068 (0.089) data 0.000 (0.017) loss 0.1867 (0.1873) acc 100.0000 (99.8438) lr 1.8129e-04 eta 0:01:54
+epoch [38/50] batch [40/101] time 0.079 (0.081) data 0.000 (0.009) loss 0.1883 (0.1880) acc 100.0000 (99.8438) lr 1.8129e-04 eta 0:01:42
+epoch [38/50] batch [60/101] time 0.076 (0.079) data 0.000 (0.006) loss 0.3550 (0.1892) acc 100.0000 (99.8958) lr 1.8129e-04 eta 0:01:39
+epoch [38/50] batch [80/101] time 0.076 (0.078) data 0.000 (0.005) loss 0.1924 (0.1866) acc 100.0000 (99.8828) lr 1.8129e-04 eta 0:01:35
+epoch [38/50] batch [100/101] time 0.071 (0.076) data 0.000 (0.004) loss 0.1285 (0.1870) acc 100.0000 (99.9062) lr 1.8129e-04 eta 0:01:32
+epoch [39/50] batch [20/101] time 0.092 (0.088) data 0.000 (0.015) loss 0.1926 (0.1950) acc 100.0000 (99.6875) lr 1.5773e-04 eta 0:01:45
+epoch [39/50] batch [40/101] time 0.068 (0.080) data 0.000 (0.008) loss 0.1662 (0.1897) acc 100.0000 (99.8438) lr 1.5773e-04 eta 0:01:33
+epoch [39/50] batch [60/101] time 0.088 (0.078) data 0.000 (0.005) loss 0.2197 (0.1910) acc 100.0000 (99.8438) lr 1.5773e-04 eta 0:01:29
+epoch [39/50] batch [80/101] time 0.072 (0.077) data 0.002 (0.004) loss 0.1735 (0.1879) acc 100.0000 (99.8047) lr 1.5773e-04 eta 0:01:27
+epoch [39/50] batch [100/101] time 0.068 (0.076) data 0.000 (0.003) loss 0.1898 (0.1891) acc 100.0000 (99.7812) lr 1.5773e-04 eta 0:01:24
+epoch [40/50] batch [20/101] time 0.069 (0.090) data 0.000 (0.016) loss 0.1583 (0.1819) acc 100.0000 (99.5312) lr 1.3552e-04 eta 0:01:37
+epoch [40/50] batch [40/101] time 0.077 (0.081) data 0.000 (0.008) loss 0.2127 (0.1791) acc 100.0000 (99.6875) lr 1.3552e-04 eta 0:01:26
+epoch [40/50] batch [60/101] time 0.068 (0.078) data 0.000 (0.006) loss 0.2031 (0.1805) acc 100.0000 (99.7917) lr 1.3552e-04 eta 0:01:21
+epoch [40/50] batch [80/101] time 0.067 (0.077) data 0.000 (0.004) loss 0.2069 (0.1801) acc 96.8750 (99.7656) lr 1.3552e-04 eta 0:01:18
+epoch [40/50] batch [100/101] time 0.088 (0.076) data 0.000 (0.003) loss 0.2030 (0.1845) acc 100.0000 (99.7500) lr 1.3552e-04 eta 0:01:16
+epoch [41/50] batch [20/101] time 0.069 (0.090) data 0.000 (0.017) loss 0.1961 (0.1728) acc 100.0000 (100.0000) lr 1.1474e-04 eta 0:01:29
+epoch [41/50] batch [40/101] time 0.068 (0.080) data 0.000 (0.008) loss 0.2232 (0.1758) acc 100.0000 (99.9219) lr 1.1474e-04 eta 0:01:17
+epoch [41/50] batch [60/101] time 0.092 (0.078) data 0.000 (0.006) loss 0.1781 (0.1745) acc 100.0000 (99.8958) lr 1.1474e-04 eta 0:01:14
+epoch [41/50] batch [80/101] time 0.068 (0.077) data 0.000 (0.004) loss 0.3174 (0.1809) acc 100.0000 (99.8828) lr 1.1474e-04 eta 0:01:11
+epoch [41/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.004) loss 0.1306 (0.1815) acc 100.0000 (99.8125) lr 1.1474e-04 eta 0:01:08
+epoch [42/50] batch [20/101] time 0.077 (0.088) data 0.000 (0.015) loss 0.1797 (0.1791) acc 100.0000 (99.5312) lr 9.5492e-05 eta 0:01:18
+epoch [42/50] batch [40/101] time 0.085 (0.079) data 0.000 (0.008) loss 0.1432 (0.1802) acc 100.0000 (99.6875) lr 9.5492e-05 eta 0:01:08
+epoch [42/50] batch [60/101] time 0.069 (0.077) data 0.000 (0.005) loss 0.1542 (0.1807) acc 100.0000 (99.6875) lr 9.5492e-05 eta 0:01:05
+epoch [42/50] batch [80/101] time 0.072 (0.076) data 0.000 (0.004) loss 0.1745 (0.1875) acc 100.0000 (99.6875) lr 9.5492e-05 eta 0:01:02
+epoch [42/50] batch [100/101] time 0.075 (0.075) data 0.000 (0.003) loss 0.1775 (0.1843) acc 100.0000 (99.6562) lr 9.5492e-05 eta 0:01:00
+epoch [43/50] batch [20/101] time 0.079 (0.089) data 0.000 (0.017) loss 0.1977 (0.1837) acc 100.0000 (99.6875) lr 7.7836e-05 eta 0:01:10
+epoch [43/50] batch [40/101] time 0.068 (0.081) data 0.000 (0.008) loss 0.2034 (0.1878) acc 100.0000 (99.5312) lr 7.7836e-05 eta 0:01:02
+epoch [43/50] batch [60/101] time 0.071 (0.079) data 0.000 (0.006) loss 0.1422 (0.1871) acc 100.0000 (99.6875) lr 7.7836e-05 eta 0:00:58
+epoch [43/50] batch [80/101] time 0.068 (0.077) data 0.000 (0.005) loss 0.2624 (0.1838) acc 100.0000 (99.7266) lr 7.7836e-05 eta 0:00:56
+epoch [43/50] batch [100/101] time 0.077 (0.076) data 0.000 (0.004) loss 0.1806 (0.1846) acc 100.0000 (99.7188) lr 7.7836e-05 eta 0:00:53
+epoch [44/50] batch [20/101] time 0.068 (0.086) data 0.000 (0.015) loss 0.1493 (0.1880) acc 100.0000 (99.6875) lr 6.1847e-05 eta 0:00:58
+epoch [44/50] batch [40/101] time 0.074 (0.079) data 0.000 (0.008) loss 0.1533 (0.1900) acc 100.0000 (99.6094) lr 6.1847e-05 eta 0:00:52
+epoch [44/50] batch [60/101] time 0.068 (0.076) data 0.000 (0.005) loss 0.2475 (0.1906) acc 100.0000 (99.5833) lr 6.1847e-05 eta 0:00:49
+epoch [44/50] batch [80/101] time 0.080 (0.076) data 0.000 (0.004) loss 0.1248 (0.1883) acc 100.0000 (99.6875) lr 6.1847e-05 eta 0:00:47
+epoch [44/50] batch [100/101] time 0.072 (0.074) data 0.000 (0.003) loss 0.1568 (0.1844) acc 100.0000 (99.7188) lr 6.1847e-05 eta 0:00:45
+epoch [45/50] batch [20/101] time 0.068 (0.089) data 0.000 (0.018) loss 0.1968 (0.1686) acc 100.0000 (100.0000) lr 4.7586e-05 eta 0:00:52
+epoch [45/50] batch [40/101] time 0.079 (0.080) data 0.000 (0.009) loss 0.1519 (0.1731) acc 100.0000 (99.8438) lr 4.7586e-05 eta 0:00:45
+epoch [45/50] batch [60/101] time 0.068 (0.077) data 0.000 (0.006) loss 0.1918 (0.1763) acc 100.0000 (99.8958) lr 4.7586e-05 eta 0:00:42
+epoch [45/50] batch [80/101] time 0.075 (0.076) data 0.000 (0.005) loss 0.1406 (0.1784) acc 100.0000 (99.8828) lr 4.7586e-05 eta 0:00:40
+epoch [45/50] batch [100/101] time 0.068 (0.075) data 0.000 (0.004) loss 0.1566 (0.1806) acc 100.0000 (99.8750) lr 4.7586e-05 eta 0:00:37
+epoch [46/50] batch [20/101] time 0.068 (0.087) data 0.000 (0.016) loss 0.1880 (0.2050) acc 100.0000 (99.2188) lr 3.5112e-05 eta 0:00:42
+epoch [46/50] batch [40/101] time 0.100 (0.080) data 0.006 (0.008) loss 0.1268 (0.1929) acc 100.0000 (99.4531) lr 3.5112e-05 eta 0:00:37
+epoch [46/50] batch [60/101] time 0.068 (0.077) data 0.001 (0.005) loss 0.2044 (0.1903) acc 100.0000 (99.5833) lr 3.5112e-05 eta 0:00:34
+epoch [46/50] batch [80/101] time 0.081 (0.076) data 0.000 (0.004) loss 0.1726 (0.1864) acc 100.0000 (99.6875) lr 3.5112e-05 eta 0:00:32
+epoch [46/50] batch [100/101] time 0.069 (0.075) data 0.000 (0.003) loss 0.1304 (0.1846) acc 100.0000 (99.7188) lr 3.5112e-05 eta 0:00:30
+epoch [47/50] batch [20/101] time 0.068 (0.088) data 0.000 (0.016) loss 0.1395 (0.1860) acc 100.0000 (99.3750) lr 2.4472e-05 eta 0:00:33
+epoch [47/50] batch [40/101] time 0.068 (0.079) data 0.000 (0.008) loss 0.1617 (0.1848) acc 100.0000 (99.6875) lr 2.4472e-05 eta 0:00:28
+epoch [47/50] batch [60/101] time 0.079 (0.078) data 0.001 (0.005) loss 0.1476 (0.1843) acc 100.0000 (99.7396) lr 2.4472e-05 eta 0:00:26
+epoch [47/50] batch [80/101] time 0.079 (0.078) data 0.000 (0.004) loss 0.1416 (0.1843) acc 100.0000 (99.6875) lr 2.4472e-05 eta 0:00:25
+epoch [47/50] batch [100/101] time 0.068 (0.076) data 0.000 (0.003) loss 0.1341 (0.1826) acc 100.0000 (99.7188) lr 2.4472e-05 eta 0:00:23
+epoch [48/50] batch [20/101] time 0.071 (0.089) data 0.000 (0.018) loss 0.1610 (0.1898) acc 100.0000 (99.5312) lr 1.5708e-05 eta 0:00:25
+epoch [48/50] batch [40/101] time 0.068 (0.081) data 0.000 (0.009) loss 0.1395 (0.1889) acc 100.0000 (99.7656) lr 1.5708e-05 eta 0:00:21
+epoch [48/50] batch [60/101] time 0.068 (0.079) data 0.000 (0.006) loss 0.1805 (0.1870) acc 100.0000 (99.7917) lr 1.5708e-05 eta 0:00:19
+epoch [48/50] batch [80/101] time 0.068 (0.078) data 0.000 (0.005) loss 0.2063 (0.1830) acc 96.8750 (99.8047) lr 1.5708e-05 eta 0:00:17
+epoch [48/50] batch [100/101] time 0.068 (0.077) data 0.000 (0.004) loss 0.1741 (0.1839) acc 100.0000 (99.7188) lr 1.5708e-05 eta 0:00:15
+epoch [49/50] batch [20/101] time 0.073 (0.088) data 0.000 (0.015) loss 0.2248 (0.1755) acc 100.0000 (99.8438) lr 8.8564e-06 eta 0:00:15
+epoch [49/50] batch [40/101] time 0.084 (0.080) data 0.000 (0.008) loss 0.2081 (0.1773) acc 100.0000 (99.9219) lr 8.8564e-06 eta 0:00:12
+epoch [49/50] batch [60/101] time 0.078 (0.078) data 0.000 (0.005) loss 0.1290 (0.1752) acc 100.0000 (99.8958) lr 8.8564e-06 eta 0:00:11
+epoch [49/50] batch [80/101] time 0.078 (0.078) data 0.000 (0.004) loss 0.1795 (0.1784) acc 100.0000 (99.9219) lr 8.8564e-06 eta 0:00:09
+epoch [49/50] batch [100/101] time 0.068 (0.077) data 0.000 (0.003) loss 0.1996 (0.1786) acc 100.0000 (99.8750) lr 8.8564e-06 eta 0:00:07
+epoch [50/50] batch [20/101] time 0.072 (0.091) data 0.000 (0.016) loss 0.1366 (0.1777) acc 100.0000 (100.0000) lr 3.9426e-06 eta 0:00:07
+epoch [50/50] batch [40/101] time 0.068 (0.081) data 0.000 (0.008) loss 0.1806 (0.1783) acc 100.0000 (100.0000) lr 3.9426e-06 eta 0:00:04
+epoch [50/50] batch [60/101] time 0.075 (0.080) data 0.000 (0.006) loss 0.1281 (0.1842) acc 100.0000 (99.7917) lr 3.9426e-06 eta 0:00:03
+epoch [50/50] batch [80/101] time 0.080 (0.079) data 0.000 (0.004) loss 0.2310 (0.1831) acc 100.0000 (99.8047) lr 3.9426e-06 eta 0:00:01
+epoch [50/50] batch [100/101] time 0.077 (0.078) data 0.000 (0.004) loss 0.3467 (0.1824) acc 96.8750 (99.8125) lr 3.9426e-06 eta 0:00:00
+Checkpoint saved to output_sweeps/bayes_mmrl_search_seq_v3_two_stage/coarse3/confirm_stage/MMRL/FS/fewshot_train/ucf101/shots_32/ViT-B-16/confirm00_baseline_mmrl_paper_fixed/seed1/refactor_model/model.pth.tar-50
+Finish training
+Deploy the last-epoch model
+Evaluate on the *test* set
+=> result
+* total: 3,783
+* correct: 3,353
+* accuracy: 88.6%
+* error: 11.4%
+* macro_f1: 88.2%
+=> structured result
+* accuracy: 88.6334
+* error: 11.3666
+* macro_f1: 88.2196
+* nll: 0.3887
+* brier: 0.1659
+* ece: 2.1079
+Saved metrics JSON to output_sweeps/bayes_mmrl_search_seq_v3_two_stage/coarse3/confirm_stage/MMRL/FS/fewshot_train/ucf101/shots_32/ViT-B-16/confirm00_baseline_mmrl_paper_fixed/seed1/test_metrics.json
+Saved metrics CSV to output_sweeps/bayes_mmrl_search_seq_v3_two_stage/coarse3/confirm_stage/MMRL/FS/fewshot_train/ucf101/shots_32/ViT-B-16/confirm00_baseline_mmrl_paper_fixed/seed1/test_metrics.csv
+Saved calibration bins CSV to output_sweeps/bayes_mmrl_search_seq_v3_two_stage/coarse3/confirm_stage/MMRL/FS/fewshot_train/ucf101/shots_32/ViT-B-16/confirm00_baseline_mmrl_paper_fixed/seed1/test_calibration_bins.csv
+Elapsed: 0:06:33
