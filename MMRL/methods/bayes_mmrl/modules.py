@@ -140,7 +140,11 @@ class BayesianTensorParameter(nn.Module):
                 )
             target = std_tensor
         else:
-            target = torch.full_like(self.prior_std_base, float(std), dtype=torch.float32)
+            target = torch.full_like(
+                self.prior_std_base,
+                float(std),
+                dtype=torch.float32,
+            )
 
         if torch.any(target <= 0):
             raise ValueError("prior std must be strictly positive")
@@ -157,7 +161,9 @@ class BayesianTensorParameter(nn.Module):
         with torch.no_grad():
             self.posterior_mean.copy_(self.prior_mean)
 
-            sigma_target = (self.prior_std_base.float() - self.min_sigma).clamp_min(1e-12)
+            sigma_target = (
+                self.prior_std_base.float() - self.min_sigma
+            ).clamp_min(1e-12)
             rho_target = _softplus_inverse(sigma_target)
             self.posterior_rho.copy_(rho_target)
 
@@ -190,8 +196,6 @@ class BayesianTensorParameter(nn.Module):
             - torch.log(sigma_q2 / sigma_p2)
         )
         return kl.sum()
-
-
 
 
 class DeterministicRepresentationLearnerAdapter(nn.Module):
@@ -237,8 +241,6 @@ class DeterministicRepresentationLearnerAdapter(nn.Module):
 
     def forward(self):
         return self.base()
-
-
 
 
 class BayesianMultiModalRepresentationLearner(nn.Module):
@@ -381,14 +383,28 @@ class BayesianVisualEncoderWrapper(nn.Module):
 
     Scheme C:
         random variable is proj_rep
-        prior mean = pretrained proj_rep
-        q_0 = p exactly
+
+        prior mode = "self_proj_rep":
+            p(W) = N(P_v^r_det, Sigma), q_0(W) = p(W)
+
+        prior mode = "clip_proj":
+            p(W) = N(P_v^c_clip, Sigma), q_0(W) = p(W)
+
+    where:
+        - P_v^r_det is the deterministic MMRL representation head (base.proj_rep)
+        - P_v^c_clip is the CLIP class-token visual projection head (base.proj)
     """
 
     def __init__(self, base_visual: nn.Module, cfg):
         super().__init__()
         if not hasattr(base_visual, "proj_rep"):
-            raise ValueError("Bayesian proj_rep requires a ViT visual backbone with proj_rep")
+            raise ValueError(
+                "Bayesian proj_rep requires a ViT visual backbone with proj_rep"
+            )
+        if not hasattr(base_visual, "proj"):
+            raise ValueError(
+                "Bayesian proj_rep requires a ViT visual backbone with proj"
+            )
 
         self.base = base_visual
         bayes_cfg = cfg.BAYES_MMRL
@@ -399,16 +415,30 @@ class BayesianVisualEncoderWrapper(nn.Module):
                 f"PROJ_REP_SIGMA_MODE must be one of {{'global', 'row'}}, got {sigma_mode}"
             )
 
+        prior_mode = str(
+            getattr(bayes_cfg, "PROJ_REP_PRIOR_MODE", "clip_proj")
+        )
+        if prior_mode == "self_proj_rep":
+            prior_mean = self.base.proj_rep.detach().float()
+        elif prior_mode == "clip_proj":
+            prior_mean = self.base.proj.detach().float()
+        else:
+            raise ValueError(
+                "PROJ_REP_PRIOR_MODE must be one of "
+                "{'self_proj_rep', 'clip_proj'}, "
+                f"got {prior_mode}"
+            )
+
         prior_std = float(getattr(bayes_cfg, "PROJ_REP_PRIOR_STD", 0.01))
-        pretrained_proj_rep = self.base.proj_rep.detach().float()
+        self.proj_rep_prior_mode = prior_mode
 
         self.bayes_proj_rep = BayesianTensorParameter(
-            shape=tuple(pretrained_proj_rep.shape),
+            shape=tuple(self.base.proj_rep.shape),
             sigma_mode=sigma_mode,
             prior_std=prior_std,
         )
         self.bayes_proj_rep.configure_prior_and_initialize(
-            prior_mean=pretrained_proj_rep,
+            prior_mean=prior_mean,
             prior_std=prior_std,
         )
 
@@ -419,7 +449,9 @@ class BayesianVisualEncoderWrapper(nn.Module):
         return self.bayes_proj_rep.kl_divergence()
 
     def _resolve_proj_rep(self, use_posterior_mean: bool) -> torch.Tensor:
-        return self.bayes_proj_rep.sample_tensor(use_posterior_mean=use_posterior_mean)
+        return self.bayes_proj_rep.sample_tensor(
+            use_posterior_mean=use_posterior_mean
+        )
 
     def _forward_vit_with_proj(
         self,
@@ -468,7 +500,6 @@ class BayesianVisualEncoderWrapper(nn.Module):
         return self._forward_vit_with_proj(inputs, proj_rep)
 
 
-
 class BayesianCustomMMRLModel(nn.Module):
     """
     Supports:
@@ -488,7 +519,9 @@ class BayesianCustomMMRLModel(nn.Module):
 
         self.alpha = float(bayes_cfg.ALPHA)
         self.bayes_target = str(getattr(bayes_cfg, "BAYES_TARGET", "rep_tokens"))
-        self.eval_mode = _canonical_eval_mode(getattr(bayes_cfg, "EVAL_MODE", "mc_predictive"))
+        self.eval_mode = _canonical_eval_mode(
+            getattr(bayes_cfg, "EVAL_MODE", "mc_predictive")
+        )
         self.eval_use_posterior_mean = bool(
             getattr(bayes_cfg, "EVAL_USE_POSTERIOR_MEAN", False)
         )
@@ -541,7 +574,11 @@ class BayesianCustomMMRLModel(nn.Module):
         return super().train(mode)
 
     def kl_terms(self) -> Dict[str, torch.Tensor]:
-        zero = torch.zeros((), device=self.prompt_embeddings.device, dtype=torch.float32)
+        zero = torch.zeros(
+            (),
+            device=self.prompt_embeddings.device,
+            dtype=torch.float32,
+        )
         rep_kl = (
             self.representation_learner.kl_divergence()
             if hasattr(self.representation_learner, "kl_divergence")
@@ -580,7 +617,9 @@ class BayesianCustomMMRLModel(nn.Module):
                 [image.type(self.dtype), list(compound_rep_tokens_visual)],
                 use_posterior_mean=use_posterior_mean_proj,
             )
-        return self.image_encoder([image.type(self.dtype), list(compound_rep_tokens_visual)])
+        return self.image_encoder(
+            [image.type(self.dtype), list(compound_rep_tokens_visual)]
+        )
 
     def _encode_with_tokens(
         self,
@@ -603,7 +642,8 @@ class BayesianCustomMMRLModel(nn.Module):
         )
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
         image_features_rep = image_features_rep / image_features_rep.norm(
-            dim=-1, keepdim=True
+            dim=-1,
+            keepdim=True,
         )
 
         logits = 100.0 * image_features @ text_features.t()
@@ -626,7 +666,8 @@ class BayesianCustomMMRLModel(nn.Module):
         )
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
         image_features_rep = image_features_rep / image_features_rep.norm(
-            dim=-1, keepdim=True
+            dim=-1,
+            keepdim=True,
         )
 
         logits = 100.0 * image_features @ text_features.t()
@@ -637,10 +678,18 @@ class BayesianCustomMMRLModel(nn.Module):
 
     def _aggregate_train_outputs(self, sample_outputs):
         logits = torch.stack([out[0] for out in sample_outputs], dim=0).mean(dim=0)
-        logits_rep = torch.stack([out[1] for out in sample_outputs], dim=0).mean(dim=0)
-        logits_fusion = torch.stack([out[2] for out in sample_outputs], dim=0).mean(dim=0)
-        image_features = torch.stack([out[3] for out in sample_outputs], dim=0).mean(dim=0)
-        text_features = torch.stack([out[4] for out in sample_outputs], dim=0).mean(dim=0)
+        logits_rep = torch.stack([out[1] for out in sample_outputs], dim=0).mean(
+            dim=0
+        )
+        logits_fusion = torch.stack([out[2] for out in sample_outputs], dim=0).mean(
+            dim=0
+        )
+        image_features = torch.stack([out[3] for out in sample_outputs], dim=0).mean(
+            dim=0
+        )
+        text_features = torch.stack([out[4] for out in sample_outputs], dim=0).mean(
+            dim=0
+        )
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
         return logits, logits_rep, logits_fusion, image_features, text_features
 
@@ -664,8 +713,12 @@ class BayesianCustomMMRLModel(nn.Module):
         logits_rep = torch.log(probs_rep.clamp_min(eps))
         logits_fusion = torch.log(probs_fusion.clamp_min(eps))
 
-        image_features = torch.stack([out[3] for out in sample_outputs], dim=0).mean(dim=0)
-        text_features = torch.stack([out[4] for out in sample_outputs], dim=0).mean(dim=0)
+        image_features = torch.stack([out[3] for out in sample_outputs], dim=0).mean(
+            dim=0
+        )
+        text_features = torch.stack([out[4] for out in sample_outputs], dim=0).mean(
+            dim=0
+        )
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
         return logits, logits_rep, logits_fusion, image_features, text_features
@@ -749,7 +802,9 @@ class BayesianCustomMMRLModel(nn.Module):
         if eval_mode == "mc_predictive":
             sample_outputs = []
             for _ in range(num_samples):
-                rep_text, rep_visual = self.representation_learner.project_sample_tokens()
+                rep_text, rep_visual = (
+                    self.representation_learner.project_sample_tokens()
+                )
                 sample_outputs.append(
                     self._encode_with_tokens(
                         image,
@@ -774,7 +829,9 @@ class BayesianCustomMMRLModel(nn.Module):
             )
 
             for _ in range(max(0, num_samples - 1)):
-                rep_text, rep_visual = self.representation_learner.project_sample_tokens()
+                rep_text, rep_visual = (
+                    self.representation_learner.project_sample_tokens()
+                )
                 sample_outputs.append(
                     self._encode_with_tokens(
                         image,
@@ -787,3 +844,4 @@ class BayesianCustomMMRLModel(nn.Module):
             return self._aggregate_eval_outputs(sample_outputs)
 
         raise ValueError(f"Unsupported EVAL_MODE: {eval_mode}")
+

@@ -64,8 +64,6 @@ def _as_legacy_mmrlpp(cfg):
     sec.RES_LORA_DIM = src.RES_LORA_DIM
 
 
-
-
 def _as_legacy_bayes_mmrl(cfg):
     if not hasattr(cfg.TRAINER, "BayesMMRL"):
         cfg.TRAINER.BayesMMRL = CN()
@@ -79,6 +77,8 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.REP_LAYERS = src.REP_LAYERS
     sec.REP_DIM = src.REP_DIM
 
+    sec.KL_WARMUP_EPOCHS = src.KL_WARMUP_EPOCHS
+    
     sec.BAYES_TARGET = src.BAYES_TARGET
 
     sec.N_MC_TRAIN = src.N_MC_TRAIN
@@ -95,6 +95,7 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.CLIP_PRIOR_BLEND = src.CLIP_PRIOR_BLEND
 
     sec.PROJ_REP_SIGMA_MODE = src.PROJ_REP_SIGMA_MODE
+    sec.PROJ_REP_PRIOR_MODE = src.PROJ_REP_PRIOR_MODE
     sec.PROJ_REP_PRIOR_STD = src.PROJ_REP_PRIOR_STD
     sec.PROJ_REP_KL_WEIGHT = src.PROJ_REP_KL_WEIGHT
 
@@ -102,8 +103,6 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.KL_WEIGHT = src.REP_KL_WEIGHT
     sec.PRIOR_STD = src.REP_PRIOR_STD
     sec.SIGMA_MODE = src.REP_SIGMA_MODE
-
-
 
 
 def _sync_active_mmrl_family(cfg):
@@ -159,7 +158,6 @@ def get_refactor_defaults():
     cfg.MMRLPP.PROJ_LORA_DIM = 64
     cfg.MMRLPP.RES_LORA_DIM = 4
 
-
     cfg.BAYES_MMRL = CN()
     cfg.BAYES_MMRL.PREC = "amp"
     cfg.BAYES_MMRL.ALPHA = 0.7
@@ -168,6 +166,7 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
     cfg.BAYES_MMRL.REP_DIM = 512
 
+    cfg.BAYES_MMRL.KL_WARMUP_EPOCHS = 5
     # which parameter block is Bayesian
     # "rep_tokens" -> schemes A/B
     # "proj_rep"   -> scheme C
@@ -192,8 +191,11 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.CLIP_PRIOR_BLEND = 0.5
 
     # ----- scheme C: Bayes on proj_rep -----
-    # prior mean = pretrained proj_rep, and q_0(W) = p(W)
+    # q_0(W) = p(W) is enforced automatically in code
+    # self_proj_rep: prior mean = deterministic MMRL proj_rep
+    # clip_proj    : prior mean = CLIP visual projection head proj
     cfg.BAYES_MMRL.PROJ_REP_SIGMA_MODE = "row"   # global | row
+    cfg.BAYES_MMRL.PROJ_REP_PRIOR_MODE = "clip_proj"   # self_proj_rep | clip_proj
     cfg.BAYES_MMRL.PROJ_REP_PRIOR_STD = 0.01
     cfg.BAYES_MMRL.PROJ_REP_KL_WEIGHT = 1e-6
 
@@ -201,8 +203,6 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.KL_WEIGHT = cfg.BAYES_MMRL.REP_KL_WEIGHT
     cfg.BAYES_MMRL.PRIOR_STD = cfg.BAYES_MMRL.REP_PRIOR_STD
     cfg.BAYES_MMRL.SIGMA_MODE = cfg.BAYES_MMRL.REP_SIGMA_MODE
-
-
 
     cfg.CLIP_ADAPTERS = CN()
     cfg.CLIP_ADAPTERS.PREC = "fp32"

@@ -155,6 +155,8 @@ class BayesMMRLMethod(BaseMethod):
     def build(self):
         cfg = self.cfg
         bayes_cfg = cfg.BAYES_MMRL
+        self.kl_warmup_epochs = int(getattr(bayes_cfg, "KL_WARMUP_EPOCHS", 0))
+
         classnames = self.dm.dataset.classnames
         self.num_classes = len(classnames)
         self.bayes_target = str(getattr(bayes_cfg, "BAYES_TARGET", "rep_tokens"))
