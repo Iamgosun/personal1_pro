@@ -39,6 +39,15 @@ def _canonical_eval_mode(mode: str | None) -> str:
         return mode
     raise ValueError(f"Unsupported EVAL_MODE: {mode}")
 
+def _canonical_eval_aggregation(mode: str | None) -> str:
+    mode = str(mode or "prob_mean")
+    if mode in {"prob_mean", "logit_mean"}:
+        return mode
+    raise ValueError(
+        f"Unsupported EVAL_AGGREGATION: {mode}. "
+        "Expected one of {'prob_mean', 'logit_mean'}"
+    )
+
 
 def _softplus_inverse(x: torch.Tensor) -> torch.Tensor:
     eps = torch.finfo(x.dtype).eps
@@ -525,6 +534,11 @@ class BayesianCustomMMRLModel(nn.Module):
         self.eval_use_posterior_mean = bool(
             getattr(bayes_cfg, "EVAL_USE_POSTERIOR_MEAN", False)
         )
+
+        self.eval_aggregation = _canonical_eval_aggregation(
+            getattr(bayes_cfg, "EVAL_AGGREGATION", "prob_mean")
+        )
+
         self.n_mc_test = max(1, int(bayes_cfg.N_MC_TEST))
 
         if self.bayes_target == "rep_tokens":
@@ -693,35 +707,44 @@ class BayesianCustomMMRLModel(nn.Module):
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
         return logits, logits_rep, logits_fusion, image_features, text_features
 
+
+
     def _aggregate_eval_outputs(self, sample_outputs):
         eps = 1e-8
 
-        probs = torch.stack(
-            [torch.softmax(out[0], dim=-1) for out in sample_outputs],
-            dim=0,
-        ).mean(dim=0)
-        probs_rep = torch.stack(
-            [torch.softmax(out[1], dim=-1) for out in sample_outputs],
-            dim=0,
-        ).mean(dim=0)
-        probs_fusion = torch.stack(
-            [torch.softmax(out[2], dim=-1) for out in sample_outputs],
-            dim=0,
-        ).mean(dim=0)
+        if self.eval_aggregation == "prob_mean":
+            probs = torch.stack(
+                [torch.softmax(out[0], dim=-1) for out in sample_outputs],
+                dim=0,
+            ).mean(dim=0)
+            probs_rep = torch.stack(
+                [torch.softmax(out[1], dim=-1) for out in sample_outputs],
+                dim=0,
+            ).mean(dim=0)
+            probs_fusion = torch.stack(
+                [torch.softmax(out[2], dim=-1) for out in sample_outputs],
+                dim=0,
+            ).mean(dim=0)
 
-        logits = torch.log(probs.clamp_min(eps))
-        logits_rep = torch.log(probs_rep.clamp_min(eps))
-        logits_fusion = torch.log(probs_fusion.clamp_min(eps))
+            logits = torch.log(probs.clamp_min(eps))
+            logits_rep = torch.log(probs_rep.clamp_min(eps))
+            logits_fusion = torch.log(probs_fusion.clamp_min(eps))
 
-        image_features = torch.stack([out[3] for out in sample_outputs], dim=0).mean(
-            dim=0
-        )
-        text_features = torch.stack([out[4] for out in sample_outputs], dim=0).mean(
-            dim=0
-        )
+        elif self.eval_aggregation == "logit_mean":
+            logits = torch.stack([out[0] for out in sample_outputs], dim=0).mean(dim=0)
+            logits_rep = torch.stack([out[1] for out in sample_outputs], dim=0).mean(dim=0)
+            logits_fusion = torch.stack([out[2] for out in sample_outputs], dim=0).mean(dim=0)
+
+        else:
+            raise ValueError(f"Unsupported eval aggregation: {self.eval_aggregation}")
+
+        image_features = torch.stack([out[3] for out in sample_outputs], dim=0).mean(dim=0)
+        text_features = torch.stack([out[4] for out in sample_outputs], dim=0).mean(dim=0)
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
         return logits, logits_rep, logits_fusion, image_features, text_features
+
+
 
     @torch.no_grad()
     def _get_cached_mean_eval_state(self):
