@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Usage:
-#   NGPU=2 bash run_plan_parallel.sh FS "MMRL BayesMMRL" online "caltech101 oxfordpets ucf101" "1 2 3 4" "1 2 3"
+#   NGPU=2 bash run_plan.sh FS "MMRL BayesMMRL" online "caltech101 oxford_pets ucf101" "1 2 3 4" "1 2 3"
 #
 # Optional env:
 #   NGPU=2
@@ -18,14 +18,21 @@ set -euo pipefail
 # Supported methods:
 #   MMRL MMRLMix BayesMMRL MMRLpp ClipAdapters
 #
-# Example datasets:
-#   caltech101 oxford_pets ucf101
+# Supported protocols:
+#   B2N FS CD
+#
+# Notes for B2N:
+#   - train stage: train_base on base classes
+#   - eval stage : auto-runs test_new on new classes using the trained checkpoint
+#   - outputs are separated into:
+#       .../B2N/train_base/...
+#       .../B2N/test_new/...
 
-PROTOCOL=${1:-FS}
-METHODS_ARG=${2:- ClipAdapters}
+PROTOCOL=${1:-B2N}
+METHODS_ARG=${2:-MMRL}
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-  caltech101 ucf101}
-SHOTS_ARG=${5:-"1 2 4 8 16 "}
+DATASETS_ARG=${4:-caltech101 ucf101}
+SHOTS_ARG=${5:-"16"}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
@@ -106,8 +113,6 @@ PY
   esac
 }
 
-
-
 init_gpu_list() {
   if [[ -n "$GPU_IDS" ]]; then
     read -r -a GPU_LIST <<< "$GPU_IDS"
@@ -141,6 +146,19 @@ build_outdir() {
   fi
 }
 
+build_b2n_new_eval_outdir() {
+  local method=$1
+  local dataset=$2
+  local shot=$3
+  local seed=$4
+  local run_tag=$5
+
+  if [[ "$method" == "ClipAdapters" || "$method" == "ClipADAPTER" ]]; then
+    echo "${OUTPUT_ROOT}/${method}/${run_tag}/B2N/test_new/${dataset}/shots_${shot}/${BACKBONE//\//-}/seed${seed}"
+  else
+    echo "${OUTPUT_ROOT}/${method}/B2N/test_new/${dataset}/shots_${shot}/${BACKBONE//\//-}/${run_tag}/seed${seed}"
+  fi
+}
 
 build_logfile() {
   local method=$1
@@ -153,7 +171,32 @@ build_logfile() {
   echo "${outdir}/run.log"
 }
 
+case_is_complete() {
+  local method=$1
+  local dataset=$2
+  local shot=$3
+  local seed=$4
 
+  local method_cfg protocol_cfg runtime_cfg run_tag
+  read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+  run_tag="$(resolve_run_tag "$method" "$method_cfg")"
+
+  local train_outdir
+  train_outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
+
+  if [[ ! -f "${train_outdir}/test_metrics.json" ]]; then
+    return 1
+  fi
+
+  if [[ "$PROTOCOL" != "B2N" ]]; then
+    return 0
+  fi
+
+  local eval_outdir
+  eval_outdir="$(build_b2n_new_eval_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
+
+  [[ -f "${eval_outdir}/test_metrics.json" ]]
+}
 
 write_log_header() {
   local logfile=$1
@@ -181,55 +224,86 @@ write_log_header() {
   } >> "$logfile"
 }
 
-launch_one_case() {
+write_b2n_new_eval_log_header() {
+  local logfile=$1
+  local gpu_id=$2
+  local method=$3
+  local dataset=$4
+  local shot=$5
+  local seed=$6
+  local model_dir=$7
+
+  {
+    echo "============================================================"
+    echo "START: $(date '+%F %T')"
+    echo "STAGE: B2N test_new"
+    echo "GPU: ${gpu_id}"
+    echo "METHOD: ${method}"
+    echo "PROTOCOL: B2N"
+    echo "EXEC_MODE: ${EXEC_MODE}"
+    echo "DATASET: ${dataset}"
+    echo "SHOTS: ${shot}"
+    echo "SEED: ${seed}"
+    echo "DATA_ROOT: ${DATA_ROOT}"
+    echo "OUTPUT_ROOT: ${OUTPUT_ROOT}"
+    echo "BACKBONE: ${BACKBONE}"
+    echo "MODEL_DIR: ${model_dir}"
+    echo "============================================================"
+  } >> "$logfile"
+}
+
+launch_b2n_new_eval() {
   local gpu_id=$1
   local method=$2
   local dataset=$3
   local shot=$4
   local seed=$5
 
-  read -r phase subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
+  local method_cfg protocol_cfg runtime_cfg
   read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+
   local run_tag
   run_tag="$(resolve_run_tag "$method" "$method_cfg")"
 
-  local outdir logfile statusfile
-  outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
-  logfile="${outdir}/run.log"
-  statusfile="${outdir}/job_status.txt"
+  local train_outdir eval_outdir eval_log statusfile
+  train_outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
+  eval_outdir="$(build_b2n_new_eval_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
+  eval_log="${eval_outdir}/run.log"
+  statusfile="${eval_outdir}/job_status.txt"
 
-  mkdir -p "$outdir"
+  mkdir -p "$eval_outdir"
 
-  if [[ "$SKIP_EXISTING" == "1" && -f "${outdir}/test_metrics.json" ]]; then
+  if [[ "$SKIP_EXISTING" == "1" && -f "${eval_outdir}/test_metrics.json" ]]; then
     echo "SKIP" > "$statusfile"
     return 0
   fi
 
-  : > "$logfile"
-  write_log_header "$logfile" "$gpu_id" "$method" "$dataset" "$shot" "$seed"
+  : > "$eval_log"
+  write_b2n_new_eval_log_header "$eval_log" "$gpu_id" "$method" "$dataset" "$shot" "$seed" "$train_outdir"
 
   if CUDA_VISIBLE_DEVICES="${gpu_id}" python run.py \
       --root "${DATA_ROOT}" \
       --dataset-config-file "configs/datasets/${dataset}.yaml" \
       --method-config-file "${method_cfg}" \
-      --protocol-config-file "${protocol_cfg}" \
+      --protocol-config-file "configs/protocols/b2n_test_new.yaml" \
       --runtime-config-file "${runtime_cfg}" \
-      --output-dir "${outdir}" \
+      --output-dir "${eval_outdir}" \
+      --model-dir "${train_outdir}" \
       --method "${method}" \
-      --protocol "${PROTOCOL}" \
+      --protocol "B2N" \
       --exec-mode "${EXEC_MODE}" \
       --seed "${seed}" \
+      --eval-only \
       DATASET.NUM_SHOTS "${shot}" \
-      DATASET.SUBSAMPLE_CLASSES "${subsample}" \
       MODEL.BACKBONE.NAME "${BACKBONE}" \
-      >> "$logfile" 2>&1; then
+      >> "$eval_log" 2>&1; then
     {
       echo
       echo "============================================================"
       echo "END: $(date '+%F %T')"
       echo "STATUS: SUCCESS"
       echo "============================================================"
-    } >> "$logfile"
+    } >> "$eval_log"
     echo "SUCCESS" > "$statusfile"
     return 0
   else
@@ -241,10 +315,116 @@ launch_one_case() {
       echo "STATUS: FAILED"
       echo "EXIT_CODE: ${rc}"
       echo "============================================================"
-    } >> "$logfile"
+    } >> "$eval_log"
     echo "FAILED(${rc})" > "$statusfile"
     return "$rc"
   fi
+}
+
+launch_one_case() {
+  local gpu_id=$1
+  local method=$2
+  local dataset=$3
+  local shot=$4
+  local seed=$5
+
+  read -r phase subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
+  read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+
+  local run_tag
+  run_tag="$(resolve_run_tag "$method" "$method_cfg")"
+
+  local outdir logfile statusfile
+  outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
+  logfile="${outdir}/run.log"
+  statusfile="${outdir}/job_status.txt"
+
+  mkdir -p "$outdir"
+
+  if [[ "$SKIP_EXISTING" == "1" ]] && case_is_complete "$method" "$dataset" "$shot" "$seed"; then
+    echo "SKIP" > "$statusfile"
+    return 0
+  fi
+
+  local train_metrics="${outdir}/test_metrics.json"
+  local train_already_done=0
+  if [[ -f "$train_metrics" ]]; then
+    train_already_done=1
+  fi
+
+  if [[ "$train_already_done" -eq 0 ]]; then
+    : > "$logfile"
+    write_log_header "$logfile" "$gpu_id" "$method" "$dataset" "$shot" "$seed"
+
+    if CUDA_VISIBLE_DEVICES="${gpu_id}" python run.py \
+        --root "${DATA_ROOT}" \
+        --dataset-config-file "configs/datasets/${dataset}.yaml" \
+        --method-config-file "${method_cfg}" \
+        --protocol-config-file "${protocol_cfg}" \
+        --runtime-config-file "${runtime_cfg}" \
+        --output-dir "${outdir}" \
+        --method "${method}" \
+        --protocol "${PROTOCOL}" \
+        --exec-mode "${EXEC_MODE}" \
+        --seed "${seed}" \
+        DATASET.NUM_SHOTS "${shot}" \
+        DATASET.SUBSAMPLE_CLASSES "${subsample}" \
+        MODEL.BACKBONE.NAME "${BACKBONE}" \
+        >> "$logfile" 2>&1; then
+      {
+        echo
+        echo "============================================================"
+        echo "END: $(date '+%F %T')"
+        echo "STATUS: SUCCESS"
+        echo "============================================================"
+      } >> "$logfile"
+    else
+      local rc=$?
+      {
+        echo
+        echo "============================================================"
+        echo "END: $(date '+%F %T')"
+        echo "STATUS: FAILED"
+        echo "EXIT_CODE: ${rc}"
+        echo "============================================================"
+      } >> "$logfile"
+      echo "FAILED(${rc})" > "$statusfile"
+      return "$rc"
+    fi
+  else
+    touch "$logfile"
+    {
+      echo "============================================================"
+      echo "SKIP_TRAIN: existing metrics found at ${train_metrics}"
+      echo "TIME: $(date '+%F %T')"
+      echo "============================================================"
+    } >> "$logfile"
+  fi
+
+  if [[ "$PROTOCOL" == "B2N" ]]; then
+    if launch_b2n_new_eval "$gpu_id" "$method" "$dataset" "$shot" "$seed"; then
+      {
+        echo "============================================================"
+        echo "B2N_NEW_EVAL: SUCCESS"
+        echo "TIME: $(date '+%F %T')"
+        echo "============================================================"
+      } >> "$logfile"
+    else
+      local rc=$?
+      {
+        echo "============================================================"
+        echo "B2N_NEW_EVAL: FAILED"
+        echo "EXIT_CODE: ${rc}"
+        echo "TIME: $(date '+%F %T')"
+        echo "============================================================"
+      } >> "$logfile"
+      echo "FAILED(${rc})" > "$statusfile"
+      return "$rc"
+    fi
+  fi
+
+  echo "SUCCESS" > "$statusfile"
+  return 0
 }
 
 summarize_case() {
@@ -415,7 +595,7 @@ main() {
           logfile="${outdir}/run.log"
           statusfile="${outdir}/job_status.txt"
 
-          if [[ "$SKIP_EXISTING" == "1" && -f "${outdir}/test_metrics.json" ]]; then
+          if [[ "$SKIP_EXISTING" == "1" ]] && case_is_complete "$method" "$dataset" "$shot" "$seed"; then
             mkdir -p "$outdir"
             echo "SKIP" > "$statusfile"
             echo "[SKIP] method=${method} dataset=${dataset} shot=${shot} seed=${seed}"
