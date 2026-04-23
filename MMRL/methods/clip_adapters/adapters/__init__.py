@@ -6,3 +6,4 @@ from .clip_adapter import ClipAdapterResidual
 from .tip_adapter import TipAdapter
 from .cross_modal import CrossModalProbeAdapter
 from .gaussian_per_class import GaussianPerClassAdapter
+from .bayes_adapter import BayesAdapter

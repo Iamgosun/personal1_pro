@@ -8,13 +8,10 @@ from backbones.freeze import freeze_all_but
 from backbones.text_encoders import CLIPTextEncoder, build_base_text_features
 from core.registry import METHOD_REGISTRY
 from core.types import MethodOutputs
-from features.cache_manager import FeatureCacheManager
-from features.extractor import CLIPFeatureExtractor
 from methods.base import BaseMethod
-
 from .adapter_router import build_adapter
 from .loss import ClipAdaptersLoss
-from .online_heads import bayes_logits, lp_logits
+from .online_heads import bayes_logits, bayes_logits_all, lp_logits
 
 
 class ClipAdaptersModel(nn.Module):
@@ -44,25 +41,36 @@ class ClipAdaptersModel(nn.Module):
 
         self.to(clip_model.visual.conv1.weight.device)
 
-    def forward(self, image, return_features=False):
+    def _is_bayes_adapter(self) -> bool:
+        return str(getattr(self.adapter, "initialization_name", "")).upper() == "BAYES_ADAPTER"
+
+    def forward(self, image, return_features=False, n_samples=None):
         try:
             image_features = self.image_encoder(image.type(self.dtype))
         except Exception:
             image_features = self.image_encoder(image.float())
 
-        logits = self.forward_features(image_features)
+        head = self.forward_features(image_features, n_samples=n_samples)
 
         if return_features:
-            return logits, image_features
-        return logits
+            return head["logits"], image_features, head["logits_all"]
+        return head["logits"]
 
-    def forward_features(self, features):
+    def forward_features(self, features, n_samples=None):
         features_for_logits = self.adapter.adapt_features(features)
+        logits_all = None
 
         if self.adapter.adapter_kind == "stochastic_prototype":
-            n_samples = int(getattr(self.adapter.cfg.CLIP_ADAPTERS, "N_SAMPLES", 3))
+            if n_samples is None:
+                n_samples = int(getattr(self.adapter.cfg.CLIP_ADAPTERS, "N_SAMPLES", 3))
+
             prototypes = self.adapter.sample_prototypes(n_samples=n_samples)
-            logits = bayes_logits(self.logit_scale, features_for_logits, prototypes)
+
+            if self._is_bayes_adapter():
+                logits_all = bayes_logits_all(self.logit_scale, features_for_logits, prototypes)
+                logits = logits_all.mean(dim=0)
+            else:
+                logits = bayes_logits(self.logit_scale, features_for_logits, prototypes)
         else:
             prototypes = self.adapter.get_prototypes()
             logits = lp_logits(self.logit_scale, features_for_logits, prototypes)
@@ -70,8 +78,14 @@ class ClipAdaptersModel(nn.Module):
         cache_logits = self.adapter.cache_logits(features_for_logits)
         if cache_logits is not None:
             logits = logits + cache_logits
+            if logits_all is not None:
+                logits_all = logits_all + cache_logits.unsqueeze(0)
 
-        return logits
+        return {
+            "logits": logits,
+            "logits_all": logits_all,
+            "features_for_logits": features_for_logits,
+        }
 
 
 @METHOD_REGISTRY.register("ClipAdapters")
@@ -91,71 +105,114 @@ class ClipAdaptersMethod(BaseMethod):
         enabled = freeze_all_but(self.model, ["adapter"])
         print(f"[ClipAdaptersMethod] trainable params: {enabled}")
 
+        self.current_epoch = 0
+        self.total_epochs = 1
+
         self.loss = ClipAdaptersLoss(self.cfg, self.model.adapter)
         return self
+
+    def set_epoch_context(self, epoch, total_epochs):
+        self.current_epoch = int(epoch)
+        self.total_epochs = max(1, int(total_epochs))
+
+    def _is_bayes_adapter(self) -> bool:
+        return str(getattr(self.model.adapter, "initialization_name", "")).upper() == "BAYES_ADAPTER"
+
+    def _bayes_kl_weight(self) -> float:
+        """
+        Match the uploaded BayesAdapter schedule:
+            kl_weight = (epoch / num_epochs) * 1 / (1000 * C * D)
+        """
+        if not self._is_bayes_adapter():
+            return float(self.cfg.CLIP_ADAPTERS.KL_WEIGHT)
+
+        base = float(self.model.adapter.bayes_kl_base_weight())
+        scale = float(getattr(self.cfg.CLIP_ADAPTERS, "BAYES_KL_SCALE", 1.0))
+        return (float(self.current_epoch) / float(self.total_epochs)) * base * scale
 
     def get_precision(self) -> str:
         return self.cfg.CLIP_ADAPTERS.PREC
 
     def supports_cache(self) -> bool:
-        adapter = self.model.adapter
-        return bool(
-            getattr(adapter, "uses_cache", False)
-            and getattr(self.cfg.CLIP_ADAPTERS, "ALLOW_CACHE", True)
-        )
+        return bool(getattr(self.cfg.CLIP_ADAPTERS, "ALLOW_CACHE", True))
 
     def forward_train(self, batch):
         label = batch["label"].to(self.device)
+        n_train_samples = int(getattr(self.cfg.CLIP_ADAPTERS, "N_SAMPLES", 3))
+
+        aux_logits = {}
+        extras = {}
 
         if "features" in batch:
             features = batch["features"].to(self.device)
-            logits = self.model.forward_features(features)
+            head = self.model.forward_features(features, n_samples=n_train_samples)
+
+            if self._is_bayes_adapter() and head["logits_all"] is not None:
+                aux_logits["bayes_logits_all"] = head["logits_all"]
+                extras["bayes_kl_weight"] = self._bayes_kl_weight()
+
             return MethodOutputs(
-                logits=logits,
+                logits=head["logits"],
                 labels=label,
-                features={"img": features},
-                extras={"mode": "cache"},
+                aux_logits=aux_logits,
+                features={"img": head["features_for_logits"]},
+                extras={"mode": "cache", **extras},
             )
 
         image = batch["img"].to(self.device)
-        logits, image_features = self.model(image, return_features=True)
+        logits, image_features, logits_all = self.model(
+            image,
+            return_features=True,
+            n_samples=n_train_samples,
+        )
+
+        if self._is_bayes_adapter() and logits_all is not None:
+            aux_logits["bayes_logits_all"] = logits_all
+            extras["bayes_kl_weight"] = self._bayes_kl_weight()
+
+        return MethodOutputs(
+            logits=logits,
+            labels=label,
+            aux_logits=aux_logits,
+            features={"img": image_features},
+            extras={"mode": "online", **extras},
+        )
+
+    def forward_eval(self, batch, eval_ctx):
+        label = batch.get("label")
+        if label is not None:
+            label = label.to(self.device)
+
+        n_test_samples = int(
+            getattr(
+                self.cfg.CLIP_ADAPTERS,
+                "N_TEST_SAMPLES",
+                10 if self._is_bayes_adapter() else getattr(self.cfg.CLIP_ADAPTERS, "N_SAMPLES", 3),
+            )
+        )
+
+        if "features" in batch:
+            features = batch["features"].to(self.device)
+            head = self.model.forward_features(features, n_samples=n_test_samples)
+            return MethodOutputs(
+                logits=head["logits"],
+                labels=label,
+                features={"img": head["features_for_logits"]},
+                extras={"mode": "cache_eval"},
+            )
+
+        image = batch["img"].to(self.device)
+        logits, image_features, _ = self.model(
+            image,
+            return_features=True,
+            n_samples=n_test_samples,
+        )
         return MethodOutputs(
             logits=logits,
             labels=label,
             features={"img": image_features},
-            extras={"mode": "online"},
+            extras={"mode": "online_eval"},
         )
-
-    def forward_eval(self, batch, eval_ctx):
-        return self.forward_train(batch)
-
-    def on_fit_start(self, trainer):
-        # Adapter-family methods should use online_executor for aligned training protocol.
-        # Only adapters that explicitly declare uses_cache=True will prebuild support cache.
-        if str(getattr(trainer.cfg.METHOD, "EXEC_MODE", "online")).lower() != "online":
-            return
-
-        adapter = self.model.adapter
-        if not getattr(adapter, "uses_cache", False):
-            return
-        if not getattr(self.cfg.CLIP_ADAPTERS, "ALLOW_CACHE", True):
-            return
-        if not hasattr(adapter, "build_cache"):
-            return
-
-        cache_manager = FeatureCacheManager(trainer.cfg)
-        extractor = CLIPFeatureExtractor(trainer, cache_manager)
-
-        cache_reps = int(getattr(self.cfg.CLIP_ADAPTERS, "CACHE_REPS", 1))
-        cache_train_aug = bool(getattr(self.cfg.CLIP_ADAPTERS, "CACHE_TRAIN_AUG", True))
-
-        trainer.labels_train, trainer.logits_train, trainer.features_train = extractor.extract_split(
-            "train",
-            reps=cache_reps,
-            train_aug=cache_train_aug,
-        )
-
-        adapter.build_cache(trainer.features_train, trainer.labels_train)
 
     def on_cache_ready(self, trainer):
         adapter = self.model.adapter

@@ -15,7 +15,8 @@ class OnlineExecutor(BaseExecutor):
 
     def forward_backward(self, trainer, batch):
         prec = self.method.get_precision()
-
+        if hasattr(self.method, "set_epoch_context"):
+            self.method.set_epoch_context(trainer.epoch, trainer.max_epoch)
         payload = {
             "img": batch["img"].to(trainer.device),
             "label": batch["label"].to(trainer.device),

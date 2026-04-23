@@ -1,33 +1,25 @@
 METHOD:
-# ClipAdapters
   NAME: ClipAdapters
   FAMILY: adapter
-  EXEC_MODE: online
+  EXEC_MODE: cache
 
 CLIP_ADAPTERS:
   PREC: amp
   TYPE: MP
-
-  # Adapter initialization:
-  # ZS | RANDOM | TR | ClipA | TipA | TipA-F | CrossModal | GAUSSIAN_PER_CLASS
-  INIT: RANDOM
-
-  # none | l2 | cosine | balanced_l2 | balanced_cosine | corrected_l2 | ...
+  INIT: BAYES_ADAPTER
   CONSTRAINT: none
-
-  # Optional enhanced text base projection checkpoint; "none" disables it
   ENHANCED_BASE: none
 
-  # Used only by stochastic prototype adapters
   N_SAMPLES: 3
+  N_TEST_SAMPLES: 10
 
-  # Global adapter regularization weight used by ClipAdaptersLoss when adapter exposes KL
-  KL_WEIGHT: 0.0001
-
-  # Allow adapters with uses_cache=True to prebuild support cache before training
   ALLOW_CACHE: true
 
-  # Cache prebuild options for cache-using adapters (currently TipAdapter family)
-  # These are intended for the on_fit_start() prebuild path discussed earlier
-  CACHE_TRAIN_AUG: true
-  CACHE_REPS: 1
+  # for original BayesAdapter initialization
+  BAYES_PRIOR_STD: 0.01
+
+  # multiplier on top of the original 1/(1000*C*D) factor
+  BAYES_KL_SCALE: 1.0
+
+  # kept for compatibility, but BayesAdapter train path will use bayes_kl_weight
+  KL_WEIGHT: 0.0001

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .adapters import (
+    BayesAdapter,
     ClipAdapterResidual,
     CrossModalProbeAdapter,
     GaussianPerClassAdapter,
@@ -35,5 +36,8 @@ def build_adapter(cfg, clip_model, base_text_features):
 
     if "GAUSSIAN_PER_CLASS" in init_upper:
         return GaussianPerClassAdapter(cfg, clip_model, base_text_features)
+
+    if "BAYES_ADAPTER" in init_upper:
+        return BayesAdapter(cfg, clip_model, base_text_features)
 
     raise NotImplementedError(f"Unknown clip adapter init: {init}")

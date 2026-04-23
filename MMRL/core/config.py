@@ -213,12 +213,17 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.CONSTRAINT = "none"
     cfg.CLIP_ADAPTERS.ENHANCED_BASE = "none"
     cfg.CLIP_ADAPTERS.ALLOW_CACHE = True
+
+    # train / eval MC sampling
     cfg.CLIP_ADAPTERS.N_SAMPLES = 3
+    cfg.CLIP_ADAPTERS.N_TEST_SAMPLES = 10
+
+    # generic KL weight (kept for compatibility)
     cfg.CLIP_ADAPTERS.KL_WEIGHT = 1e-4
 
-    cfg.CLIP_ADAPTERS.CACHE_TRAIN_AUG = True
-    cfg.CLIP_ADAPTERS.CACHE_REPS = 1
-    cfg.CLIP_ADAPTERS.CACHE_REFRESH_EVERY_EPOCH = False
+    # BayesAdapter-specific defaults
+    cfg.CLIP_ADAPTERS.BAYES_PRIOR_STD = 0.01
+    cfg.CLIP_ADAPTERS.BAYES_KL_SCALE = 1.0
 
     
 

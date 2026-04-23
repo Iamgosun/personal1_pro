@@ -92,6 +92,9 @@ class CacheExecutor(BaseExecutor):
                 kl_beta = 1.0
             self.method.set_kl_beta(kl_beta)
 
+        if hasattr(self.method, "set_epoch_context"):
+            self.method.set_epoch_context(trainer.epoch, trainer.max_epoch)
+
         payload = {'features': features, 'label': labels}
         if prec == 'amp':
             with autocast():
