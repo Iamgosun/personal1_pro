@@ -64,6 +64,7 @@ def _as_legacy_mmrlpp(cfg):
     sec.RES_LORA_DIM = src.RES_LORA_DIM
 
 
+
 def _as_legacy_bayes_mmrl(cfg):
     if not hasattr(cfg.TRAINER, "BayesMMRL"):
         cfg.TRAINER.BayesMMRL = CN()
@@ -91,6 +92,8 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.REP_PRIOR_MODE = src.REP_PRIOR_MODE
     sec.REP_PRIOR_STD = src.REP_PRIOR_STD
     sec.REP_KL_WEIGHT = src.REP_KL_WEIGHT
+    sec.REP_MN_ENFORCE_TRACE = src.REP_MN_ENFORCE_TRACE
+    sec.REP_MN_LOWRANK_RANK = src.REP_MN_LOWRANK_RANK
 
     sec.CLIP_PRIOR_SCALE = src.CLIP_PRIOR_SCALE
     sec.CLIP_PRIOR_BLEND = src.CLIP_PRIOR_BLEND
@@ -187,6 +190,10 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.REP_PRIOR_MODE = "zero"       # zero | clip_joint
     cfg.BAYES_MMRL.REP_PRIOR_STD = 0.05
     cfg.BAYES_MMRL.REP_KL_WEIGHT = 5e-4
+
+    # matrix-normal specific defaults
+    cfg.BAYES_MMRL.REP_MN_ENFORCE_TRACE = True
+    cfg.BAYES_MMRL.REP_MN_LOWRANK_RANK = 8
 
     # used only when REP_PRIOR_MODE == clip_joint
     cfg.BAYES_MMRL.CLIP_PRIOR_SCALE = 0.05

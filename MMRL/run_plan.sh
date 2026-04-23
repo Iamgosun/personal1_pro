@@ -28,11 +28,11 @@ set -euo pipefail
 #       .../B2N/train_base/...
 #       .../B2N/test_new/...
 
-PROTOCOL=${1:-B2N}
-METHODS_ARG=${2:-MMRL}
+PROTOCOL=${1:-FS}
+METHODS_ARG=${2:-BayesMMRL}
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-caltech101 ucf101}
-SHOTS_ARG=${5:-"16"}
+DATASETS_ARG=${4:-caltech101 }
+SHOTS_ARG=${5:-"1 2 4 8 16"}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}

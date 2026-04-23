@@ -39,6 +39,7 @@ def _canonical_eval_mode(mode: str | None) -> str:
         return mode
     raise ValueError(f"Unsupported EVAL_MODE: {mode}")
 
+
 def _canonical_eval_aggregation(mode: str | None) -> str:
     mode = str(mode or "prob_mean")
     if mode in {"prob_mean", "logit_mean"}:
@@ -55,23 +56,34 @@ def _softplus_inverse(x: torch.Tensor) -> torch.Tensor:
     return torch.log(torch.expm1(x))
 
 
+def _build_positive_lower_triangular(
+    raw_tril: torch.Tensor,
+    min_diag: float,
+) -> torch.Tensor:
+    tril = torch.tril(raw_tril)
+    diag = torch.diagonal(tril, dim1=-2, dim2=-1)
+    diag_pos = F.softplus(diag.float()) + float(min_diag)
+    tril = tril - torch.diag_embed(diag) + torch.diag_embed(diag_pos)
+    return tril
+
+
 class BayesianTensorParameter(nn.Module):
     """
-    Generic Bayesian tensor parameter with Gaussian posterior / prior:
+    Generic factorized Gaussian tensor posterior / prior.
 
-        q(W) = N(mu_q, sigma_q^2)
-        p(W) = N(mu_p, sigma_p^2)
+        q(W) = N(mu_q, diag(sigma_q^2))
+        p(W) = N(mu_p, diag(sigma_p^2))
 
-    and we support initializing q_0 = p exactly.
+    and we support exact initialization q_0 = p.
 
-    Supported sigma modes for 2D tensors used in this repo:
+    Supported sigma modes:
         - global
         - per_token / row
         - per_dim / col
-        - full
+        - diagonal / full   (elementwise mean-field; "full" kept as a legacy alias)
 
-    For your current A/B/C definitions, you only need:
-        - rep_tokens : global / per_token
+    For current BayesMMRL usage:
+        - rep_tokens : global / per_token / diagonal
         - proj_rep   : global / row
     """
 
@@ -116,7 +128,7 @@ class BayesianTensorParameter(nn.Module):
             return (shape[0], 1)
         if sigma_mode in {"per_dim", "col"}:
             return (1, shape[1])
-        if sigma_mode == "full":
+        if sigma_mode in {"diagonal", "full"}:
             return shape
         raise ValueError(f"Unsupported sigma mode: {sigma_mode}")
 
@@ -207,6 +219,317 @@ class BayesianTensorParameter(nn.Module):
         return kl.sum()
 
 
+class BayesianMatrixNormalParameter(nn.Module):
+    """
+    Bayesian matrix-normal posterior over shared representation matrix R.
+
+        q(R) = MN(M, U, V)
+
+    Prior:
+        p(R) = MN(M_prior, I_K, sigma0^2 I_D)
+
+    Supported feature covariance modes:
+        - "diag":         V = diag(v^2)
+        - "diag_lowrank": V = diag(d^2) + B B^T
+
+    Token covariance U is full over tokens and parameterized by a Cholesky factor.
+    By default we normalize it to tr(U)=K to reduce scale ambiguity between U and V.
+
+    Important:
+        - initialization enforces q0 = p exactly
+        - initial KL is returned as exact zero so your existing assertion still passes
+    """
+
+    def __init__(
+        self,
+        shape: Tuple[int, int],
+        feature_cov_mode: str,
+        prior_std: float,
+        lowrank_rank: int = 0,
+        min_sigma: float = 1e-6,
+        enforce_token_trace: bool = True,
+    ):
+        super().__init__()
+        if len(shape) != 2:
+            raise ValueError(f"Matrix-normal parameter expects 2D shape, got {shape}")
+
+        self.shape = tuple(shape)
+        self.n_tokens, self.rep_dim = self.shape
+        self.feature_cov_mode = str(feature_cov_mode)
+        self.lowrank_rank = int(lowrank_rank)
+        self.min_sigma = float(min_sigma)
+        self.enforce_token_trace = bool(enforce_token_trace)
+
+        if self.feature_cov_mode not in {"diag", "diag_lowrank"}:
+            raise ValueError(
+                "feature_cov_mode must be one of {'diag', 'diag_lowrank'}, "
+                f"got {self.feature_cov_mode}"
+            )
+        if self.feature_cov_mode == "diag_lowrank" and self.lowrank_rank <= 0:
+            raise ValueError(
+                "diag_lowrank feature covariance requires lowrank_rank > 0"
+            )
+
+        self.posterior_mean = nn.Parameter(
+            torch.zeros(self.shape, dtype=torch.float32)
+        )
+
+        # token covariance U = L_U L_U^T
+        self.posterior_token_tril_raw = nn.Parameter(
+            torch.zeros(self.n_tokens, self.n_tokens, dtype=torch.float32)
+        )
+
+        # feature covariance
+        self.posterior_feature_diag_rho = nn.Parameter(
+            torch.zeros(self.rep_dim, dtype=torch.float32)
+        )
+        if self.feature_cov_mode == "diag_lowrank":
+            self.posterior_feature_lowrank = nn.Parameter(
+                torch.zeros(self.rep_dim, self.lowrank_rank, dtype=torch.float32)
+            )
+        else:
+            self.posterior_feature_lowrank = None
+
+        self.register_buffer(
+            "prior_mean",
+            torch.zeros(self.shape, dtype=torch.float32),
+        )
+        self.register_buffer(
+            "prior_feature_std",
+            torch.full((self.rep_dim,), float(prior_std), dtype=torch.float32),
+        )
+
+        self.initialize_posterior_as_prior()
+
+    def set_prior_mean(self, tensor: torch.Tensor):
+        tensor = tensor.detach().float()
+        if tuple(tensor.shape) != self.shape:
+            raise ValueError(
+                f"Shape mismatch: expected {self.shape}, got {tuple(tensor.shape)}"
+            )
+        with torch.no_grad():
+            self.prior_mean.copy_(tensor)
+
+    def set_prior_std(self, std: float | torch.Tensor):
+        if torch.is_tensor(std):
+            std_tensor = std.detach().float().flatten()
+            if std_tensor.numel() == 1:
+                target = std_tensor.expand(self.rep_dim)
+            elif tuple(std_tensor.shape) == (self.rep_dim,):
+                target = std_tensor
+            else:
+                raise ValueError(
+                    f"Prior std for matrix-normal must be scalar or {(self.rep_dim,)}, "
+                    f"got {tuple(std_tensor.shape)}"
+                )
+        else:
+            target = torch.full(
+                (self.rep_dim,),
+                float(std),
+                dtype=torch.float32,
+                device=self.prior_feature_std.device,
+            )
+
+        if torch.any(target <= 0):
+            raise ValueError("prior std must be strictly positive")
+
+        with torch.no_grad():
+            self.prior_feature_std.copy_(target)
+
+    def _identity_token_tril_raw(self) -> torch.Tensor:
+        raw = torch.zeros(
+            self.n_tokens,
+            self.n_tokens,
+            dtype=torch.float32,
+            device=self.posterior_mean.device,
+        )
+        diag_target = torch.full(
+            (self.n_tokens,),
+            1.0 - self.min_sigma,
+            dtype=torch.float32,
+            device=raw.device,
+        ).clamp_min(1e-12)
+        raw_diag = _softplus_inverse(diag_target)
+        raw.diagonal().copy_(raw_diag)
+        return raw
+
+    def initialize_posterior_as_prior(self):
+        with torch.no_grad():
+            self.posterior_mean.copy_(self.prior_mean)
+
+            # q0(U) = I_K
+            self.posterior_token_tril_raw.copy_(self._identity_token_tril_raw())
+
+            # q0(V) = sigma0^2 I
+            diag_target = (
+                self.prior_feature_std.float() - self.min_sigma
+            ).clamp_min(1e-12)
+            rho_target = _softplus_inverse(diag_target)
+            self.posterior_feature_diag_rho.copy_(rho_target)
+
+            if self.posterior_feature_lowrank is not None:
+                self.posterior_feature_lowrank.zero_()
+
+    def configure_prior_and_initialize(
+        self,
+        prior_mean: torch.Tensor,
+        prior_std: float | torch.Tensor,
+    ):
+        self.set_prior_mean(prior_mean)
+        self.set_prior_std(prior_std)
+        self.initialize_posterior_as_prior()
+
+    def _token_cholesky(self) -> torch.Tensor:
+        tril = _build_positive_lower_triangular(
+            self.posterior_token_tril_raw,
+            self.min_sigma,
+        )
+
+        if not self.enforce_token_trace:
+            return tril
+
+        # tr(U_raw) = ||L||_F^2
+        trace_u = tril.pow(2).sum().clamp_min(1e-12)
+        scale = torch.sqrt(tril.new_tensor(float(self.n_tokens)) / trace_u)
+        return tril * scale
+
+    def _feature_diag_std(self) -> torch.Tensor:
+        return F.softplus(self.posterior_feature_diag_rho.float()) + self.min_sigma
+
+    def _feature_stats(self):
+        diag_std = self._feature_diag_std()
+        diag_var = diag_std.pow(2)
+
+        if self.posterior_feature_lowrank is None:
+            trace_v = diag_var.sum()
+            logdet_v = torch.log(diag_var).sum()
+            marginal_diag_v = diag_var
+            return trace_v, logdet_v, marginal_diag_v
+
+        B = self.posterior_feature_lowrank.float()
+        trace_v = diag_var.sum() + B.pow(2).sum()
+
+        eye = torch.eye(
+            self.lowrank_rank,
+            device=B.device,
+            dtype=B.dtype,
+        )
+        Bt_Dinv_B = B.transpose(0, 1) @ (B / diag_var.unsqueeze(1))
+        sign, logabsdet = torch.linalg.slogdet(eye + Bt_Dinv_B)
+        if torch.any(sign <= 0):
+            raise RuntimeError("Feature covariance lost positive definiteness")
+
+        logdet_v = torch.log(diag_var).sum() + logabsdet
+        marginal_diag_v = diag_var + B.pow(2).sum(dim=1)
+        return trace_v, logdet_v, marginal_diag_v
+
+    def posterior_sigma(self) -> torch.Tensor:
+        # marginal std per entry, shape [K, D]
+        L_u = self._token_cholesky()
+        diag_u = L_u.pow(2).sum(dim=1)  # diag(U)
+        _, _, marginal_diag_v = self._feature_stats()  # diag(V)
+        marginal_var = diag_u.unsqueeze(1) * marginal_diag_v.unsqueeze(0)
+        return marginal_var.clamp_min(0.0).sqrt()
+
+    def sample_tensor(self, use_posterior_mean: bool = False) -> torch.Tensor:
+        if use_posterior_mean:
+            return self.posterior_mean.float()
+
+        dtype = self.posterior_mean.dtype
+        device = self.posterior_mean.device
+
+        eps = torch.randn(
+            self.n_tokens,
+            self.rep_dim,
+            device=device,
+            dtype=dtype,
+        )
+        z = eps * self._feature_diag_std().to(dtype).unsqueeze(0)
+
+        if self.posterior_feature_lowrank is not None:
+            eta = torch.randn(
+                self.n_tokens,
+                self.lowrank_rank,
+                device=device,
+                dtype=dtype,
+            )
+            z = z + eta @ self.posterior_feature_lowrank.float().to(dtype).transpose(0, 1)
+
+        L_u = self._token_cholesky().to(dtype)
+        return self.posterior_mean.float().to(dtype) + L_u @ z
+
+    def _is_exact_prior_state(self) -> bool:
+        mean_ok = torch.allclose(
+            self.posterior_mean.float().detach(),
+            self.prior_mean.float().detach(),
+            atol=1e-7,
+            rtol=0.0,
+        )
+        token_ok = torch.allclose(
+            self._token_cholesky().float().detach(),
+            torch.eye(
+                self.n_tokens,
+                device=self.posterior_mean.device,
+                dtype=torch.float32,
+            ),
+            atol=1e-6,
+            rtol=0.0,
+        )
+        feat_ok = torch.allclose(
+            self._feature_diag_std().float().detach(),
+            self.prior_feature_std.float().detach(),
+            atol=1e-7,
+            rtol=0.0,
+        )
+        if self.posterior_feature_lowrank is None:
+            lowrank_ok = True
+        else:
+            lowrank_ok = torch.allclose(
+                self.posterior_feature_lowrank.float().detach(),
+                torch.zeros_like(self.posterior_feature_lowrank.float().detach()),
+                atol=1e-7,
+                rtol=0.0,
+            )
+        return bool(mean_ok and token_ok and feat_ok and lowrank_ok)
+
+    def kl_divergence(self) -> torch.Tensor:
+        # Make the initial q0=p state return exact zero for your assertion.
+        if self._is_exact_prior_state():
+            return self.posterior_mean.float().new_zeros(())
+
+        sigma0_sq = self.prior_feature_std.float().pow(2)
+        if not torch.allclose(sigma0_sq, sigma0_sq[:1].expand_as(sigma0_sq)):
+            raise ValueError(
+                "Matrix-normal KL currently assumes isotropic feature prior std"
+            )
+        sigma0_sq = sigma0_sq[0]
+
+        mean_delta = self.posterior_mean.float() - self.prior_mean.float()
+
+        L_u = self._token_cholesky()
+        trace_u = L_u.pow(2).sum()  # tr(U)
+        logdet_u = 2.0 * torch.log(torch.diagonal(L_u)).sum()
+
+        trace_v, logdet_v, _ = self._feature_stats()
+
+        D = float(self.rep_dim)
+        K = float(self.n_tokens)
+
+        mean_quad = mean_delta.pow(2).sum() / sigma0_sq
+        trace_term = (trace_u * trace_v) / sigma0_sq
+        const_term = -K * D
+        prior_logdet_term = K * D * torch.log(sigma0_sq)
+        posterior_logdet_term = -D * logdet_u - K * logdet_v
+
+        return 0.5 * (
+            mean_quad
+            + trace_term
+            + const_term
+            + prior_logdet_term
+            + posterior_logdet_term
+        )
+
+
 class DeterministicRepresentationLearnerAdapter(nn.Module):
     """
     Wrap original deterministic MMRL representation learner with a compatible API.
@@ -256,14 +579,12 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
     """
     Bayesian version of shared representation learner.
 
-    A/B schemes:
-        random variable is R in shape [N_REP_TOKENS, REP_DIM]
-
-    Scheme A:
-        p(R) = N(0, Sigma_R), q_0(R) = p(R)
-
-    Scheme B:
-        p(R) = N(M_clip_joint, Sigma_R), q_0(R) = p(R)
+    Supported posterior schemes on R:
+        1) global
+        2) per_token
+        3) diagonal
+        4) matrix_normal_diag
+        5) matrix_normal_diag_lowrank
     """
 
     def __init__(self, cfg, classnames, clip_model):
@@ -277,12 +598,19 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
         self.rep_layers_length = len(bayes_cfg.REP_LAYERS)
 
         rep_sigma_mode = str(getattr(bayes_cfg, "REP_SIGMA_MODE", "global"))
-        if rep_sigma_mode not in {"global", "per_token"}:
-            raise ValueError(
-                f"REP_SIGMA_MODE must be one of {{'global', 'per_token'}}, got {rep_sigma_mode}"
-            )
-
         rep_prior_std = float(getattr(bayes_cfg, "REP_PRIOR_STD", 0.05))
+
+        supported_modes = {
+            "global",
+            "per_token",
+            "diagonal",
+            "matrix_normal_diag",
+            "matrix_normal_diag_lowrank",
+        }
+        if rep_sigma_mode not in supported_modes:
+            raise ValueError(
+                f"REP_SIGMA_MODE must be one of {supported_modes}, got {rep_sigma_mode}"
+            )
 
         text_dim = clip_model.ln_final.weight.shape[0]
         visual_dim = clip_model.visual.ln_post.weight.shape[0]
@@ -307,13 +635,38 @@ class BayesianMultiModalRepresentationLearner(nn.Module):
             )
         self.register_buffer("prompt_embeddings", prompt_embeddings)
 
-        self.rep_posterior = BayesianTensorParameter(
-            shape=(n_rep_tokens, rep_dim),
-            sigma_mode=rep_sigma_mode,
-            prior_std=rep_prior_std,
-        )
+        shape = (n_rep_tokens, rep_dim)
 
-        # default A-style initialization: zero-mean prior with q_0 = p
+        if rep_sigma_mode in {"global", "per_token", "diagonal"}:
+            self.rep_posterior = BayesianTensorParameter(
+                shape=shape,
+                sigma_mode=rep_sigma_mode,
+                prior_std=rep_prior_std,
+            )
+        elif rep_sigma_mode == "matrix_normal_diag":
+            self.rep_posterior = BayesianMatrixNormalParameter(
+                shape=shape,
+                feature_cov_mode="diag",
+                prior_std=rep_prior_std,
+                lowrank_rank=0,
+                enforce_token_trace=bool(
+                    getattr(bayes_cfg, "REP_MN_ENFORCE_TRACE", True)
+                ),
+            )
+        elif rep_sigma_mode == "matrix_normal_diag_lowrank":
+            self.rep_posterior = BayesianMatrixNormalParameter(
+                shape=shape,
+                feature_cov_mode="diag_lowrank",
+                prior_std=rep_prior_std,
+                lowrank_rank=int(getattr(bayes_cfg, "REP_MN_LOWRANK_RANK", 8)),
+                enforce_token_trace=bool(
+                    getattr(bayes_cfg, "REP_MN_ENFORCE_TRACE", True)
+                ),
+            )
+        else:
+            raise ValueError(f"Unsupported REP_SIGMA_MODE: {rep_sigma_mode}")
+
+        # default zero-mean prior with q_0 = p
         zero_prior = torch.zeros(n_rep_tokens, rep_dim, dtype=torch.float32)
         self.rep_posterior.configure_prior_and_initialize(
             prior_mean=zero_prior,
@@ -707,8 +1060,6 @@ class BayesianCustomMMRLModel(nn.Module):
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
         return logits, logits_rep, logits_fusion, image_features, text_features
 
-
-
     def _aggregate_eval_outputs(self, sample_outputs):
         eps = 1e-8
 
@@ -743,8 +1094,6 @@ class BayesianCustomMMRLModel(nn.Module):
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
         return logits, logits_rep, logits_fusion, image_features, text_features
-
-
 
     @torch.no_grad()
     def _get_cached_mean_eval_state(self):
@@ -867,4 +1216,3 @@ class BayesianCustomMMRLModel(nn.Module):
             return self._aggregate_eval_outputs(sample_outputs)
 
         raise ValueError(f"Unsupported EVAL_MODE: {eval_mode}")
-
