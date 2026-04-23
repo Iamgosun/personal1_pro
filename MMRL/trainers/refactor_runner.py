@@ -43,10 +43,14 @@ class RefactorRunner(TrainerX):
             if module is not None and hasattr(module, "to"):
                 module.to(self.device)
 
-        # Build executor first so cache-based methods can materialize late parameters
-        # (e.g. Tip-Adapter-F cache keys) before the optimizer is created.
+        # Build executor first so executor-side setup can run before optimizer creation.
         self.executor = EXECUTOR_REGISTRY.get(self.cfg.METHOD.EXEC_MODE)(self.method)
         self.executor.on_build(self)
+
+        # Method-level pre-fit hook.
+        # This is the right place for method-family specific initialization that must
+        # happen before optimizer creation, e.g. adapter-family cache prebuild.
+        self.method.on_fit_start(self)
 
         optim_target = self.method.get_optimizer_target()
         self.optim = build_optimizer(optim_target, self.cfg.OPTIM)

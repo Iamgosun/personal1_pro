@@ -8,7 +8,10 @@ from backbones.freeze import freeze_all_but
 from backbones.text_encoders import CLIPTextEncoder, build_base_text_features
 from core.registry import METHOD_REGISTRY
 from core.types import MethodOutputs
+from features.cache_manager import FeatureCacheManager
+from features.extractor import CLIPFeatureExtractor
 from methods.base import BaseMethod
+
 from .adapter_router import build_adapter
 from .loss import ClipAdaptersLoss
 from .online_heads import bayes_logits, lp_logits
@@ -95,7 +98,11 @@ class ClipAdaptersMethod(BaseMethod):
         return self.cfg.CLIP_ADAPTERS.PREC
 
     def supports_cache(self) -> bool:
-        return bool(getattr(self.cfg.CLIP_ADAPTERS, "ALLOW_CACHE", True))
+        adapter = self.model.adapter
+        return bool(
+            getattr(adapter, "uses_cache", False)
+            and getattr(self.cfg.CLIP_ADAPTERS, "ALLOW_CACHE", True)
+        )
 
     def forward_train(self, batch):
         label = batch["label"].to(self.device)
@@ -121,6 +128,34 @@ class ClipAdaptersMethod(BaseMethod):
 
     def forward_eval(self, batch, eval_ctx):
         return self.forward_train(batch)
+
+    def on_fit_start(self, trainer):
+        # Adapter-family methods should use online_executor for aligned training protocol.
+        # Only adapters that explicitly declare uses_cache=True will prebuild support cache.
+        if str(getattr(trainer.cfg.METHOD, "EXEC_MODE", "online")).lower() != "online":
+            return
+
+        adapter = self.model.adapter
+        if not getattr(adapter, "uses_cache", False):
+            return
+        if not getattr(self.cfg.CLIP_ADAPTERS, "ALLOW_CACHE", True):
+            return
+        if not hasattr(adapter, "build_cache"):
+            return
+
+        cache_manager = FeatureCacheManager(trainer.cfg)
+        extractor = CLIPFeatureExtractor(trainer, cache_manager)
+
+        cache_reps = int(getattr(self.cfg.CLIP_ADAPTERS, "CACHE_REPS", 1))
+        cache_train_aug = bool(getattr(self.cfg.CLIP_ADAPTERS, "CACHE_TRAIN_AUG", True))
+
+        trainer.labels_train, trainer.logits_train, trainer.features_train = extractor.extract_split(
+            "train",
+            reps=cache_reps,
+            train_aug=cache_train_aug,
+        )
+
+        adapter.build_cache(trainer.features_train, trainer.labels_train)
 
     def on_cache_ready(self, trainer):
         adapter = self.model.adapter

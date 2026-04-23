@@ -216,6 +216,12 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.N_SAMPLES = 3
     cfg.CLIP_ADAPTERS.KL_WEIGHT = 1e-4
 
+    cfg.CLIP_ADAPTERS.CACHE_TRAIN_AUG = True
+    cfg.CLIP_ADAPTERS.CACHE_REPS = 1
+    cfg.CLIP_ADAPTERS.CACHE_REFRESH_EVERY_EPOCH = False
+
+    
+
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"
     cfg.TASK = "B2N"
 

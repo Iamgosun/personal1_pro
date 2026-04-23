@@ -24,9 +24,23 @@ class CacheExecutor(BaseExecutor):
     def on_build(self, trainer):
         self.cache_manager = FeatureCacheManager(trainer.cfg)
         self.extractor = CLIPFeatureExtractor(trainer, self.cache_manager)
-        trainer.labels_train, trainer.logits_train, trainer.features_train = self.extractor.extract_split('train', reps=1, train_aug=False)
+
+        cache_reps = int(getattr(trainer.cfg.CLIP_ADAPTERS, "CACHE_REPS", 1))
+        cache_train_aug = bool(getattr(trainer.cfg.CLIP_ADAPTERS, "CACHE_TRAIN_AUG", True))
+
+        trainer.labels_train, trainer.logits_train, trainer.features_train = \
+            self.extractor.extract_split(
+                "train",
+                reps=cache_reps,
+                train_aug=cache_train_aug,
+            )
+
         trainer.cache_train_loader = DataLoader(
-            FeatureDataset(trainer.features_train.cpu(), trainer.labels_train.cpu(), trainer.logits_train.cpu()),
+            FeatureDataset(
+                trainer.features_train.cpu(),
+                trainer.labels_train.cpu(),
+                trainer.logits_train.cpu(),
+            ),
             batch_size=trainer.cfg.DATALOADER.TRAIN_X.BATCH_SIZE,
             shuffle=True,
             drop_last=False,

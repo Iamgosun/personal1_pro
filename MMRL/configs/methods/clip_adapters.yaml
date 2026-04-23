@@ -1,14 +1,33 @@
 METHOD:
+# ClipAdapters
   NAME: ClipAdapters
   FAMILY: adapter
-  EXEC_MODE: cache
+  EXEC_MODE: online
 
 CLIP_ADAPTERS:
-  PREC: fp32
+  PREC: amp
   TYPE: MP
-  INIT: ZS
+
+  # Adapter initialization:
+  # ZS | RANDOM | TR | ClipA | TipA | TipA-F | CrossModal | GAUSSIAN_PER_CLASS
+  INIT: RANDOM
+
+  # none | l2 | cosine | balanced_l2 | balanced_cosine | corrected_l2 | ...
   CONSTRAINT: none
+
+  # Optional enhanced text base projection checkpoint; "none" disables it
   ENHANCED_BASE: none
+
+  # Used only by stochastic prototype adapters
   N_SAMPLES: 3
-  ALLOW_CACHE: true
+
+  # Global adapter regularization weight used by ClipAdaptersLoss when adapter exposes KL
   KL_WEIGHT: 0.0001
+
+  # Allow adapters with uses_cache=True to prebuild support cache before training
+  ALLOW_CACHE: true
+
+  # Cache prebuild options for cache-using adapters (currently TipAdapter family)
+  # These are intended for the on_fit_start() prebuild path discussed earlier
+  CACHE_TRAIN_AUG: true
+  CACHE_REPS: 1

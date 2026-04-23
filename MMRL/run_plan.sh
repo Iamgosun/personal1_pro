@@ -22,7 +22,7 @@ set -euo pipefail
 #   caltech101 oxford_pets ucf101
 
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:- BayesMMRL}
+METHODS_ARG=${2:- ClipAdapters}
 EXEC_MODE=${3:-online}
 DATASETS_ARG=${4:-  caltech101 ucf101}
 SHOTS_ARG=${5:-"1 2 4 8 16 "}
@@ -31,7 +31,7 @@ SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 DATA_ROOT=${DATA_ROOT:-DATASETS}
 OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
-TAG=${TAG:-default}
+TAG=${TAG:-}
 
 NGPU=${NGPU:-1}
 GPU_IDS=${GPU_IDS:-0}
@@ -76,6 +76,38 @@ resolve_configs() {
   echo "$method_cfg $protocol_cfg $runtime_cfg"
 }
 
+resolve_run_tag() {
+  local method=$1
+  local method_cfg=$2
+
+  if [[ -n "${TAG}" ]]; then
+    echo "${TAG}"
+    return 0
+  fi
+
+  case "$method" in
+    ClipAdapters|ClipADAPTER)
+      local init_name
+      init_name=$(python - <<PY
+import yaml
+from pathlib import Path
+
+path = Path("${method_cfg}")
+with path.open("r", encoding="utf-8") as f:
+    cfg = yaml.safe_load(f) or {}
+print(cfg.get("CLIP_ADAPTERS", {}).get("INIT", "ClipAdapters"))
+PY
+)
+      echo "${init_name}"
+      ;;
+    *)
+      echo "default"
+      ;;
+  esac
+}
+
+
+
 init_gpu_list() {
   if [[ -n "$GPU_IDS" ]]; then
     read -r -a GPU_LIST <<< "$GPU_IDS"
@@ -98,20 +130,30 @@ build_outdir() {
   local dataset=$2
   local shot=$3
   local seed=$4
+  local run_tag=$5
 
   read -r phase _subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
-  echo "${OUTPUT_ROOT}/${method}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/${TAG}/seed${seed}"
+
+  if [[ "$method" == "ClipAdapters" || "$method" == "ClipADAPTER" ]]; then
+    echo "${OUTPUT_ROOT}/${method}/${run_tag}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/seed${seed}"
+  else
+    echo "${OUTPUT_ROOT}/${method}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/${run_tag}/seed${seed}"
+  fi
 }
+
 
 build_logfile() {
   local method=$1
   local dataset=$2
   local shot=$3
   local seed=$4
+  local run_tag=$5
   local outdir
-  outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed")"
+  outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
   echo "${outdir}/run.log"
 }
+
+
 
 write_log_header() {
   local logfile=$1
@@ -148,9 +190,11 @@ launch_one_case() {
 
   read -r phase subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
   read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+  local run_tag
+  run_tag="$(resolve_run_tag "$method" "$method_cfg")"
 
   local outdir logfile statusfile
-  outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed")"
+  outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
   logfile="${outdir}/run.log"
   statusfile="${outdir}/job_status.txt"
 
@@ -205,7 +249,15 @@ launch_one_case() {
 
 summarize_case() {
   local method=$1
-  python evaluation/result_parser.py "${OUTPUT_ROOT}/${method}/${PROTOCOL}" --split test >/dev/null 2>&1 || true
+  read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+  local run_tag
+  run_tag="$(resolve_run_tag "$method" "$method_cfg")"
+
+  if [[ "$method" == "ClipAdapters" || "$method" == "ClipADAPTER" ]]; then
+    python evaluation/result_parser.py "${OUTPUT_ROOT}/${method}/${run_tag}/${PROTOCOL}" --split test >/dev/null 2>&1 || true
+  else
+    python evaluation/result_parser.py "${OUTPUT_ROOT}/${method}/${PROTOCOL}" --split test >/dev/null 2>&1 || true
+  fi
 }
 
 cleanup_children() {
@@ -354,8 +406,12 @@ main() {
     for dataset in "${DATASET_LIST[@]}"; do
       for shot in "${SHOT_LIST[@]}"; do
         for seed in "${SEED_LIST[@]}"; do
+          read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+          local run_tag
+          run_tag="$(resolve_run_tag "$method" "$method_cfg")"
+
           local outdir logfile statusfile
-          outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed")"
+          outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
           logfile="${outdir}/run.log"
           statusfile="${outdir}/job_status.txt"
 
