@@ -7,27 +7,37 @@ from .base import BaseAdapter
 
 class ClipAdapterResidual(BaseAdapter):
     initialization_name = "ClipA"
+    adapter_kind = "prototype"
 
     def __init__(self, cfg, clip_model, base_text_features: torch.Tensor, ratio: float = 0.2):
         super().__init__(cfg, clip_model, base_text_features)
         print("Using CLIP-Adapter")
+
+        feat_dim = int(base_text_features.shape[-1])
+        hidden_dim = max(1, feat_dim // 4)
+
         self.grid_search_param = {
             "lr": [1e-1, 1e-2, 1e-3],
-            "ratio": list(np.arange(0.2, 1, 0.2)),
+            "ratio": list(np.arange(0.2, 1.0, 0.2)),
         }
-        self.ratio = ratio
-        self.prototypes = nn.Parameter(base_text_features.clone())
-        self.prototypes.requires_grad = False
+
+        self.ratio = float(ratio)
+
+        # CLIP-Adapter keeps the classifier anchored to the zero-shot text prototypes.
         self.mlp = nn.Sequential(
-            nn.Linear(base_text_features.shape[-1], base_text_features.shape[-1] // 4, bias=False),
+            nn.Linear(feat_dim, hidden_dim, bias=False),
             nn.ReLU(inplace=True),
-            nn.Linear(base_text_features.shape[-1] // 4, base_text_features.shape[-1], bias=False),
+            nn.Linear(hidden_dim, feat_dim, bias=False),
             nn.ReLU(inplace=True),
         )
 
-    def forward(self, n_samples: int = 1) -> torch.Tensor:
-        return self.prototypes.unsqueeze(0).expand(n_samples, -1, -1)
+    def get_prototypes(self) -> torch.Tensor:
+        return self.base_text_features
+
+    def adapt_features(self, features: torch.Tensor) -> torch.Tensor:
+        adapted = self.mlp(features)
+        return self.ratio * adapted + (1.0 - self.ratio) * features
 
     def reset_hparams(self, params):
         if "ratio" in params:
-            self.ratio = params["ratio"]
+            self.ratio = float(params["ratio"])

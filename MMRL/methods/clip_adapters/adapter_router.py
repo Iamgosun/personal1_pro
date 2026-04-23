@@ -12,19 +12,28 @@ from .adapters import (
 
 
 def build_adapter(cfg, clip_model, base_text_features):
-    init = cfg.CLIP_ADAPTERS.INIT
-    if init == 'RANDOM':
+    init = str(cfg.CLIP_ADAPTERS.INIT)
+    init_upper = init.upper()
+
+    if init_upper == "RANDOM":
         return RandomProbeAdapter(cfg, clip_model, base_text_features)
-    if 'ZS' in init:
+
+    if init_upper.startswith("ZS") or init_upper == "ZS":
         return ZeroShotProbeAdapter(cfg, clip_model, base_text_features)
-    if 'TR' in init:
+
+    if "TR" in init_upper:
         return TaskResidualAdapter(cfg, clip_model, base_text_features)
-    if 'ClipA' in init:
+
+    if "CLIPA" in init_upper:
         return ClipAdapterResidual(cfg, clip_model, base_text_features)
-    if 'TipA' in init:
+
+    if "TIPA" in init_upper:
         return TipAdapter(cfg, clip_model, base_text_features)
-    if 'CrossModal' in init:
+
+    if "CROSSMODAL" in init_upper:
         return CrossModalProbeAdapter(cfg, clip_model, base_text_features)
-    if 'GAUSSIAN_PER_CLASS' in init:
+
+    if "GAUSSIAN_PER_CLASS" in init_upper:
         return GaussianPerClassAdapter(cfg, clip_model, base_text_features)
-    raise NotImplementedError(f'Unknown clip adapter init: {init}')
+
+    raise NotImplementedError(f"Unknown clip adapter init: {init}")

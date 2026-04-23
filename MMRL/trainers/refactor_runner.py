@@ -43,6 +43,11 @@ class RefactorRunner(TrainerX):
             if module is not None and hasattr(module, "to"):
                 module.to(self.device)
 
+        # Build executor first so cache-based methods can materialize late parameters
+        # (e.g. Tip-Adapter-F cache keys) before the optimizer is created.
+        self.executor = EXECUTOR_REGISTRY.get(self.cfg.METHOD.EXEC_MODE)(self.method)
+        self.executor.on_build(self)
+
         optim_target = self.method.get_optimizer_target()
         self.optim = build_optimizer(optim_target, self.cfg.OPTIM)
         self.sched = build_lr_scheduler(self.optim, self.cfg.OPTIM)
@@ -50,9 +55,6 @@ class RefactorRunner(TrainerX):
 
         prec = self.method.get_precision()
         self.scaler = GradScaler() if prec == "amp" else None
-
-        self.executor = EXECUTOR_REGISTRY.get(self.cfg.METHOD.EXEC_MODE)(self.method)
-        self.executor.on_build(self)
 
         device_count = torch.cuda.device_count()
         if device_count > 1 and self.cfg.USE_CUDA:
@@ -73,7 +75,7 @@ class RefactorRunner(TrainerX):
 
     def load_model(self, directory, epoch=None):
         if not directory:
-            print("Note that load_model() is skipped as no pretrained model is given")
+            print('Note that load_model() is skipped as no pretrained model is given')
             return
 
         names = self.get_model_names()
