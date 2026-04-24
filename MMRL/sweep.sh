@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
+# 不在同一参数，而是以每个数据集保留自己的最佳参数进行确认实验，还要以对应参数跑B2N实验
 # ============================================================
 # BayesMMRL rep_tokens-only sweep
 #
@@ -12,7 +13,7 @@ set -euo pipefail
 #    - 先看 ACC
 #    - 如果 ACC 与最优只差 <= 0.15，则优先选 ECE 更低的
 # 4) 找到 best tag 后，自动做最终确认：
-#    - shots: 1..16
+#    - shots: 1..32
 #    - seeds: 1..3
 #
 # 用法：
@@ -74,7 +75,7 @@ COMMON_N_MC_TRAIN=${COMMON_N_MC_TRAIN:-3}
 COMMON_N_MC_TEST=${COMMON_N_MC_TEST:-10}
 COMMON_EVAL_MODE=${COMMON_EVAL_MODE:-mc_predictive}
 COMMON_EVAL_AGGREGATION=${COMMON_EVAL_AGGREGATION:-logit_mean}
-COMMON_KL_WARMUP_EPOCHS=${COMMON_KL_WARMUP_EPOCHS:-8}
+COMMON_KL_WARMUP_EPOCHS=${COMMON_KL_WARMUP_EPOCHS:-6}
 
 # ---------------------------
 # rep_tokens 搜索空间
@@ -82,18 +83,15 @@ COMMON_KL_WARMUP_EPOCHS=${COMMON_KL_WARMUP_EPOCHS:-8}
 REP_SIGMA_MODES=${REP_SIGMA_MODES:-"global per_token diagonal matrix_normal_diag matrix_normal_diag_lowrank"}
 
 # zero prior
-ZERO_PRIOR_STDS=${ZERO_PRIOR_STDS:-"0.02 0.05 0.1 0.5 1.0"}
-ZERO_KL_LIST=${ZERO_KL_LIST:-"1e-6 1e-5 1e-4 5e-4 1e-3"}
+ZERO_PRIOR_STDS=${ZERO_PRIOR_STDS:-"0.02 0.1 0.5 1.0"}
+ZERO_KL_LIST=${ZERO_KL_LIST:-" 1e-4  1e-3  5e-3  1e-2  5e-2 "}
 
-# clip_joint prior（默认关闭；保留代码是为了以后需要时可直接打开）
-CLIP_PRIOR_STDS=${CLIP_PRIOR_STDS:-"0.05"}
-CLIP_KL_LIST=${CLIP_KL_LIST:-"1e-4 5e-4 1e-3"}
-CLIP_BLEND_LIST=${CLIP_BLEND_LIST:-"0.2 0.5"}
-CLIP_SCALE_LIST=${CLIP_SCALE_LIST:-"0.02 0.05"}
+# clip_joint prior（默认关闭；）
+
 
 # matrix normal 相关
 MN_ENFORCE_TRACE=${MN_ENFORCE_TRACE:-True}
-MN_LOWRANK_RANKS=${MN_LOWRANK_RANKS:-"4 8"}
+MN_LOWRANK_RANKS=${MN_LOWRANK_RANKS:-"2 4 8"}
 
 METHOD_CFG="configs/methods/bayesmmrl.yaml"
 RUNTIME_CFG="configs/runtime/default.yaml"
