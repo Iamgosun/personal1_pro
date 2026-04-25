@@ -1,0 +1,597 @@
+***************
+** Arguments **
+***************
+dataset_config_file: configs/datasets/caltech101.yaml
+eval_only: False
+exec_mode: online
+exp_config: 
+load_epoch: None
+method: BayesMMRL
+method_config_file: configs/methods/bayesmmrl.yaml
+model_dir: 
+no_train: False
+opts: ['DATASET.NUM_SHOTS', '16', 'DATASET.SUBSAMPLE_CLASSES', 'all', 'MODEL.BACKBONE.NAME', 'ViT-B/16', 'BAYES_MMRL.ALPHA', '0.7', 'BAYES_MMRL.REG_WEIGHT', '0.5', 'BAYES_MMRL.N_REP_TOKENS', '5', 'BAYES_MMRL.REP_LAYERS', '[6,7,8,9,10,11,12]', 'BAYES_MMRL.REP_DIM', '512', 'BAYES_MMRL.N_MC_TRAIN', '3', 'BAYES_MMRL.N_MC_TEST', '10', 'BAYES_MMRL.EVAL_MODE', 'mc_predictive', 'BAYES_MMRL.EVAL_USE_POSTERIOR_MEAN', 'False', 'BAYES_MMRL.EVAL_AGGREGATION', 'logit_mean', 'BAYES_MMRL.KL_WARMUP_EPOCHS', '6', 'BAYES_MMRL.BAYES_TARGET', 'rep_tokens', 'BAYES_MMRL.REP_PRIOR_MODE', 'zero', 'BAYES_MMRL.REP_SIGMA_MODE', 'matrix_normal_diag', 'BAYES_MMRL.REP_PRIOR_STD', '0.01', 'BAYES_MMRL.REP_KL_WEIGHT', '5e-2', 'BAYES_MMRL.REP_MN_ENFORCE_TRACE', 'True']
+output_dir: output_sweeps/bayes_mmrl_rep_tokens/coarse3/search_stage/BayesMMRL/FS/fewshot_train/caltech101/shots_16/ViT-B-16/rep_zero_sig-matrix_normal_diag_pstd-0.01_kl-5e-2/seed1
+protocol: FS
+protocol_config_file: configs/protocols/fs.yaml
+root: DATASETS
+runtime_config_file: configs/runtime/default.yaml
+seed: 1
+trainer: RefactorRunner
+************
+** Config **
+************
+BAYES_MMRL:
+  ALPHA: 0.7
+  BAYES_TARGET: rep_tokens
+  CLIP_PRIOR_BLEND: 0.5
+  CLIP_PRIOR_SCALE: 0.05
+  EVAL_AGGREGATION: logit_mean
+  EVAL_MODE: mc_predictive
+  EVAL_USE_POSTERIOR_MEAN: False
+  KL_WARMUP_EPOCHS: 6
+  KL_WEIGHT: 0.0005
+  N_MC_TEST: 10
+  N_MC_TRAIN: 3
+  N_REP_TOKENS: 5
+  PREC: amp
+  PRIOR_STD: 0.05
+  PROJ_REP_KL_WEIGHT: 1e-06
+  PROJ_REP_PRIOR_MODE: clip_proj
+  PROJ_REP_PRIOR_STD: 0.01
+  PROJ_REP_SIGMA_MODE: row
+  REG_WEIGHT: 0.5
+  REP_DIM: 512
+  REP_KL_WEIGHT: 0.05
+  REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+  REP_MN_ENFORCE_TRACE: True
+  REP_MN_LOWRANK_RANK: 8
+  REP_PRIOR_MODE: zero
+  REP_PRIOR_STD: 0.01
+  REP_SIGMA_MODE: matrix_normal_diag
+  SIGMA_MODE: global
+CLIP_ADAPTERS:
+  ALLOW_CACHE: True
+  BAYES_KL_SCALE: 1.0
+  BAYES_PRIOR_STD: 0.01
+  CONSTRAINT: none
+  ENHANCED_BASE: none
+  INIT: ZS
+  KL_WEIGHT: 0.0001
+  N_SAMPLES: 3
+  N_TEST_SAMPLES: 10
+  PREC: fp32
+  TYPE: MP
+DATALOADER:
+  K_TRANSFORMS: 1
+  NUM_WORKERS: 8
+  RETURN_IMG0: False
+  TEST:
+    BATCH_SIZE: 250
+    SAMPLER: SequentialSampler
+  TRAIN_U:
+    BATCH_SIZE: 32
+    N_DOMAIN: 0
+    N_INS: 16
+    SAME_AS_X: True
+    SAMPLER: RandomSampler
+  TRAIN_X:
+    BATCH_SIZE: 32
+    N_DOMAIN: 0
+    N_INS: 16
+    SAMPLER: RandomSampler
+DATASET:
+  ALL_AS_UNLABELED: False
+  CIFAR_C_LEVEL: 1
+  CIFAR_C_TYPE: 
+  NAME: Caltech101
+  NUM_LABELED: -1
+  NUM_SHOTS: 16
+  ROOT: DATASETS
+  SOURCE_DOMAINS: ()
+  STL10_FOLD: -1
+  SUBSAMPLE_CLASSES: all
+  TARGET_DOMAINS: ()
+  VAL_PERCENT: 0.1
+INPUT:
+  COLORJITTER_B: 0.4
+  COLORJITTER_C: 0.4
+  COLORJITTER_H: 0.1
+  COLORJITTER_S: 0.4
+  CROP_PADDING: 4
+  CUTOUT_LEN: 16
+  CUTOUT_N: 1
+  GB_K: 21
+  GB_P: 0.5
+  GN_MEAN: 0.0
+  GN_STD: 0.15
+  INTERPOLATION: bicubic
+  NO_TRANSFORM: False
+  PIXEL_MEAN: [0.48145466, 0.4578275, 0.40821073]
+  PIXEL_STD: [0.26862954, 0.26130258, 0.27577711]
+  RANDAUGMENT_M: 10
+  RANDAUGMENT_N: 2
+  RGS_P: 0.2
+  RRCROP_SCALE: (0.5, 1)
+  SIZE: (224, 224)
+  TRANSFORMS: ('random_resized_crop', 'random_flip', 'normalize')
+METHOD:
+  EXEC_MODE: online
+  FAMILY: internal_adaptation
+  NAME: BayesMMRL
+  TAG: default
+MMRL:
+  ALPHA: 0.7
+  N_REP_TOKENS: 5
+  PREC: amp
+  REG_WEIGHT: 1.0
+  REP_DIM: 512
+  REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+MMRLPP:
+  ALPHA: 0.7
+  BETA: 0.9
+  N_REP_TOKENS: 5
+  PREC: amp
+  PROJ_LORA_DIM: 64
+  REG_WEIGHT: 1.0
+  REP_DIM: 512
+  REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+  RES_LORA_DIM: 4
+MMRL_MIX:
+  ALPHA: 0.7
+  LOSS_FUSE_WEIGHT: 0.2
+  LOSS_MAIN_WEIGHT: 1.0
+  LOSS_REP_WEIGHT: 1.0
+  N_REP_TOKENS: 5
+  PREC: amp
+  REG_WEIGHT: 1.0
+  REP_DIM: 512
+  REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+MODEL:
+  BACKBONE:
+    NAME: ViT-B/16
+    PRETRAINED: True
+  HEAD:
+    ACTIVATION: relu
+    BN: True
+    DROPOUT: 0.0
+    HIDDEN_LAYERS: ()
+    NAME: 
+  INIT_WEIGHTS: 
+OPTIM:
+  ADAM_BETA1: 0.9
+  ADAM_BETA2: 0.999
+  BASE_LR_MULT: 0.1
+  GAMMA: 0.1
+  LR: 0.001
+  LR_SCHEDULER: cosine
+  MAX_EPOCH: 50
+  MOMENTUM: 0.9
+  NAME: adamw
+  NEW_LAYERS: ()
+  RMSPROP_ALPHA: 0.99
+  SGD_DAMPNING: 0
+  SGD_NESTEROV: False
+  STAGED_LR: False
+  STEPSIZE: (-1,)
+  WARMUP_CONS_LR: 1e-05
+  WARMUP_EPOCH: 1
+  WARMUP_MIN_LR: 1e-05
+  WARMUP_RECOUNT: True
+  WARMUP_TYPE: constant
+  WEIGHT_DECAY: 0.0005
+OUTPUT_DIR: output_sweeps/bayes_mmrl_rep_tokens/coarse3/search_stage/BayesMMRL/FS/fewshot_train/caltech101/shots_16/ViT-B-16/rep_zero_sig-matrix_normal_diag_pstd-0.01_kl-5e-2/seed1
+PROTOCOL:
+  NAME: FS
+  PHASE: fewshot_train
+RESUME: 
+RUNTIME:
+  OUTPUT_ROOT: output_refactor
+  USE_DASSL_TRAINER_BRIDGE: True
+SEED: 1
+TASK: FS
+TEST:
+  COMPUTE_CMAT: False
+  EVALUATOR: Classification
+  FINAL_MODEL: last_step
+  NO_TEST: False
+  PER_CLASS_RESULT: False
+  SPLIT: test
+TRAIN:
+  CHECKPOINT_FREQ: 0
+  COUNT_ITER: train_x
+  PRINT_FREQ: 20
+TRAINER:
+  BayesMMRL:
+    ALPHA: 0.7
+    BAYES_TARGET: rep_tokens
+    CLIP_PRIOR_BLEND: 0.5
+    CLIP_PRIOR_SCALE: 0.05
+    EVAL_AGGREGATION: logit_mean
+    EVAL_MODE: mc_predictive
+    EVAL_USE_POSTERIOR_MEAN: False
+    KL_WARMUP_EPOCHS: 6
+    KL_WEIGHT: 0.05
+    N_MC_TEST: 10
+    N_MC_TRAIN: 3
+    N_REP_TOKENS: 5
+    PREC: amp
+    PRIOR_STD: 0.01
+    PROJ_REP_KL_WEIGHT: 1e-06
+    PROJ_REP_PRIOR_MODE: clip_proj
+    PROJ_REP_PRIOR_STD: 0.01
+    PROJ_REP_SIGMA_MODE: row
+    REG_WEIGHT: 0.5
+    REP_DIM: 512
+    REP_KL_WEIGHT: 0.05
+    REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+    REP_MN_ENFORCE_TRACE: True
+    REP_MN_LOWRANK_RANK: 8
+    REP_PRIOR_MODE: zero
+    REP_PRIOR_STD: 0.01
+    REP_SIGMA_MODE: matrix_normal_diag
+    SIGMA_MODE: matrix_normal_diag
+  CDAC:
+    CLASS_LR_MULTI: 10
+    P_THRESH: 0.95
+    RAMPUP_COEF: 30
+    RAMPUP_ITRS: 1000
+    STRONG_TRANSFORMS: ()
+    TOPK_MATCH: 5
+  CROSSGRAD:
+    ALPHA_D: 0.5
+    ALPHA_F: 0.5
+    EPS_D: 1.0
+    EPS_F: 1.0
+  ClipADAPTER:
+    ALLOW_CACHE: True
+    CONSTRAINT: none
+    ENHANCED_BASE: none
+    INIT: ZS
+    PREC: fp32
+    TYPE: MP
+  DAEL:
+    CONF_THRE: 0.95
+    STRONG_TRANSFORMS: ()
+    WEIGHT_U: 0.5
+  DAELDG:
+    CONF_THRE: 0.95
+    STRONG_TRANSFORMS: ()
+    WEIGHT_U: 0.5
+  DDAIG:
+    ALPHA: 0.5
+    CLAMP: False
+    CLAMP_MAX: 1.0
+    CLAMP_MIN: -1.0
+    G_ARCH: 
+    LMDA: 0.3
+    WARMUP: 0
+  DOMAINMIX:
+    ALPHA: 1.0
+    BETA: 1.0
+    TYPE: crossdomain
+  ENTMIN:
+    LMDA: 0.001
+  FIXMATCH:
+    CONF_THRE: 0.95
+    STRONG_TRANSFORMS: ()
+    WEIGHT_U: 1.0
+  M3SDA:
+    LMDA: 0.5
+    N_STEP_F: 4
+  MCD:
+    N_STEP_F: 4
+  MEANTEACHER:
+    EMA_ALPHA: 0.999
+    RAMPUP: 5
+    WEIGHT_U: 1.0
+  MIXMATCH:
+    MIXUP_BETA: 0.75
+    RAMPUP: 20000
+    TEMP: 2.0
+    WEIGHT_U: 100.0
+  MME:
+    LMDA: 0.1
+  MMRL:
+    ALPHA: 0.7
+    N_REP_TOKENS: 5
+    PREC: amp
+    REG_WEIGHT: 1.0
+    REP_DIM: 512
+    REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+  MMRLMix:
+    ALPHA: 0.7
+    LOSS_FUSE_WEIGHT: 0.2
+    LOSS_MAIN_WEIGHT: 1.0
+    LOSS_REP_WEIGHT: 1.0
+    N_REP_TOKENS: 5
+    PREC: amp
+    REG_WEIGHT: 1.0
+    REP_DIM: 512
+    REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+  MMRLpp:
+    ALPHA: 0.7
+    BETA: 0.9
+    N_REP_TOKENS: 5
+    PREC: amp
+    PROJ_LORA_DIM: 64
+    REG_WEIGHT: 1.0
+    REP_DIM: 512
+    REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+    RES_LORA_DIM: 4
+  NAME: RefactorRunner
+  SE:
+    CONF_THRE: 0.95
+    EMA_ALPHA: 0.999
+    RAMPUP: 300
+USE_CUDA: True
+VERBOSE: True
+VERSION: 1
+Collecting env info ...
+** System info **
+PyTorch version: 2.11.0+cu128
+Is debug build: False
+CUDA used to build PyTorch: 12.8
+ROCM used to build PyTorch: N/A
+
+OS: Ubuntu 22.04.1 LTS (x86_64)
+GCC version: (Ubuntu 11.3.0-1ubuntu1~22.04) 11.3.0
+Clang version: Could not collect
+CMake version: version 3.22.1
+Libc version: glibc-2.35
+
+Python version: 3.10.20 (main, Mar 11 2026, 17:46:40) [GCC 14.3.0] (64-bit runtime)
+Python platform: Linux-5.15.0-94-generic-x86_64-with-glibc2.35
+Is CUDA available: True
+CUDA runtime version: 11.8.89
+CUDA_MODULE_LOADING set to: 
+GPU models and configuration: 
+GPU 0: NVIDIA GeForce RTX 5090
+GPU 1: NVIDIA GeForce RTX 5090
+GPU 2: NVIDIA GeForce RTX 5090
+GPU 3: NVIDIA GeForce RTX 5090
+GPU 4: NVIDIA GeForce RTX 5090
+
+Nvidia driver version: 595.58.03
+cuDNN version: Probably one of the following:
+/usr/lib/x86_64-linux-gnu/libcudnn.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_adv_infer.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_adv_train.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_cnn_infer.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_cnn_train.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_ops_infer.so.8.6.0
+/usr/lib/x86_64-linux-gnu/libcudnn_ops_train.so.8.6.0
+Is XPU available: False
+HIP runtime version: N/A
+MIOpen runtime version: N/A
+Is XNNPACK available: True
+Caching allocator config: N/A
+
+CPU:
+Architecture:                       x86_64
+CPU op-mode(s):                     32-bit, 64-bit
+Address sizes:                      52 bits physical, 57 bits virtual
+Byte Order:                         Little Endian
+CPU(s):                             208
+On-line CPU(s) list:                0-207
+Vendor ID:                          GenuineIntel
+Model name:                         Intel(R) Xeon(R) Platinum 8470Q
+CPU family:                         6
+Model:                              143
+Thread(s) per core:                 2
+Core(s) per socket:                 52
+Socket(s):                          2
+Stepping:                           8
+Frequency boost:                    enabled
+CPU max MHz:                        2101.0000
+CPU min MHz:                        800.0000
+BogoMIPS:                           4200.00
+Flags:                              fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cat_l2 cdp_l3 invpcid_single intel_ppin cdp_l2 ssbd mba ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb intel_pt avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local split_lock_detect avx_vnni avx512_bf16 wbnoinvd dtherm ida arat pln pts avx512vbmi umip pku ospke waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg tme avx512_vpopcntdq la57 rdpid bus_lock_detect cldemote movdiri movdir64b enqcmd fsrm md_clear serialize tsxldtrk pconfig arch_lbr amx_bf16 avx512_fp16 amx_tile amx_int8 flush_l1d arch_capabilities
+Virtualization:                     VT-x
+L1d cache:                          4.9 MiB (104 instances)
+L1i cache:                          3.3 MiB (104 instances)
+L2 cache:                           208 MiB (104 instances)
+L3 cache:                           210 MiB (2 instances)
+NUMA node(s):                       2
+NUMA node0 CPU(s):                  0-51,104-155
+NUMA node1 CPU(s):                  52-103,156-207
+Vulnerability Gather data sampling: Not affected
+Vulnerability Itlb multihit:        Not affected
+Vulnerability L1tf:                 Not affected
+Vulnerability Mds:                  Not affected
+Vulnerability Meltdown:             Not affected
+Vulnerability Mmio stale data:      Not affected
+Vulnerability Retbleed:             Not affected
+Vulnerability Spec rstack overflow: Not affected
+Vulnerability Spec store bypass:    Mitigation; Speculative Store Bypass disabled via prctl and seccomp
+Vulnerability Spectre v1:           Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:           Mitigation; Enhanced IBRS, IBPB conditional, RSB filling, PBRSB-eIBRS SW sequence
+Vulnerability Srbds:                Not affected
+Vulnerability Tsx async abort:      Not affected
+
+Versions of relevant libraries:
+[pip3] flake8==3.7.9
+[pip3] numpy==2.2.6
+[pip3] nvidia-cublas-cu12==12.8.4.1
+[pip3] nvidia-cuda-cupti-cu12==12.8.90
+[pip3] nvidia-cuda-nvrtc-cu12==12.8.93
+[pip3] nvidia-cuda-runtime-cu12==12.8.90
+[pip3] nvidia-cudnn-cu12==9.19.0.56
+[pip3] nvidia-cufft-cu12==11.3.3.83
+[pip3] nvidia-curand-cu12==10.3.9.90
+[pip3] nvidia-cusolver-cu12==11.7.3.90
+[pip3] nvidia-cusparse-cu12==12.5.8.93
+[pip3] nvidia-cusparselt-cu12==0.7.1
+[pip3] nvidia-nccl-cu12==2.28.9
+[pip3] nvidia-nvjitlink-cu12==12.8.93
+[pip3] nvidia-nvtx-cu12==12.8.90
+[pip3] torch==2.11.0+cu128
+[pip3] torchaudio==2.11.0+cu128
+[pip3] torchvision==0.26.0+cu128
+[pip3] triton==3.6.0
+[conda] numpy                     2.2.6                    pypi_0    pypi
+[conda] nvidia-cublas-cu12        12.8.4.1                 pypi_0    pypi
+[conda] nvidia-cuda-cupti-cu12    12.8.90                  pypi_0    pypi
+[conda] nvidia-cuda-nvrtc-cu12    12.8.93                  pypi_0    pypi
+[conda] nvidia-cuda-runtime-cu12  12.8.90                  pypi_0    pypi
+[conda] nvidia-cudnn-cu12         9.19.0.56                pypi_0    pypi
+[conda] nvidia-cufft-cu12         11.3.3.83                pypi_0    pypi
+[conda] nvidia-curand-cu12        10.3.9.90                pypi_0    pypi
+[conda] nvidia-cusolver-cu12      11.7.3.90                pypi_0    pypi
+[conda] nvidia-cusparse-cu12      12.5.8.93                pypi_0    pypi
+[conda] nvidia-cusparselt-cu12    0.7.1                    pypi_0    pypi
+[conda] nvidia-nccl-cu12          2.28.9                   pypi_0    pypi
+[conda] nvidia-nvjitlink-cu12     12.8.93                  pypi_0    pypi
+[conda] nvidia-nvtx-cu12          12.8.90                  pypi_0    pypi
+[conda] torch                     2.11.0+cu128             pypi_0    pypi
+[conda] torchaudio                2.11.0+cu128             pypi_0    pypi
+[conda] torchvision               0.26.0+cu128             pypi_0    pypi
+[conda] triton                    3.6.0                    pypi_0    pypi
+        Pillow (12.1.1)
+
+Loading trainer: RefactorRunner
+Loading dataset: Caltech101
+Reading split from /root/autodl-tmp/MMRL/DATASETS/caltech-101/split_zhou_Caltech101.json
+Loading preprocessed few-shot data from /root/autodl-tmp/MMRL/DATASETS/caltech-101/split_fewshot/shot_16-seed_1.pkl
+Building transform_train
++ random resized crop (size=(224, 224), scale=(0.5, 1))
++ random flip
++ to torch tensor of range [0, 1]
++ normalization (mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
+Building transform_test
++ resize the smaller edge to 224
++ 224x224 center crop
++ to torch tensor of range [0, 1]
++ normalization (mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
+---------  ----------
+Dataset    Caltech101
+# classes  100
+# train_x  1,600
+# val      400
+# test     2,465
+---------  ----------
+[BayesMMRLMethod] trainable params: {'representation_learner.compound_rep_tokens_r2vproj.5.weight', 'representation_learner.compound_rep_tokens_r2vproj.1.weight', 'representation_learner.compound_rep_tokens_r2vproj.1.bias', 'representation_learner.compound_rep_tokens_r2tproj.6.weight', 'representation_learner.compound_rep_tokens_r2vproj.2.weight', 'image_encoder.proj_rep', 'representation_learner.compound_rep_tokens_r2tproj.0.weight', 'representation_learner.compound_rep_tokens_r2tproj.0.bias', 'representation_learner.compound_rep_tokens_r2tproj.4.weight', 'representation_learner.compound_rep_tokens_r2vproj.4.weight', 'representation_learner.compound_rep_tokens_r2tproj.1.weight', 'representation_learner.compound_rep_tokens_r2tproj.1.bias', 'representation_learner.compound_rep_tokens_r2tproj.5.weight', 'representation_learner.rep_posterior.posterior_mean', 'representation_learner.compound_rep_tokens_r2vproj.5.bias', 'representation_learner.compound_rep_tokens_r2vproj.6.weight', 'representation_learner.compound_rep_tokens_r2tproj.4.bias', 'representation_learner.rep_posterior.posterior_token_tril_raw', 'representation_learner.compound_rep_tokens_r2tproj.2.weight', 'representation_learner.compound_rep_tokens_r2vproj.2.bias', 'representation_learner.compound_rep_tokens_r2vproj.6.bias', 'representation_learner.compound_rep_tokens_r2vproj.3.bias', 'representation_learner.compound_rep_tokens_r2tproj.3.weight', 'representation_learner.compound_rep_tokens_r2tproj.3.bias', 'representation_learner.compound_rep_tokens_r2vproj.0.bias', 'representation_learner.compound_rep_tokens_r2tproj.5.bias', 'representation_learner.rep_posterior.posterior_feature_diag_rho', 'representation_learner.compound_rep_tokens_r2vproj.4.bias', 'representation_learner.compound_rep_tokens_r2tproj.2.bias', 'representation_learner.compound_rep_tokens_r2tproj.6.bias', 'representation_learner.compound_rep_tokens_r2vproj.3.weight', 'representation_learner.compound_rep_tokens_r2vproj.0.weight'}
+Loading evaluator: Classification
+No checkpoint found, train from scratch
+Initialize tensorboard (log_dir=output_sweeps/bayes_mmrl_rep_tokens/coarse3/search_stage/BayesMMRL/FS/fewshot_train/caltech101/shots_16/ViT-B-16/rep_zero_sig-matrix_normal_diag_pstd-0.01_kl-5e-2/seed1/tensorboard)
+epoch [1/50] batch [20/50] time 0.811 (0.838) data 0.000 (0.045) loss 2.1311 (2.2260) acc 93.7500 (87.8125) data_term 2.1311 (2.2260) raw_kl_rep 0.1787 (0.0652) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 1.0000e-05 eta 0:34:37
+epoch [1/50] batch [40/50] time 0.790 (0.776) data 0.000 (0.023) loss 1.9317 (2.1661) acc 93.7500 (88.1250) data_term 1.9317 (2.1661) raw_kl_rep 0.6094 (0.2275) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 1.0000e-05 eta 0:31:49
+epoch [2/50] batch [20/50] time 0.713 (0.792) data 0.015 (0.035) loss 0.2578 (1.0855) acc 100.0000 (88.7500) data_term 0.2578 (1.0855) raw_kl_rep 623.3457 (263.3015) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 1.0000e-03 eta 0:32:03
+epoch [2/50] batch [40/50] time 0.830 (0.757) data 0.000 (0.019) loss 0.3242 (0.7020) acc 93.7500 (91.4844) data_term 0.3242 (0.7020) raw_kl_rep 930.1660 (553.2553) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 1.0000e-03 eta 0:30:25
+epoch [3/50] batch [20/50] time 0.839 (0.794) data 0.000 (0.046) loss 0.2723 (0.2173) acc 90.6250 (95.1562) data_term 0.2723 (0.2173) raw_kl_rep 911.5088 (925.4750) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 9.9901e-04 eta 0:31:29
+epoch [3/50] batch [40/50] time 0.618 (0.753) data 0.000 (0.023) loss 0.2096 (0.2299) acc 100.0000 (94.7656) data_term 0.2096 (0.2299) raw_kl_rep 892.3887 (915.6195) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 9.9901e-04 eta 0:29:38
+epoch [4/50] batch [20/50] time 0.669 (0.642) data 0.000 (0.031) loss 0.1419 (0.1754) acc 93.7500 (96.2500) data_term 0.1419 (0.1754) raw_kl_rep 814.2100 (804.6409) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 9.9606e-04 eta 0:24:55
+epoch [4/50] batch [40/50] time 0.469 (0.633) data 0.000 (0.016) loss 0.0957 (0.1608) acc 100.0000 (96.4844) data_term 0.0957 (0.1608) raw_kl_rep 818.7295 (814.7918) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 9.9606e-04 eta 0:24:23
+epoch [5/50] batch [20/50] time 0.399 (0.664) data 0.000 (0.038) loss 0.0760 (0.1487) acc 100.0000 (96.7188) data_term 0.0760 (0.1487) raw_kl_rep 860.8564 (841.4946) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 9.9114e-04 eta 0:25:14
+epoch [5/50] batch [40/50] time 0.440 (0.568) data 0.000 (0.019) loss 0.1688 (0.1586) acc 96.8750 (96.5625) data_term 0.1688 (0.1586) raw_kl_rep 889.8105 (859.2742) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 9.9114e-04 eta 0:21:24
+epoch [6/50] batch [20/50] time 0.487 (0.724) data 0.000 (0.031) loss 0.1100 (0.1324) acc 93.7500 (97.3438) data_term 0.1100 (0.1324) raw_kl_rep 973.3379 (956.5694) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 9.8429e-04 eta 0:26:54
+epoch [6/50] batch [40/50] time 0.877 (0.748) data 0.000 (0.016) loss 0.0941 (0.1375) acc 96.8750 (97.2656) data_term 0.0941 (0.1375) raw_kl_rep 1023.2539 (980.9495) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 9.8429e-04 eta 0:27:33
+epoch [7/50] batch [20/50] time 0.772 (0.822) data 0.000 (0.032) loss 0.4972 (0.1723) acc 84.3750 (96.7188) data_term 0.4972 (0.1723) raw_kl_rep 1025.3770 (1039.0958) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 9.7553e-04 eta 0:29:51
+epoch [7/50] batch [40/50] time 0.865 (0.783) data 0.000 (0.016) loss 0.0931 (0.1525) acc 96.8750 (97.0312) data_term 0.0931 (0.1525) raw_kl_rep 1025.3760 (1025.9506) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0000 (0.0000) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0000 (0.0000) kl_normalizer 50.0000 (50.0000) kl_beta 0.0000 (0.0000) lr 9.7553e-04 eta 0:28:10
+epoch [8/50] batch [20/50] time 0.280 (0.795) data 0.000 (0.035) loss 0.1185 (0.1587) acc 100.0000 (97.3438) data_term 0.1048 (0.1388) raw_kl_rep 588.6992 (858.4561) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0137 (0.0200) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0137 (0.0200) kl_normalizer 50.0000 (50.0000) kl_beta 0.0233 (0.0233) lr 9.6489e-04 eta 0:28:12
+epoch [8/50] batch [40/50] time 0.809 (0.740) data 0.000 (0.018) loss 0.1661 (0.1335) acc 100.0000 (98.0469) data_term 0.1598 (0.1191) raw_kl_rep 272.6650 (617.7753) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0063 (0.0144) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0063 (0.0144) kl_normalizer 50.0000 (50.0000) kl_beta 0.0233 (0.0233) lr 9.6489e-04 eta 0:26:01
+epoch [9/50] batch [20/50] time 0.848 (0.806) data 0.000 (0.041) loss 0.1565 (0.1335) acc 96.8750 (97.8125) data_term 0.1466 (0.1188) raw_kl_rep 214.1211 (315.3360) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0100 (0.0147) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0100 (0.0147) kl_normalizer 50.0000 (50.0000) kl_beta 0.0465 (0.0465) lr 9.5241e-04 eta 0:27:57
+epoch [9/50] batch [40/50] time 0.893 (0.769) data 0.000 (0.021) loss 0.0766 (0.1391) acc 100.0000 (97.8906) data_term 0.0617 (0.1265) raw_kl_rep 320.7559 (271.3489) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0149 (0.0126) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0149 (0.0126) kl_normalizer 50.0000 (50.0000) kl_beta 0.0465 (0.0465) lr 9.5241e-04 eta 0:26:24
+epoch [10/50] batch [20/50] time 0.661 (0.686) data 0.001 (0.031) loss 0.0866 (0.1463) acc 100.0000 (97.6562) data_term 0.0714 (0.1330) raw_kl_rep 217.4980 (190.9545) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0152 (0.0133) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0152 (0.0133) kl_normalizer 50.0000 (50.0000) kl_beta 0.0698 (0.0698) lr 9.3815e-04 eta 0:23:12
+epoch [10/50] batch [40/50] time 0.562 (0.633) data 0.000 (0.016) loss 0.0699 (0.1385) acc 100.0000 (97.9688) data_term 0.0597 (0.1253) raw_kl_rep 146.3613 (188.0335) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0102 (0.0131) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0102 (0.0131) kl_normalizer 50.0000 (50.0000) kl_beta 0.0698 (0.0698) lr 9.3815e-04 eta 0:21:12
+epoch [11/50] batch [20/50] time 0.618 (0.723) data 0.000 (0.025) loss 0.1161 (0.1163) acc 96.8750 (98.4375) data_term 0.1049 (0.1000) raw_kl_rep 120.2803 (174.7369) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0112 (0.0163) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0112 (0.0163) kl_normalizer 50.0000 (50.0000) kl_beta 0.0930 (0.0930) lr 9.2216e-04 eta 0:23:51
+epoch [11/50] batch [40/50] time 0.531 (0.619) data 0.000 (0.014) loss 0.2042 (0.1196) acc 96.8750 (98.4375) data_term 0.1935 (0.1061) raw_kl_rep 115.5723 (145.3213) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0108 (0.0135) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0108 (0.0135) kl_normalizer 50.0000 (50.0000) kl_beta 0.0930 (0.0930) lr 9.2216e-04 eta 0:20:12
+epoch [12/50] batch [20/50] time 0.556 (0.675) data 0.000 (0.030) loss 0.0984 (0.1135) acc 100.0000 (98.7500) data_term 0.0898 (0.1012) raw_kl_rep 74.1631 (105.9068) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0086 (0.0123) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0086 (0.0123) kl_normalizer 50.0000 (50.0000) kl_beta 0.1163 (0.1163) lr 9.0451e-04 eta 0:21:42
+epoch [12/50] batch [40/50] time 0.571 (0.676) data 0.000 (0.016) loss 0.1158 (0.1109) acc 100.0000 (98.8281) data_term 0.1037 (0.0991) raw_kl_rep 103.8770 (102.0148) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0121 (0.0119) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0121 (0.0119) kl_normalizer 50.0000 (50.0000) kl_beta 0.1163 (0.1163) lr 9.0451e-04 eta 0:21:30
+epoch [13/50] batch [20/50] time 0.327 (0.642) data 0.000 (0.032) loss 0.0708 (0.1151) acc 100.0000 (98.7500) data_term 0.0572 (0.1030) raw_kl_rep 97.3105 (86.9531) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0136 (0.0121) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0136 (0.0121) kl_normalizer 50.0000 (50.0000) kl_beta 0.1395 (0.1395) lr 8.8526e-04 eta 0:20:07
+epoch [13/50] batch [40/50] time 0.765 (0.621) data 0.000 (0.016) loss 0.0971 (0.1199) acc 96.8750 (98.5156) data_term 0.0822 (0.1063) raw_kl_rep 106.9834 (98.1358) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0149 (0.0137) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0149 (0.0137) kl_normalizer 50.0000 (50.0000) kl_beta 0.1395 (0.1395) lr 8.8526e-04 eta 0:19:15
+epoch [14/50] batch [20/50] time 0.605 (0.601) data 0.004 (0.028) loss 0.0792 (0.0947) acc 100.0000 (98.9062) data_term 0.0698 (0.0830) raw_kl_rep 57.9756 (71.9105) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0094 (0.0117) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0094 (0.0117) kl_normalizer 50.0000 (50.0000) kl_beta 0.1628 (0.1628) lr 8.6448e-04 eta 0:18:19
+epoch [14/50] batch [40/50] time 0.557 (0.558) data 0.000 (0.014) loss 0.3135 (0.1112) acc 93.7500 (98.6719) data_term 0.3012 (0.0978) raw_kl_rep 75.7354 (82.5521) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0123 (0.0134) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0123 (0.0134) kl_normalizer 50.0000 (50.0000) kl_beta 0.1628 (0.1628) lr 8.6448e-04 eta 0:16:49
+epoch [15/50] batch [20/50] time 0.643 (0.731) data 0.000 (0.032) loss 0.0962 (0.1168) acc 100.0000 (98.4375) data_term 0.0891 (0.1069) raw_kl_rep 38.0332 (52.8500) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0071 (0.0098) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0071 (0.0098) kl_normalizer 50.0000 (50.0000) kl_beta 0.1860 (0.1860) lr 8.4227e-04 eta 0:21:41
+epoch [15/50] batch [40/50] time 0.869 (0.708) data 0.000 (0.017) loss 0.0783 (0.1100) acc 100.0000 (98.4375) data_term 0.0664 (0.0998) raw_kl_rep 63.9707 (54.9382) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0119 (0.0102) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0119 (0.0102) kl_normalizer 50.0000 (50.0000) kl_beta 0.1860 (0.1860) lr 8.4227e-04 eta 0:20:45
+epoch [16/50] batch [20/50] time 0.871 (0.783) data 0.000 (0.032) loss 0.1156 (0.0968) acc 100.0000 (99.3750) data_term 0.1040 (0.0859) raw_kl_rep 55.3896 (52.3416) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0116 (0.0110) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0116 (0.0110) kl_normalizer 50.0000 (50.0000) kl_beta 0.2093 (0.2093) lr 8.1871e-04 eta 0:22:35
+epoch [16/50] batch [40/50] time 0.642 (0.732) data 0.001 (0.016) loss 0.1025 (0.1005) acc 100.0000 (99.2188) data_term 0.0930 (0.0894) raw_kl_rep 45.4014 (53.2389) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0095 (0.0111) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0095 (0.0111) kl_normalizer 50.0000 (50.0000) kl_beta 0.2093 (0.2093) lr 8.1871e-04 eta 0:20:52
+epoch [17/50] batch [20/50] time 0.917 (0.862) data 0.000 (0.033) loss 0.1058 (0.1073) acc 100.0000 (98.7500) data_term 0.0941 (0.0945) raw_kl_rep 50.3213 (54.8973) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0117 (0.0128) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0117 (0.0128) kl_normalizer 50.0000 (50.0000) kl_beta 0.2326 (0.2326) lr 7.9389e-04 eta 0:24:08
+epoch [17/50] batch [40/50] time 0.834 (0.790) data 0.000 (0.017) loss 0.0676 (0.1124) acc 100.0000 (98.5938) data_term 0.0545 (0.1000) raw_kl_rep 56.5400 (53.3615) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0131 (0.0124) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0131 (0.0124) kl_normalizer 50.0000 (50.0000) kl_beta 0.2326 (0.2326) lr 7.9389e-04 eta 0:21:52
+epoch [18/50] batch [20/50] time 0.700 (0.880) data 0.001 (0.038) loss 0.1074 (0.1062) acc 100.0000 (98.4375) data_term 0.0992 (0.0932) raw_kl_rep 31.8184 (50.7629) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0081 (0.0130) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0081 (0.0130) kl_normalizer 50.0000 (50.0000) kl_beta 0.2558 (0.2558) lr 7.6791e-04 eta 0:23:53
+epoch [18/50] batch [40/50] time 0.840 (0.869) data 0.000 (0.019) loss 0.1319 (0.1124) acc 100.0000 (98.6719) data_term 0.1170 (0.0978) raw_kl_rep 58.2324 (57.1670) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0149 (0.0146) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0149 (0.0146) kl_normalizer 50.0000 (50.0000) kl_beta 0.2558 (0.2558) lr 7.6791e-04 eta 0:23:19
+epoch [19/50] batch [20/50] time 0.915 (0.825) data 0.000 (0.030) loss 0.0603 (0.0978) acc 100.0000 (99.0625) data_term 0.0446 (0.0862) raw_kl_rep 56.3418 (41.6939) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0157 (0.0116) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0157 (0.0116) kl_normalizer 50.0000 (50.0000) kl_beta 0.2791 (0.2791) lr 7.4088e-04 eta 0:21:43
+epoch [19/50] batch [40/50] time 0.836 (0.792) data 0.000 (0.015) loss 0.0684 (0.0925) acc 100.0000 (99.1406) data_term 0.0614 (0.0823) raw_kl_rep 25.1641 (36.7595) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0070 (0.0103) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0070 (0.0103) kl_normalizer 50.0000 (50.0000) kl_beta 0.2791 (0.2791) lr 7.4088e-04 eta 0:20:36
+epoch [20/50] batch [20/50] time 0.887 (0.849) data 0.000 (0.044) loss 0.0866 (0.0895) acc 100.0000 (98.9062) data_term 0.0764 (0.0805) raw_kl_rep 33.6592 (29.8689) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0102 (0.0090) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0102 (0.0090) kl_normalizer 50.0000 (50.0000) kl_beta 0.3023 (0.3023) lr 7.1289e-04 eta 0:21:38
+epoch [20/50] batch [40/50] time 0.900 (0.803) data 0.001 (0.022) loss 0.1419 (0.0942) acc 96.8750 (98.8281) data_term 0.1318 (0.0847) raw_kl_rep 33.3438 (31.6806) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0101 (0.0096) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0101 (0.0096) kl_normalizer 50.0000 (50.0000) kl_beta 0.3023 (0.3023) lr 7.1289e-04 eta 0:20:12
+epoch [21/50] batch [20/50] time 0.418 (0.821) data 0.001 (0.032) loss 0.0644 (0.0937) acc 100.0000 (98.7500) data_term 0.0558 (0.0853) raw_kl_rep 26.3750 (25.9835) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0086 (0.0085) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0086 (0.0085) kl_normalizer 50.0000 (50.0000) kl_beta 0.3256 (0.3256) lr 6.8406e-04 eta 0:20:15
+epoch [21/50] batch [40/50] time 0.871 (0.810) data 0.000 (0.016) loss 0.1508 (0.0914) acc 93.7500 (98.6719) data_term 0.1402 (0.0828) raw_kl_rep 32.4941 (26.5246) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0106 (0.0086) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0106 (0.0086) kl_normalizer 50.0000 (50.0000) kl_beta 0.3256 (0.3256) lr 6.8406e-04 eta 0:19:41
+epoch [22/50] batch [20/50] time 0.843 (0.880) data 0.000 (0.038) loss 0.0892 (0.0978) acc 100.0000 (98.4375) data_term 0.0780 (0.0905) raw_kl_rep 32.0439 (21.0432) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0112 (0.0073) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0112 (0.0073) kl_normalizer 50.0000 (50.0000) kl_beta 0.3488 (0.3488) lr 6.5451e-04 eta 0:20:58
+epoch [22/50] batch [40/50] time 0.898 (0.833) data 0.000 (0.020) loss 0.0388 (0.0981) acc 100.0000 (98.4375) data_term 0.0319 (0.0896) raw_kl_rep 19.6699 (24.3629) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0069 (0.0085) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0069 (0.0085) kl_normalizer 50.0000 (50.0000) kl_beta 0.3488 (0.3488) lr 6.5451e-04 eta 0:19:34
+epoch [23/50] batch [20/50] time 0.769 (0.814) data 0.000 (0.042) loss 0.0739 (0.0918) acc 100.0000 (99.3750) data_term 0.0669 (0.0844) raw_kl_rep 18.7568 (19.8400) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0070 (0.0074) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0070 (0.0074) kl_normalizer 50.0000 (50.0000) kl_beta 0.3721 (0.3721) lr 6.2434e-04 eta 0:18:43
+epoch [23/50] batch [40/50] time 0.918 (0.786) data 0.000 (0.021) loss 0.1083 (0.0927) acc 100.0000 (99.0625) data_term 0.1029 (0.0841) raw_kl_rep 14.5439 (23.0478) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0054 (0.0086) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0054 (0.0086) kl_normalizer 50.0000 (50.0000) kl_beta 0.3721 (0.3721) lr 6.2434e-04 eta 0:17:48
+epoch [24/50] batch [20/50] time 0.664 (0.872) data 0.000 (0.040) loss 0.0531 (0.0914) acc 100.0000 (99.2188) data_term 0.0436 (0.0810) raw_kl_rep 23.9746 (26.2659) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0095 (0.0104) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0095 (0.0104) kl_normalizer 50.0000 (50.0000) kl_beta 0.3953 (0.3953) lr 5.9369e-04 eta 0:19:19
+epoch [24/50] batch [40/50] time 0.848 (0.807) data 0.000 (0.020) loss 0.0773 (0.0950) acc 100.0000 (99.0625) data_term 0.0692 (0.0847) raw_kl_rep 20.4355 (26.0436) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0081 (0.0103) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0081 (0.0103) kl_normalizer 50.0000 (50.0000) kl_beta 0.3953 (0.3953) lr 5.9369e-04 eta 0:17:36
+epoch [25/50] batch [20/50] time 0.841 (0.795) data 0.001 (0.034) loss 0.0769 (0.0832) acc 100.0000 (99.5312) data_term 0.0690 (0.0779) raw_kl_rep 18.8242 (12.8712) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0079 (0.0054) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0079 (0.0054) kl_normalizer 50.0000 (50.0000) kl_beta 0.4186 (0.4186) lr 5.6267e-04 eta 0:16:57
+epoch [25/50] batch [40/50] time 0.815 (0.784) data 0.000 (0.018) loss 0.0673 (0.0849) acc 100.0000 (99.3750) data_term 0.0630 (0.0793) raw_kl_rep 10.3877 (13.3352) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0043 (0.0056) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0043 (0.0056) kl_normalizer 50.0000 (50.0000) kl_beta 0.4186 (0.4186) lr 5.6267e-04 eta 0:16:28
+epoch [26/50] batch [20/50] time 0.791 (0.810) data 0.000 (0.035) loss 0.0518 (0.0757) acc 100.0000 (99.3750) data_term 0.0488 (0.0698) raw_kl_rep 6.6211 (13.5615) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0029 (0.0060) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0029 (0.0060) kl_normalizer 50.0000 (50.0000) kl_beta 0.4419 (0.4419) lr 5.3140e-04 eta 0:16:36
+epoch [26/50] batch [40/50] time 0.812 (0.792) data 0.000 (0.020) loss 0.0918 (0.0750) acc 100.0000 (99.6094) data_term 0.0881 (0.0694) raw_kl_rep 8.3320 (12.7525) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0037 (0.0056) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0037 (0.0056) kl_normalizer 50.0000 (50.0000) kl_beta 0.4419 (0.4419) lr 5.3140e-04 eta 0:15:58
+epoch [27/50] batch [20/50] time 0.372 (0.844) data 0.000 (0.037) loss 0.0444 (0.0730) acc 100.0000 (99.6875) data_term 0.0420 (0.0672) raw_kl_rep 5.2109 (12.4075) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0024 (0.0058) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0024 (0.0058) kl_normalizer 50.0000 (50.0000) kl_beta 0.4651 (0.4651) lr 5.0000e-04 eta 0:16:36
+epoch [27/50] batch [40/50] time 0.807 (0.785) data 0.000 (0.019) loss 0.0998 (0.0759) acc 96.8750 (99.4531) data_term 0.0939 (0.0707) raw_kl_rep 12.5791 (11.1594) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0059 (0.0052) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0059 (0.0052) kl_normalizer 50.0000 (50.0000) kl_beta 0.4651 (0.4651) lr 5.0000e-04 eta 0:15:10
+epoch [28/50] batch [20/50] time 0.712 (0.827) data 0.000 (0.029) loss 0.0497 (0.0784) acc 100.0000 (99.2188) data_term 0.0422 (0.0738) raw_kl_rep 15.3018 (9.5266) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0075 (0.0047) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0075 (0.0047) kl_normalizer 50.0000 (50.0000) kl_beta 0.4884 (0.4884) lr 4.6860e-04 eta 0:15:34
+epoch [28/50] batch [40/50] time 0.802 (0.804) data 0.000 (0.015) loss 0.1069 (0.0868) acc 96.8750 (99.0625) data_term 0.0953 (0.0810) raw_kl_rep 23.9404 (11.9588) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0117 (0.0058) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0117 (0.0058) kl_normalizer 50.0000 (50.0000) kl_beta 0.4884 (0.4884) lr 4.6860e-04 eta 0:14:52
+epoch [29/50] batch [20/50] time 0.897 (0.775) data 0.000 (0.033) loss 0.0397 (0.0816) acc 100.0000 (99.6875) data_term 0.0335 (0.0762) raw_kl_rep 12.1328 (10.6818) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0062 (0.0055) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0062 (0.0055) kl_normalizer 50.0000 (50.0000) kl_beta 0.5116 (0.5116) lr 4.3733e-04 eta 0:13:56
+epoch [29/50] batch [40/50] time 0.923 (0.766) data 0.000 (0.017) loss 0.0379 (0.0741) acc 100.0000 (99.7656) data_term 0.0338 (0.0690) raw_kl_rep 8.0664 (9.9990) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0041 (0.0051) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0041 (0.0051) kl_normalizer 50.0000 (50.0000) kl_beta 0.5116 (0.5116) lr 4.3733e-04 eta 0:13:32
+epoch [30/50] batch [20/50] time 0.837 (0.798) data 0.000 (0.034) loss 0.0754 (0.0651) acc 100.0000 (99.5312) data_term 0.0724 (0.0620) raw_kl_rep 5.6162 (5.7355) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0030 (0.0031) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0030 (0.0031) kl_normalizer 50.0000 (50.0000) kl_beta 0.5349 (0.5349) lr 4.0631e-04 eta 0:13:42
+epoch [30/50] batch [40/50] time 0.835 (0.798) data 0.000 (0.017) loss 0.0611 (0.0683) acc 100.0000 (99.5312) data_term 0.0558 (0.0648) raw_kl_rep 9.8633 (6.5394) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0053 (0.0035) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0053 (0.0035) kl_normalizer 50.0000 (50.0000) kl_beta 0.5349 (0.5349) lr 4.0631e-04 eta 0:13:26
+epoch [31/50] batch [20/50] time 0.858 (0.782) data 0.000 (0.033) loss 0.0933 (0.0765) acc 100.0000 (99.8438) data_term 0.0907 (0.0728) raw_kl_rep 4.7129 (6.5106) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0026 (0.0036) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0026 (0.0036) kl_normalizer 50.0000 (50.0000) kl_beta 0.5581 (0.5581) lr 3.7566e-04 eta 0:12:46
+epoch [31/50] batch [40/50] time 0.875 (0.765) data 0.000 (0.017) loss 0.0579 (0.0775) acc 100.0000 (99.7656) data_term 0.0528 (0.0732) raw_kl_rep 9.1514 (7.6871) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0051 (0.0043) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0051 (0.0043) kl_normalizer 50.0000 (50.0000) kl_beta 0.5581 (0.5581) lr 3.7566e-04 eta 0:12:14
+epoch [32/50] batch [20/50] time 0.886 (0.778) data 0.001 (0.041) loss 0.0900 (0.0712) acc 100.0000 (99.5312) data_term 0.0873 (0.0674) raw_kl_rep 4.6660 (6.5911) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0027 (0.0038) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0027 (0.0038) kl_normalizer 50.0000 (50.0000) kl_beta 0.5814 (0.5814) lr 3.4549e-04 eta 0:12:03
+epoch [32/50] batch [40/50] time 0.690 (0.758) data 0.000 (0.021) loss 0.0624 (0.0667) acc 100.0000 (99.6094) data_term 0.0580 (0.0632) raw_kl_rep 7.4355 (6.0136) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0043 (0.0035) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0043 (0.0035) kl_normalizer 50.0000 (50.0000) kl_beta 0.5814 (0.5814) lr 3.4549e-04 eta 0:11:29
+epoch [33/50] batch [20/50] time 0.409 (0.788) data 0.001 (0.031) loss 0.0694 (0.0757) acc 100.0000 (99.6875) data_term 0.0646 (0.0722) raw_kl_rep 7.9678 (5.8192) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0048 (0.0035) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0048 (0.0035) kl_normalizer 50.0000 (50.0000) kl_beta 0.6047 (0.6047) lr 3.1594e-04 eta 0:11:33
+epoch [33/50] batch [40/50] time 0.915 (0.790) data 0.000 (0.017) loss 0.0652 (0.0707) acc 100.0000 (99.7656) data_term 0.0603 (0.0663) raw_kl_rep 8.1924 (7.1225) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0050 (0.0043) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0050 (0.0043) kl_normalizer 50.0000 (50.0000) kl_beta 0.6047 (0.6047) lr 3.1594e-04 eta 0:11:19
+epoch [34/50] batch [20/50] time 1.000 (0.797) data 0.000 (0.042) loss 0.0659 (0.0665) acc 100.0000 (99.6875) data_term 0.0629 (0.0628) raw_kl_rep 4.6953 (5.8829) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0029 (0.0037) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0029 (0.0037) kl_normalizer 50.0000 (50.0000) kl_beta 0.6279 (0.6279) lr 2.8711e-04 eta 0:11:01
+epoch [34/50] batch [40/50] time 0.871 (0.813) data 0.000 (0.022) loss 0.0728 (0.0728) acc 100.0000 (99.5312) data_term 0.0688 (0.0693) raw_kl_rep 6.3135 (5.5412) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0040 (0.0035) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0040 (0.0035) kl_normalizer 50.0000 (50.0000) kl_beta 0.6279 (0.6279) lr 2.8711e-04 eta 0:10:58
+epoch [35/50] batch [20/50] time 0.641 (0.816) data 0.000 (0.031) loss 0.0582 (0.0709) acc 100.0000 (99.5312) data_term 0.0539 (0.0680) raw_kl_rep 6.6250 (4.4025) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0043 (0.0029) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0043 (0.0029) kl_normalizer 50.0000 (50.0000) kl_beta 0.6512 (0.6512) lr 2.5912e-04 eta 0:10:36
+epoch [35/50] batch [40/50] time 0.354 (0.807) data 0.000 (0.017) loss 0.0385 (0.0652) acc 100.0000 (99.7656) data_term 0.0372 (0.0620) raw_kl_rep 2.1016 (4.9244) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0014 (0.0032) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0014 (0.0032) kl_normalizer 50.0000 (50.0000) kl_beta 0.6512 (0.6512) lr 2.5912e-04 eta 0:10:13
+epoch [36/50] batch [20/50] time 0.818 (0.822) data 0.000 (0.029) loss 0.0470 (0.0534) acc 100.0000 (100.0000) data_term 0.0455 (0.0521) raw_kl_rep 2.1494 (2.0202) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0014 (0.0014) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0014 (0.0014) kl_normalizer 50.0000 (50.0000) kl_beta 0.6744 (0.6744) lr 2.3209e-04 eta 0:09:59
+epoch [36/50] batch [40/50] time 0.445 (0.803) data 0.000 (0.015) loss 0.0510 (0.0590) acc 100.0000 (99.8438) data_term 0.0491 (0.0572) raw_kl_rep 2.7949 (2.6793) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0019 (0.0018) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0019 (0.0018) kl_normalizer 50.0000 (50.0000) kl_beta 0.6744 (0.6744) lr 2.3209e-04 eta 0:09:29
+epoch [37/50] batch [20/50] time 0.833 (0.771) data 0.000 (0.034) loss 0.0591 (0.0813) acc 100.0000 (99.6875) data_term 0.0565 (0.0795) raw_kl_rep 3.7217 (2.5780) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0026 (0.0018) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0026 (0.0018) kl_normalizer 50.0000 (50.0000) kl_beta 0.6977 (0.6977) lr 2.0611e-04 eta 0:08:44
+epoch [37/50] batch [40/50] time 0.805 (0.785) data 0.000 (0.017) loss 0.0691 (0.0754) acc 100.0000 (99.8438) data_term 0.0671 (0.0727) raw_kl_rep 2.8564 (3.7911) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0020 (0.0026) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0020 (0.0026) kl_normalizer 50.0000 (50.0000) kl_beta 0.6977 (0.6977) lr 2.0611e-04 eta 0:08:38
+epoch [38/50] batch [20/50] time 0.830 (0.796) data 0.001 (0.040) loss 0.0395 (0.0637) acc 100.0000 (99.6875) data_term 0.0371 (0.0614) raw_kl_rep 3.2363 (3.2815) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0023 (0.0024) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0023 (0.0024) kl_normalizer 50.0000 (50.0000) kl_beta 0.7209 (0.7209) lr 1.8129e-04 eta 0:08:21
+epoch [38/50] batch [40/50] time 0.598 (0.780) data 0.000 (0.020) loss 0.0632 (0.0640) acc 100.0000 (99.6875) data_term 0.0613 (0.0617) raw_kl_rep 2.6348 (3.3173) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0019 (0.0024) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0019 (0.0024) kl_normalizer 50.0000 (50.0000) kl_beta 0.7209 (0.7209) lr 1.8129e-04 eta 0:07:56
+epoch [39/50] batch [20/50] time 0.737 (0.778) data 0.000 (0.045) loss 0.0404 (0.0570) acc 100.0000 (100.0000) data_term 0.0392 (0.0558) raw_kl_rep 1.5957 (1.6387) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0012 (0.0012) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0012 (0.0012) kl_normalizer 50.0000 (50.0000) kl_beta 0.7442 (0.7442) lr 1.5773e-04 eta 0:07:31
+epoch [39/50] batch [40/50] time 0.859 (0.772) data 0.000 (0.024) loss 0.0531 (0.0630) acc 100.0000 (99.7656) data_term 0.0520 (0.0619) raw_kl_rep 1.4688 (1.5049) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0011 (0.0011) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0011 (0.0011) kl_normalizer 50.0000 (50.0000) kl_beta 0.7442 (0.7442) lr 1.5773e-04 eta 0:07:12
+epoch [40/50] batch [20/50] time 0.828 (0.772) data 0.000 (0.033) loss 0.1876 (0.0655) acc 96.8750 (99.8438) data_term 0.1863 (0.0644) raw_kl_rep 1.7109 (1.5378) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0013 (0.0012) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0013 (0.0012) kl_normalizer 50.0000 (50.0000) kl_beta 0.7674 (0.7674) lr 1.3552e-04 eta 0:06:48
+epoch [40/50] batch [40/50] time 0.896 (0.784) data 0.000 (0.018) loss 0.0800 (0.0643) acc 100.0000 (99.7656) data_term 0.0784 (0.0630) raw_kl_rep 2.1250 (1.6632) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0016 (0.0013) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0016 (0.0013) kl_normalizer 50.0000 (50.0000) kl_beta 0.7674 (0.7674) lr 1.3552e-04 eta 0:06:39
+epoch [41/50] batch [20/50] time 0.849 (0.791) data 0.000 (0.041) loss 0.0340 (0.0611) acc 100.0000 (99.6875) data_term 0.0328 (0.0595) raw_kl_rep 1.5039 (1.9686) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0012 (0.0016) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0012 (0.0016) kl_normalizer 50.0000 (50.0000) kl_beta 0.7907 (0.7907) lr 1.1474e-04 eta 0:06:19
+epoch [41/50] batch [40/50] time 0.835 (0.784) data 0.000 (0.022) loss 0.0832 (0.0612) acc 100.0000 (99.7656) data_term 0.0813 (0.0597) raw_kl_rep 2.3330 (1.9006) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0018 (0.0015) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0018 (0.0015) kl_normalizer 50.0000 (50.0000) kl_beta 0.7907 (0.7907) lr 1.1474e-04 eta 0:06:00
+epoch [42/50] batch [20/50] time 0.840 (0.747) data 0.004 (0.034) loss 0.0790 (0.0588) acc 96.8750 (99.8438) data_term 0.0782 (0.0578) raw_kl_rep 1.0703 (1.1538) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0009 (0.0009) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0009 (0.0009) kl_normalizer 50.0000 (50.0000) kl_beta 0.8140 (0.8140) lr 9.5492e-05 eta 0:05:21
+epoch [42/50] batch [40/50] time 0.883 (0.744) data 0.000 (0.017) loss 0.0547 (0.0630) acc 100.0000 (99.8438) data_term 0.0537 (0.0620) raw_kl_rep 1.2148 (1.2281) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0010 (0.0010) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0010 (0.0010) kl_normalizer 50.0000 (50.0000) kl_beta 0.8140 (0.8140) lr 9.5492e-05 eta 0:05:04
+epoch [43/50] batch [20/50] time 0.616 (0.773) data 0.000 (0.027) loss 0.0352 (0.0780) acc 100.0000 (99.6875) data_term 0.0341 (0.0768) raw_kl_rep 1.3164 (1.3804) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0011 (0.0012) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0011 (0.0012) kl_normalizer 50.0000 (50.0000) kl_beta 0.8372 (0.8372) lr 7.7836e-05 eta 0:04:53
+epoch [43/50] batch [40/50] time 0.836 (0.777) data 0.000 (0.014) loss 0.0619 (0.0636) acc 100.0000 (99.8438) data_term 0.0610 (0.0626) raw_kl_rep 1.0771 (1.2536) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0009 (0.0010) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0009 (0.0010) kl_normalizer 50.0000 (50.0000) kl_beta 0.8372 (0.8372) lr 7.7836e-05 eta 0:04:39
+epoch [44/50] batch [20/50] time 0.856 (0.761) data 0.010 (0.032) loss 0.0731 (0.0550) acc 100.0000 (99.8438) data_term 0.0726 (0.0545) raw_kl_rep 0.6016 (0.6057) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0005 (0.0005) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0005 (0.0005) kl_normalizer 50.0000 (50.0000) kl_beta 0.8605 (0.8605) lr 6.1847e-05 eta 0:04:11
+epoch [44/50] batch [40/50] time 0.865 (0.762) data 0.000 (0.016) loss 0.0390 (0.0599) acc 100.0000 (99.6875) data_term 0.0382 (0.0593) raw_kl_rep 0.9990 (0.7758) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0009 (0.0007) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0009 (0.0007) kl_normalizer 50.0000 (50.0000) kl_beta 0.8605 (0.8605) lr 6.1847e-05 eta 0:03:56
+epoch [45/50] batch [20/50] time 0.578 (0.780) data 0.000 (0.035) loss 0.0766 (0.0549) acc 100.0000 (100.0000) data_term 0.0761 (0.0544) raw_kl_rep 0.5645 (0.6290) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0005 (0.0006) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0005 (0.0006) kl_normalizer 50.0000 (50.0000) kl_beta 0.8837 (0.8837) lr 4.7586e-05 eta 0:03:38
+epoch [45/50] batch [40/50] time 0.833 (0.787) data 0.000 (0.018) loss 0.0350 (0.0577) acc 100.0000 (99.6875) data_term 0.0345 (0.0572) raw_kl_rep 0.4883 (0.5579) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0004 (0.0005) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0004 (0.0005) kl_normalizer 50.0000 (50.0000) kl_beta 0.8837 (0.8837) lr 4.7586e-05 eta 0:03:24
+epoch [46/50] batch [20/50] time 0.524 (0.574) data 0.005 (0.033) loss 0.0660 (0.0528) acc 100.0000 (100.0000) data_term 0.0654 (0.0522) raw_kl_rep 0.6660 (0.6734) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0006 (0.0006) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0006 (0.0006) kl_normalizer 50.0000 (50.0000) kl_beta 0.9070 (0.9070) lr 3.5112e-05 eta 0:02:11
+epoch [46/50] batch [40/50] time 0.570 (0.595) data 0.000 (0.017) loss 0.0373 (0.0555) acc 100.0000 (100.0000) data_term 0.0366 (0.0549) raw_kl_rep 0.7852 (0.6883) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0007 (0.0006) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0007 (0.0006) kl_normalizer 50.0000 (50.0000) kl_beta 0.9070 (0.9070) lr 3.5112e-05 eta 0:02:04
+epoch [47/50] batch [20/50] time 0.272 (0.583) data 0.000 (0.028) loss 0.0443 (0.0629) acc 100.0000 (99.8438) data_term 0.0437 (0.0623) raw_kl_rep 0.6230 (0.6711) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0006 (0.0006) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0006 (0.0006) kl_normalizer 50.0000 (50.0000) kl_beta 0.9302 (0.9302) lr 2.4472e-05 eta 0:01:44
+epoch [47/50] batch [40/50] time 0.578 (0.578) data 0.000 (0.015) loss 0.0497 (0.0592) acc 100.0000 (99.9219) data_term 0.0492 (0.0586) raw_kl_rep 0.4902 (0.6005) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0005 (0.0006) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0005 (0.0006) kl_normalizer 50.0000 (50.0000) kl_beta 0.9302 (0.9302) lr 2.4472e-05 eta 0:01:32
+epoch [48/50] batch [20/50] time 0.520 (0.572) data 0.000 (0.030) loss 0.0319 (0.0546) acc 100.0000 (99.8438) data_term 0.0313 (0.0541) raw_kl_rep 0.5820 (0.5500) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0006 (0.0005) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0006 (0.0005) kl_normalizer 50.0000 (50.0000) kl_beta 0.9535 (0.9535) lr 1.5708e-05 eta 0:01:14
+epoch [48/50] batch [40/50] time 0.653 (0.623) data 0.000 (0.015) loss 0.0372 (0.0542) acc 100.0000 (99.9219) data_term 0.0367 (0.0536) raw_kl_rep 0.5439 (0.5678) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0005 (0.0005) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0005 (0.0005) kl_normalizer 50.0000 (50.0000) kl_beta 0.9535 (0.9535) lr 1.5708e-05 eta 0:01:08
+epoch [49/50] batch [20/50] time 0.285 (0.758) data 0.000 (0.033) loss 0.0360 (0.0566) acc 100.0000 (99.6875) data_term 0.0355 (0.0562) raw_kl_rep 0.4336 (0.4446) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0004 (0.0004) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0004 (0.0004) kl_normalizer 50.0000 (50.0000) kl_beta 0.9767 (0.9767) lr 8.8564e-06 eta 0:01:00
+epoch [49/50] batch [40/50] time 0.607 (0.762) data 0.000 (0.017) loss 0.2110 (0.0579) acc 96.8750 (99.7656) data_term 0.2106 (0.0575) raw_kl_rep 0.3984 (0.4307) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0004 (0.0004) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0004 (0.0004) kl_normalizer 50.0000 (50.0000) kl_beta 0.9767 (0.9767) lr 8.8564e-06 eta 0:00:45
+epoch [50/50] batch [20/50] time 0.818 (0.761) data 0.000 (0.028) loss 0.0405 (0.0630) acc 100.0000 (99.8438) data_term 0.0401 (0.0626) raw_kl_rep 0.3721 (0.3709) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0004 (0.0004) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0004 (0.0004) kl_normalizer 50.0000 (50.0000) kl_beta 1.0000 (1.0000) lr 3.9426e-06 eta 0:00:22
+epoch [50/50] batch [40/50] time 0.888 (0.760) data 0.000 (0.014) loss 0.0562 (0.0596) acc 100.0000 (99.9219) data_term 0.0558 (0.0593) raw_kl_rep 0.3662 (0.3701) raw_kl_proj_rep 0.0000 (0.0000) kl_rep_term 0.0004 (0.0004) kl_proj_rep_term 0.0000 (0.0000) kl_term 0.0004 (0.0004) kl_normalizer 50.0000 (50.0000) kl_beta 1.0000 (1.0000) lr 3.9426e-06 eta 0:00:07
+Checkpoint saved to output_sweeps/bayes_mmrl_rep_tokens/coarse3/search_stage/BayesMMRL/FS/fewshot_train/caltech101/shots_16/ViT-B-16/rep_zero_sig-matrix_normal_diag_pstd-0.01_kl-5e-2/seed1/refactor_model/model.pth.tar-50
+Finish training
+Deploy the last-epoch model
+Evaluate on the *test* set
+=> result
+* total: 2,465
+* correct: 2,382
+* accuracy: 96.6%
+* error: 3.4%
+* macro_f1: 95.0%
+=> structured result
+* accuracy: 96.6329
+* error: 3.3671
+* macro_f1: 94.9813
+* nll: 0.0959
+* brier: 0.0486
+* ece: 0.9048
+Saved metrics JSON to output_sweeps/bayes_mmrl_rep_tokens/coarse3/search_stage/BayesMMRL/FS/fewshot_train/caltech101/shots_16/ViT-B-16/rep_zero_sig-matrix_normal_diag_pstd-0.01_kl-5e-2/seed1/test_metrics.json
+Saved metrics CSV to output_sweeps/bayes_mmrl_rep_tokens/coarse3/search_stage/BayesMMRL/FS/fewshot_train/caltech101/shots_16/ViT-B-16/rep_zero_sig-matrix_normal_diag_pstd-0.01_kl-5e-2/seed1/test_metrics.csv
+Saved calibration bins CSV to output_sweeps/bayes_mmrl_rep_tokens/coarse3/search_stage/BayesMMRL/FS/fewshot_train/caltech101/shots_16/ViT-B-16/rep_zero_sig-matrix_normal_diag_pstd-0.01_kl-5e-2/seed1/test_calibration_bins.csv
+Elapsed: 0:31:58
