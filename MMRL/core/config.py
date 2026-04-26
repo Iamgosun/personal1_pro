@@ -235,7 +235,13 @@ def get_refactor_defaults():
     
 
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"
+
+    cfg.CALIBRATION = CN()
+    cfg.CALIBRATION.USE_FULL_VAL = False
+
     cfg.TASK = "B2N"
+
+
 
     _sync_active_mmrl_family(cfg)
     _as_legacy_mmrl(cfg)

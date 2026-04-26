@@ -26,11 +26,12 @@ class UCF101(DatasetBase):
         else:
             cname2lab = {}
             filepath = os.path.join(self.dataset_dir, "ucfTrainTestlist/classInd.txt")
+
             with open(filepath, "r") as f:
                 lines = f.readlines()
                 for line in lines:
                     label, classname = line.strip().split(" ")
-                    label = int(label) - 1  # conver to 0-based index
+                    label = int(label) - 1
                     cname2lab[classname] = label
 
             trainval = self.read_data(cname2lab, "ucfTrainTestlist/trainlist01.txt")
@@ -38,11 +39,16 @@ class UCF101(DatasetBase):
             train, val = OxfordPets.split_trainval(trainval)
             OxfordPets.save_split(train, val, test, self.split_path, self.image_dir)
 
+        full_val = val
+
         num_shots = cfg.DATASET.NUM_SHOTS
         if num_shots >= 1:
             seed = cfg.SEED
-            preprocessed = os.path.join(self.split_fewshot_dir, f"shot_{num_shots}-seed_{seed}.pkl")
-            
+            preprocessed = os.path.join(
+                self.split_fewshot_dir,
+                f"shot_{num_shots}-seed_{seed}.pkl",
+            )
+
             if os.path.exists(preprocessed):
                 print(f"Loading preprocessed few-shot data from {preprocessed}")
                 with open(preprocessed, "rb") as file:
@@ -50,16 +56,37 @@ class UCF101(DatasetBase):
                     train, val = data["train"], data["val"]
             else:
                 train = self.generate_fewshot_dataset(train, num_shots=num_shots)
-                val = self.generate_fewshot_dataset(val, num_shots=min(num_shots, 4))
+                val = self.generate_fewshot_dataset(
+                    val,
+                    num_shots=min(num_shots, 4),
+                )
                 data = {"train": train, "val": val}
                 print(f"Saving preprocessed few-shot data to {preprocessed}")
                 with open(preprocessed, "wb") as file:
                     pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
-        subsample = cfg.DATASET.SUBSAMPLE_CLASSES
-        train, val, test = OxfordPets.subsample_classes(train, val, test, subsample=subsample)
+        use_full_val_for_calibration = (
+            hasattr(cfg, "CALIBRATION")
+            and getattr(cfg.CALIBRATION, "USE_FULL_VAL", False)
+        )
 
-        super().__init__(train_x=train, val=val, test=test)
+        val_for_loader = full_val if use_full_val_for_calibration else val
+
+        subsample = cfg.DATASET.SUBSAMPLE_CLASSES
+        train, val_for_loader, test = OxfordPets.subsample_classes(
+            train,
+            val_for_loader,
+            test,
+            subsample=subsample,
+        )
+
+        if use_full_val_for_calibration:
+            print(
+                "[calibration] USE_FULL_VAL=True: "
+                f"using full validation set with {len(val_for_loader)} samples"
+            )
+
+        super().__init__(train_x=train, val=val_for_loader, test=test)
 
     def read_data(self, cname2lab, text_file):
         text_file = os.path.join(self.dataset_dir, text_file)
@@ -68,7 +95,7 @@ class UCF101(DatasetBase):
         with open(text_file, "r") as f:
             lines = f.readlines()
             for line in lines:
-                line = line.strip().split(" ")[0]  # trainlist: filename, label
+                line = line.strip().split(" ")[0]
                 action, filename = line.split("/")
                 label = cname2lab[action]
 
@@ -78,7 +105,11 @@ class UCF101(DatasetBase):
                 filename = filename.replace(".avi", ".jpg")
                 impath = os.path.join(self.image_dir, renamed_action, filename)
 
-                item = Datum(impath=impath, label=label, classname=renamed_action)
+                item = Datum(
+                    impath=impath,
+                    label=label,
+                    classname=renamed_action,
+                )
                 items.append(item)
 
         return items

@@ -30,11 +30,16 @@ class OxfordPets(DatasetBase):
             train, val = self.split_trainval(trainval)
             self.save_split(train, val, test, self.split_path, self.image_dir)
 
+        full_val = val
+
         num_shots = cfg.DATASET.NUM_SHOTS
         if num_shots >= 1:
             seed = cfg.SEED
-            preprocessed = os.path.join(self.split_fewshot_dir, f"shot_{num_shots}-seed_{seed}.pkl")
-            
+            preprocessed = os.path.join(
+                self.split_fewshot_dir,
+                f"shot_{num_shots}-seed_{seed}.pkl",
+            )
+
             if os.path.exists(preprocessed):
                 print(f"Loading preprocessed few-shot data from {preprocessed}")
                 with open(preprocessed, "rb") as file:
@@ -42,16 +47,37 @@ class OxfordPets(DatasetBase):
                     train, val = data["train"], data["val"]
             else:
                 train = self.generate_fewshot_dataset(train, num_shots=num_shots)
-                val = self.generate_fewshot_dataset(val, num_shots=min(num_shots, 4))
+                val = self.generate_fewshot_dataset(
+                    val,
+                    num_shots=min(num_shots, 4),
+                )
                 data = {"train": train, "val": val}
                 print(f"Saving preprocessed few-shot data to {preprocessed}")
                 with open(preprocessed, "wb") as file:
                     pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
-        subsample = cfg.DATASET.SUBSAMPLE_CLASSES
-        train, val, test = self.subsample_classes(train, val, test, subsample=subsample)
+        use_full_val_for_calibration = (
+            hasattr(cfg, "CALIBRATION")
+            and getattr(cfg.CALIBRATION, "USE_FULL_VAL", False)
+        )
 
-        super().__init__(train_x=train, val=val, test=test)
+        val_for_loader = full_val if use_full_val_for_calibration else val
+
+        subsample = cfg.DATASET.SUBSAMPLE_CLASSES
+        train, val_for_loader, test = self.subsample_classes(
+            train,
+            val_for_loader,
+            test,
+            subsample=subsample,
+        )
+
+        if use_full_val_for_calibration:
+            print(
+                "[calibration] USE_FULL_VAL=True: "
+                f"using full validation set with {len(val_for_loader)} samples"
+            )
+
+        super().__init__(train_x=train, val=val_for_loader, test=test)
 
     def read_data(self, split_file):
         filepath = os.path.join(self.anno_dir, split_file)
@@ -67,7 +93,7 @@ class OxfordPets(DatasetBase):
                 breed = breed.lower()
                 imname += ".jpg"
                 impath = os.path.join(self.image_dir, imname)
-                label = int(label) - 1  # convert to 0-based index
+                label = int(label) - 1
                 item = Datum(impath=impath, label=label, classname=breed)
                 items.append(item)
 
@@ -78,6 +104,7 @@ class OxfordPets(DatasetBase):
         p_trn = 1 - p_val
         print(f"Splitting trainval into {p_trn:.0%} train and {p_val:.0%} val")
         tracker = defaultdict(list)
+
         for idx, item in enumerate(trainval):
             label = item.label
             tracker[label].append(idx)
@@ -87,6 +114,7 @@ class OxfordPets(DatasetBase):
             n_val = round(len(idxs) * p_val)
             assert n_val > 0
             random.shuffle(idxs)
+
             for n, idx in enumerate(idxs):
                 item = trainval[idx]
                 if n < n_val:
@@ -114,7 +142,11 @@ class OxfordPets(DatasetBase):
         val = _extract(val)
         test = _extract(test)
 
-        split = {"train": train, "val": val, "test": test}
+        split = {
+            "train": train,
+            "val": val,
+            "test": test,
+        }
 
         write_json(split, filepath)
         print(f"Saved split to {filepath}")
@@ -125,62 +157,70 @@ class OxfordPets(DatasetBase):
             out = []
             for impath, label, classname in items:
                 impath = os.path.join(path_prefix, impath)
-                item = Datum(impath=impath, label=int(label), classname=classname)
+                item = Datum(
+                    impath=impath,
+                    label=int(label),
+                    classname=classname,
+                )
                 out.append(item)
             return out
 
         print(f"Reading split from {filepath}")
         split = read_json(filepath)
+
         train = _convert(split["train"])
         val = _convert(split["val"])
         test = _convert(split["test"])
 
         return train, val, test
-    
+
     @staticmethod
     def subsample_classes(*args, subsample="all"):
-        """Divide classes into two groups. The first group
-        represents base classes while the second group represents
-        new classes.
+        """Divide classes into two groups.
 
         Args:
-            args: a list of datasets, e.g. train, val and test.
-            subsample (str): what classes to subsample.
+            args: datasets, e.g. train, val and test.
+            subsample: one of all, base, new.
         """
         assert subsample in ["all", "base", "new"]
 
         if subsample == "all":
             return args
-        
+
         dataset = args[0]
         labels = set()
         for item in dataset:
             labels.add(item.label)
+
         labels = list(labels)
         labels.sort()
+
         n = len(labels)
-        # Divide classes into two halves
         m = math.ceil(n / 2)
 
         print(f"SUBSAMPLE {subsample.upper()} CLASSES!")
+
         if subsample == "base":
-            selected = labels[:m]  # take the first half
+            selected = labels[:m]
         else:
-            selected = labels[m:]  # take the second half
+            selected = labels[m:]
+
         relabeler = {y: y_new for y_new, y in enumerate(selected)}
-        
+
         output = []
         for dataset in args:
             dataset_new = []
             for item in dataset:
                 if item.label not in selected:
                     continue
+
                 item_new = Datum(
                     impath=item.impath,
                     label=relabeler[item.label],
-                    classname=item.classname
+                    classname=item.classname,
                 )
                 dataset_new.append(item_new)
+
             output.append(dataset_new)
-        
+
         return output
