@@ -4,7 +4,6 @@ from .adapters import (
     BayesAdapter,
     ClipAdapterResidual,
     CrossModalProbeAdapter,
-    GaussianPerClassAdapter,
     RandomProbeAdapter,
     TaskResidualAdapter,
     TipAdapter,
@@ -33,9 +32,6 @@ def build_adapter(cfg, clip_model, base_text_features):
 
     if "CROSSMODAL" in init_upper:
         return CrossModalProbeAdapter(cfg, clip_model, base_text_features)
-
-    if "GAUSSIAN_PER_CLASS" in init_upper:
-        return GaussianPerClassAdapter(cfg, clip_model, base_text_features)
 
     if "BAYES_ADAPTER" in init_upper:
         return BayesAdapter(cfg, clip_model, base_text_features)
