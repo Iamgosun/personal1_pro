@@ -25,20 +25,18 @@ class OnlineExecutor(BaseExecutor):
         if hasattr(self.method, "set_kl_normalizer"):
             self.method.set_kl_normalizer(getattr(trainer, "num_batches", 1))
 
-
-
         if hasattr(self.method, "set_kl_beta"):
             warmup_epochs = int(getattr(self.method, "kl_warmup_epochs", 0))
             cur_epoch = int(trainer.epoch)          # 0-based
-            total_epochs = int(trainer.max_epoch)   # 通常是 50
+            total_epochs = int(trainer.max_epoch)   # usually 50
 
             if warmup_epochs <= 0:
                 kl_beta = 1.0
             elif cur_epoch < warmup_epochs:
-                # 前 warmup_epochs 个 epoch 完全不加 KL
+                # First warmup_epochs epochs: no KL.
                 kl_beta = 0.0
             else:
-                # 剩余 epoch 从 0 -> 1，最后一个 epoch 到 1
+                # Remaining epochs ramp from 0 to 1.
                 ramp_epochs = max(1, total_epochs - warmup_epochs - 1)
                 kl_beta = min(1.0, float(cur_epoch - warmup_epochs) / float(ramp_epochs))
 
@@ -69,6 +67,10 @@ class OnlineExecutor(BaseExecutor):
 
         if hasattr(outputs, "losses") and outputs.losses is not None:
             for key in [
+                "loss_ce",
+                "loss_pc",
+                "loss_capel_pc",
+                "loss_constraint",
                 "data_term",
                 "raw_kl_rep",
                 "raw_kl_proj_rep",

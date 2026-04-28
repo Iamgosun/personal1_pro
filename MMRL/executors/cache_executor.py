@@ -66,8 +66,6 @@ class CacheExecutor(BaseExecutor):
 
         trainer.method.on_cache_ready(trainer)
 
-
-
     def _base_train_size(self, trainer) -> int:
         try:
             return int(len(trainer.dm.dataset.train_x))
@@ -113,8 +111,6 @@ class CacheExecutor(BaseExecutor):
             num_workers=0,
             pin_memory=torch.cuda.is_available(),
         )
-
-
 
     def run_epoch(self, trainer):
         trainer.set_model_mode("eval")
@@ -206,6 +202,8 @@ class CacheExecutor(BaseExecutor):
         if hasattr(outputs, "losses") and outputs.losses is not None:
             for key in [
                 "loss_ce",
+                "loss_pc",
+                "loss_capel_pc",
                 "loss_constraint",
                 "data_term",
                 "raw_kl_rep",

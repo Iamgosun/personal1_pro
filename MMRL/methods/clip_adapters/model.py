@@ -13,7 +13,7 @@ from data.build import build_split_dataset
 from methods.base import BaseMethod
 from .adapter_router import build_adapter
 from .loss import ClipAdaptersLoss
-from .online_heads import bayes_logits, bayes_logits_all, lp_logits
+from .online_heads import bayes_logits, bayes_logits_all, capel_logits, lp_logits
 
 
 class ClipAdaptersModel(nn.Module):
@@ -39,7 +39,12 @@ class ClipAdaptersModel(nn.Module):
             )
 
         self.text_embeddings_all = text_embeddings_all
-        self.adapter = build_adapter(cfg, clip_model, base_text_features)
+        self.adapter = build_adapter(
+            cfg,
+            clip_model,
+            base_text_features,
+            classnames=classnames,
+        )
 
         self.to(clip_model.visual.conv1.weight.device)
 
@@ -61,8 +66,17 @@ class ClipAdaptersModel(nn.Module):
     def forward_features(self, features, n_samples=None):
         features_for_logits = self.adapter.adapt_features(features)
         logits_all = None
+        sub_logits = None
 
-        if self.adapter.adapter_kind == "stochastic_prototype":
+        if self.adapter.adapter_kind == "capel_prototype":
+            logits, sub_logits = capel_logits(
+                self.logit_scale,
+                features_for_logits,
+                self.adapter.prototypes,
+                self.adapter.get_prompt_weights(),
+            )
+
+        elif self.adapter.adapter_kind == "stochastic_prototype":
             if n_samples is None:
                 n_samples = int(getattr(self.adapter.cfg.CLIP_ADAPTERS, "N_SAMPLES", 3))
 
@@ -86,6 +100,7 @@ class ClipAdaptersModel(nn.Module):
         return {
             "logits": logits,
             "logits_all": logits_all,
+            "sub_logits": sub_logits,
             "features_for_logits": features_for_logits,
         }
 
@@ -133,6 +148,10 @@ class ClipAdaptersMethod(BaseMethod):
 
     def _is_cross_modal(self) -> bool:
         return bool(getattr(self.model.adapter, "uses_cross_modal", False))
+
+    def _add_capel_aux(self, head, aux_logits):
+        if head.get("sub_logits") is not None:
+            aux_logits["capel_sub_logits"] = head["sub_logits"]
 
     def _bayes_kl_weight(self) -> float:
         if not self._is_bayes_adapter():
@@ -462,6 +481,8 @@ class ClipAdaptersMethod(BaseMethod):
             features = batch["features"].to(self.device)
             head = self.model.forward_features(features, n_samples=n_train_samples)
 
+            self._add_capel_aux(head, aux_logits)
+
             if self._is_bayes_adapter() and head["logits_all"] is not None:
                 aux_logits["bayes_logits_all"] = head["logits_all"]
                 extras["bayes_kl_weight"] = self._bayes_kl_weight()
@@ -499,6 +520,8 @@ class ClipAdaptersMethod(BaseMethod):
                     n_samples=n_train_samples,
                 )
 
+                self._add_capel_aux(head, aux_logits)
+
                 if self._is_bayes_adapter() and head["logits_all"] is not None:
                     aux_logits["bayes_logits_all"] = head["logits_all"]
                     extras["bayes_kl_weight"] = self._bayes_kl_weight()
@@ -512,6 +535,8 @@ class ClipAdaptersMethod(BaseMethod):
                 )
 
         head = self.model.forward_features(image_features, n_samples=n_train_samples)
+
+        self._add_capel_aux(head, aux_logits)
 
         if self._is_bayes_adapter() and head["logits_all"] is not None:
             aux_logits["bayes_logits_all"] = head["logits_all"]

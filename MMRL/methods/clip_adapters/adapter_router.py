@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .adapters import (
     BayesAdapter,
+    CapelAdapter,
     ClipAdapterResidual,
     CrossModalProbeAdapter,
     RandomProbeAdapter,
@@ -11,9 +12,14 @@ from .adapters import (
 )
 
 
-def build_adapter(cfg, clip_model, base_text_features):
+def build_adapter(cfg, clip_model, base_text_features, classnames=None):
     init = str(cfg.CLIP_ADAPTERS.INIT)
     init_upper = init.upper()
+
+    if init_upper == "CAPEL":
+        if classnames is None:
+            raise ValueError("CapelAdapter requires classnames.")
+        return CapelAdapter(cfg, clip_model, base_text_features, classnames)
 
     if init_upper == "RANDOM":
         return RandomProbeAdapter(cfg, clip_model, base_text_features)

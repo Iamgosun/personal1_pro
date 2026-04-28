@@ -55,7 +55,15 @@ def _as_legacy_clipadapter(cfg):
     sec.ONLINE_PREFIT_REPS = cad.ONLINE_PREFIT_REPS
     sec.ONLINE_PREFIT_TRAIN_AUG = cad.ONLINE_PREFIT_TRAIN_AUG
 
-
+    if hasattr(cad, "CAPEL_PROMPT_BANK"):
+        sec.CAPEL_PROMPT_BANK = cad.CAPEL_PROMPT_BANK
+        sec.CAPEL_PROMPTS_PER_CLASS = cad.CAPEL_PROMPTS_PER_CLASS
+        sec.CAPEL_PC_LAMBDA = cad.CAPEL_PC_LAMBDA
+        sec.CAPEL_STRICT_PROMPT_BANK = cad.CAPEL_STRICT_PROMPT_BANK
+        sec.CAPEL_FALLBACK_ORDER = cad.CAPEL_FALLBACK_ORDER
+        sec.CAPEL_USE_FEATURE_CACHE = cad.CAPEL_USE_FEATURE_CACHE
+        sec.CAPEL_REBUILD_FEATURE_CACHE = cad.CAPEL_REBUILD_FEATURE_CACHE
+        sec.CAPEL_FEATURE_CACHE_DIR = cad.CAPEL_FEATURE_CACHE_DIR
 
 def _as_legacy_mmrl(cfg):
     if not hasattr(cfg.TRAINER, "MMRL"):
@@ -296,6 +304,19 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.BAYES_PRIOR_STD = 0.01
     cfg.CLIP_ADAPTERS.BAYES_KL_SCALE = 1.0
 
+
+    # CAPEL-specific defaults
+    cfg.CLIP_ADAPTERS.CAPEL_PROMPT_BANK = "/root/autodl-tmp/MMRL/prompts/capel_prompt_bank_all.json"
+    cfg.CLIP_ADAPTERS.CAPEL_PROMPTS_PER_CLASS = 50
+    cfg.CLIP_ADAPTERS.CAPEL_PC_LAMBDA = 3.0
+    cfg.CLIP_ADAPTERS.CAPEL_STRICT_PROMPT_BANK = True
+    cfg.CLIP_ADAPTERS.CAPEL_FALLBACK_ORDER = False
+
+    # CAPEL prompt feature cache.
+    # This avoids re-encoding C x K prompts with CLIP text encoder every run.
+    cfg.CLIP_ADAPTERS.CAPEL_USE_FEATURE_CACHE = True
+    cfg.CLIP_ADAPTERS.CAPEL_REBUILD_FEATURE_CACHE = False
+    cfg.CLIP_ADAPTERS.CAPEL_FEATURE_CACHE_DIR = "/root/autodl-tmp/MMRL/prompts/capel_feature_cache"
     
 
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"

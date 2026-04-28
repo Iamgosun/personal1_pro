@@ -18,6 +18,42 @@ def lp_logits(logit_scale, features, prototypes):
     return features @ prototypes.t() * logit_scale.exp()
 
 
+def capel_logits(logit_scale, features, prototypes, prompt_weights):
+    """
+    CAPEL logits-space prompt ensemble.
+
+    features:       [B, D]
+    prototypes:     [C, K, D]
+    prompt_weights: [C, K]
+
+    returns:
+      logits:     [B, C]
+      sub_logits: [B, C, K]
+    """
+    if features.ndim != 2:
+        raise ValueError(f"capel_logits expects features [B, D], got {tuple(features.shape)}")
+    if prototypes.ndim != 3:
+        raise ValueError(f"capel_logits expects prototypes [C, K, D], got {tuple(prototypes.shape)}")
+    if prompt_weights.ndim != 2:
+        raise ValueError(
+            f"capel_logits expects prompt_weights [C, K], got {tuple(prompt_weights.shape)}"
+        )
+    if prototypes.shape[:2] != prompt_weights.shape:
+        raise ValueError(
+            "CAPEL prototype/prompt weight mismatch: "
+            f"prototypes[:2]={tuple(prototypes.shape[:2])}, "
+            f"prompt_weights={tuple(prompt_weights.shape)}"
+        )
+
+    features = _normalize(features.float())
+    prototypes = _normalize(prototypes.float())
+
+    sub_logits = torch.einsum("bd,ckd->bck", features, prototypes) * logit_scale.exp()
+    logits = (sub_logits * prompt_weights.float().unsqueeze(0)).sum(dim=-1)
+
+    return logits, sub_logits
+
+
 def bayes_logits_all(logit_scale, features, prototypes):
     """
     Returns per-sample logits with shape [S, B, C].
