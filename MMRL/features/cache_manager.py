@@ -55,15 +55,25 @@ class FeatureCacheManager:
             return default
         return getattr(cfg, name, default)
 
-    def build_metadata(self, split: str, reps: int, train_aug: bool, mode: str) -> Dict:
+
+
+    def build_metadata(
+        self,
+        split: str,
+        reps: int,
+        train_aug: bool,
+        mode: str,
+        aggregation: str,
+    ) -> Dict:
         clip_cfg = getattr(self.cfg, "CLIP_ADAPTERS", None)
         input_cfg = getattr(self.cfg, "INPUT", None)
         backbone_cfg = self.cfg.MODEL.BACKBONE
 
         return {
-            # Bump this because the previous extractor could average mismatched
-            # samples when train cache used a random sampler across reps.
-            "schema_version": 4,
+            # Bump because CACHE_REPS semantics changed:
+            # schema v4 averaged repeated train augmentations;
+            # schema v5 can preserve them as a feature pool.
+            "schema_version": 5,
 
             "dataset": self.cfg.DATASET.NAME,
             "split": str(split),
@@ -77,14 +87,18 @@ class FeatureCacheManager:
             "backbone_pretrained": self._jsonable(
                 getattr(backbone_cfg, "PRETRAINED", True)
             ),
+            "model_init_weights": self._jsonable(
+                getattr(self.cfg.MODEL, "INIT_WEIGHTS", "")
+            ),
 
             "method_name": self.cfg.METHOD.NAME,
             "method_family": self.cfg.METHOD.FAMILY,
+            "method_tag": self._jsonable(getattr(self.cfg.METHOD, "TAG", "")),
             "protocol": self.cfg.PROTOCOL.NAME,
+            "phase": self._jsonable(getattr(self.cfg.PROTOCOL, "PHASE", None)),
 
             # Cached payload includes logits in addition to image features.
-            # Therefore adapter/logit-affecting settings must be part of the key;
-            # otherwise changing INIT can reuse stale logits from another adapter.
+            # Adapter/logit-affecting settings must therefore be part of the key.
             "adapter_init": self._jsonable(self._cfg_get(clip_cfg, "INIT", "unknown")),
             "adapter_type": self._jsonable(self._cfg_get(clip_cfg, "TYPE", "unknown")),
             "adapter_constraint": self._jsonable(
@@ -99,6 +113,17 @@ class FeatureCacheManager:
                 self._cfg_get(clip_cfg, "N_TEST_SAMPLES", None)
             ),
 
+            # TipA/CrossModal options can affect cached logits or feature-pool shape.
+            "clap_tipa_trainable_cache": self._jsonable(
+                self._cfg_get(clip_cfg, "CLAP_TIPA_TRAINABLE_CACHE", None)
+            ),
+            "clap_tipa_raw_affinity": self._jsonable(
+                self._cfg_get(clip_cfg, "CLAP_TIPA_RAW_AFFINITY", None)
+            ),
+            "cross_modal_resample_text": self._jsonable(
+                self._cfg_get(clip_cfg, "CROSS_MODAL_RESAMPLE_TEXT", None)
+            ),
+
             # Image preprocessing affects cached features.
             "input_size": self._jsonable(self._cfg_get(input_cfg, "SIZE", None)),
             "input_interpolation": self._jsonable(
@@ -107,15 +132,28 @@ class FeatureCacheManager:
             "input_transforms": self._jsonable(
                 self._cfg_get(input_cfg, "TRANSFORMS", None)
             ),
+            "input_rrcrop_scale": self._jsonable(
+                self._cfg_get(input_cfg, "RRCROP_SCALE", None)
+            ),
+            "input_pixel_mean": self._jsonable(
+                self._cfg_get(input_cfg, "PIXEL_MEAN", None)
+            ),
+            "input_pixel_std": self._jsonable(
+                self._cfg_get(input_cfg, "PIXEL_STD", None)
+            ),
 
             "reps": int(reps),
             "train_aug": bool(train_aug),
+            "aggregation": str(aggregation),
             "mode": str(mode),
         }
+
 
     def build_cache_id(self, metadata: Dict) -> str:
         payload = json.dumps(metadata, ensure_ascii=False, sort_keys=True).encode("utf-8")
         return hashlib.sha1(payload).hexdigest()[:16]
+
+
 
     def build_spec(
         self,
@@ -123,8 +161,15 @@ class FeatureCacheManager:
         reps: int,
         train_aug: bool,
         mode: str = "features_only",
+        aggregation: str = "mean",
     ) -> CacheSpec:
-        metadata = self.build_metadata(split, reps, train_aug, mode)
+        metadata = self.build_metadata(
+            split=split,
+            reps=reps,
+            train_aug=train_aug,
+            mode=mode,
+            aggregation=aggregation,
+        )
         cache_id = self.build_cache_id(metadata)
 
         return CacheSpec(
@@ -133,6 +178,7 @@ class FeatureCacheManager:
             manifest_path=str(self.manifest_dir / f"{cache_id}.json"),
             metadata=metadata,
         )
+
 
     def validate_cache(self, metadata: Dict, manifest: Dict) -> bool:
         return manifest.get("metadata") == metadata

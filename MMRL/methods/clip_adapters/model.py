@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader, SequentialSampler
 
 from backbones.clip_loader import load_raw_clip_to_cpu
 from backbones.freeze import freeze_all_but
 from backbones.text_encoders import CLIPTextEncoder, build_base_text_features
 from core.registry import METHOD_REGISTRY
 from core.types import MethodOutputs
+from data.build import build_split_dataset
 from methods.base import BaseMethod
 from .adapter_router import build_adapter
 from .loss import ClipAdaptersLoss
@@ -112,6 +114,10 @@ class ClipAdaptersMethod(BaseMethod):
         self.current_epoch = 0
         self.total_epochs = 1
 
+        # Online CrossModal state. Built in on_fit_start(), not saved to disk.
+        self.online_text_features = None
+        self.online_text_labels = None
+
         self.loss = ClipAdaptersLoss(self.cfg, self.model.adapter)
         return self
 
@@ -121,6 +127,12 @@ class ClipAdaptersMethod(BaseMethod):
 
     def _is_bayes_adapter(self) -> bool:
         return str(getattr(self.model.adapter, "initialization_name", "")).upper() == "BAYES_ADAPTER"
+
+    def _is_tip_adapter(self) -> bool:
+        return bool(getattr(self.model.adapter, "is_tip_adapter", False))
+
+    def _is_cross_modal(self) -> bool:
+        return bool(getattr(self.model.adapter, "uses_cross_modal", False))
 
     def _bayes_kl_weight(self) -> float:
         if not self._is_bayes_adapter():
@@ -136,16 +148,203 @@ class ClipAdaptersMethod(BaseMethod):
     def supports_cache(self) -> bool:
         return bool(getattr(self.cfg.CLIP_ADAPTERS, "ALLOW_CACHE", True))
 
-    def _is_cross_modal(self) -> bool:
-        return bool(getattr(self.model.adapter, "uses_cross_modal", False))
+    def _needs_online_support_features(self) -> bool:
+        """
+        Online mode should not use disk cold cache, but some adapters still need
+        transient support features/statistics before training.
+
+        - CLAP constraint needs labels_train/logits_train.
+        - TipA/TipA-f need support features to build cache_keys/cache_values.
+        """
+        adapter = self.model.adapter
+
+        if getattr(adapter, "apply_constraint", "none") != "none":
+            return True
+
+        if self._is_tip_adapter():
+            return True
+
+        return False
+
+    def _online_prefit_reps(self) -> int:
+        if hasattr(self.cfg.CLIP_ADAPTERS, "ONLINE_PREFIT_REPS"):
+            reps = int(getattr(self.cfg.CLIP_ADAPTERS, "ONLINE_PREFIT_REPS"))
+        else:
+            reps = int(getattr(self.cfg.CLIP_ADAPTERS, "CACHE_REPS", 1))
+
+        return max(1, reps)
+
+    def _online_prefit_train_aug(self) -> bool:
+        if hasattr(self.cfg.CLIP_ADAPTERS, "ONLINE_PREFIT_TRAIN_AUG"):
+            return bool(getattr(self.cfg.CLIP_ADAPTERS, "ONLINE_PREFIT_TRAIN_AUG"))
+        return bool(getattr(self.cfg.CLIP_ADAPTERS, "CACHE_TRAIN_AUG", True))
+
+    def _build_online_prefit_loader(self, trainer):
+        """
+        Build a loader for transient online support-feature prefit.
+
+        If ONLINE_PREFIT_TRAIN_AUG=True, reuse trainer.train_loader_x so the same
+        train-time augmentation pipeline is used.
+
+        If ONLINE_PREFIT_TRAIN_AUG=False, build a deterministic train split loader
+        with eval transform.
+        """
+        train_aug = self._online_prefit_train_aug()
+
+        if train_aug:
+            return trainer.train_loader_x
+
+        dataset = build_split_dataset(
+            trainer.cfg,
+            trainer.dm.dataset.train_x,
+            is_train=False,
+        )
+
+        return DataLoader(
+            dataset,
+            batch_size=trainer.cfg.DATALOADER.TRAIN_X.BATCH_SIZE,
+            sampler=SequentialSampler(dataset),
+            num_workers=0,
+            pin_memory=torch.cuda.is_available(),
+            drop_last=False,
+        )
+
+    @torch.no_grad()
+    def _collect_online_support_features(self, trainer):
+        """
+        Build a transient in-memory support feature pool for online mode.
+
+        This does NOT write disk cache. It only collects realtime CLIP features
+        and logits from support images before optimizer creation.
+
+        Repeated passes are concatenated, not averaged:
+            reps x N -> reps*N
+        """
+        reps = self._online_prefit_reps()
+
+        model_was_training = bool(self.model.training)
+        method_was_training = bool(self.training)
+
+        self.model.eval()
+        self.eval()
+
+        labels_all = []
+        logits_all = []
+        features_all = []
+
+        for rep_idx in range(reps):
+            print(
+                f"[ClipAdaptersMethod] online prefit support pass "
+                f"{rep_idx + 1}/{reps}"
+            )
+
+            loader = self._build_online_prefit_loader(trainer)
+
+            for batch in loader:
+                image = batch["img"].to(self.device)
+                label = batch["label"].to(self.device)
+
+                try:
+                    image_features = self.model.image_encoder(image.type(self.model.dtype))
+                except Exception:
+                    image_features = self.model.image_encoder(image.float())
+
+                head = self.model.forward_features(image_features)
+
+                labels_all.append(label.detach().cpu())
+                logits_all.append(head["logits"].detach().cpu())
+                features_all.append(image_features.detach().cpu())
+
+        if model_was_training:
+            self.model.train()
+        if method_was_training:
+            self.train()
+
+        if not labels_all:
+            raise RuntimeError(
+                "Online support feature prefit found no batches in trainer.train_loader_x."
+            )
+
+        labels_train = torch.cat(labels_all, dim=0).to(self.device)
+        logits_train = torch.cat(logits_all, dim=0).to(self.device)
+        features_train = torch.cat(features_all, dim=0).to(self.device)
+
+        print(
+            "[ClipAdaptersMethod] online support features built: "
+            f"features={tuple(features_train.shape)}, "
+            f"labels={tuple(labels_train.shape)}, "
+            f"logits={tuple(logits_train.shape)}"
+        )
+
+        return labels_train, logits_train, features_train
+
+    def _build_online_cross_modal_text_pool(self):
+        """
+        Build CrossModal text prompt feature pool for online mode.
+
+        In cache mode, text prompt features are concatenated into cached train
+        features. In online mode, image features are produced per batch, so
+        we keep prompt features in memory and sample them in forward_train().
+        """
+        text_embeddings_all = self.model.text_embeddings_all.detach().to(
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+        if text_embeddings_all.ndim != 3:
+            raise ValueError(
+                "CrossModal expects text_embeddings_all with shape [C, T, D], "
+                f"got {tuple(text_embeddings_all.shape)}"
+            )
+
+        n_classes, n_templates, feat_dim = text_embeddings_all.shape
+        text_features = text_embeddings_all.reshape(n_classes * n_templates, feat_dim)
+        text_labels = (
+            torch.arange(n_classes, device=self.device, dtype=torch.long)
+            .repeat_interleave(n_templates)
+        )
+
+        self.online_text_features = text_features
+        self.online_text_labels = text_labels
+
+        print(
+            "[ClipAdaptersMethod] online CrossModal text pool built: "
+            f"features={tuple(text_features.shape)}, "
+            f"labels={tuple(text_labels.shape)}"
+        )
+
+    def _sample_online_cross_modal_text(self, n: int):
+        if self.online_text_features is None or self.online_text_labels is None:
+            return None, None
+
+        n_text = int(self.online_text_features.shape[0])
+        if n_text <= 0:
+            return None, None
+
+        idx = torch.randint(0, n_text, (int(n),), device=self.device)
+        return self.online_text_features[idx], self.online_text_labels[idx]
+
+    def _apply_tip_adapter_one_epoch(self, trainer):
+        adapter = self.model.adapter
+
+        if not self._is_tip_adapter():
+            return
+
+        one_epoch = bool(getattr(self.cfg.CLIP_ADAPTERS, "CLAP_TIPA_ONE_EPOCH", True))
+        if one_epoch and not bool(getattr(adapter, "finetune_cache", False)):
+            trainer.max_epoch = 1
+            print("[ClipAdaptersMethod] Plain TipA: set max_epoch=1 to match CLAP")
 
     def _prepare_cross_modal_cache_data(self, trainer):
         """
-        CLAP CrossModal:
+        CLAP CrossModal cache mode:
         after image feature extraction, add text prompt features as extra samples.
         """
         device = trainer.features_train.device
-        text_embeddings_all = self.model.text_embeddings_all.detach().to(device=device, dtype=torch.float32)
+        text_embeddings_all = self.model.text_embeddings_all.detach().to(
+            device=device,
+            dtype=torch.float32,
+        )
 
         if text_embeddings_all.ndim != 3:
             raise ValueError(
@@ -191,6 +390,67 @@ class ClipAdaptersMethod(BaseMethod):
         if self._is_cross_modal():
             self._prepare_cross_modal_cache_data(trainer)
 
+    def on_fit_start(self, trainer):
+        """
+        Called after executor.on_build() and before optimizer creation.
+
+        Online mode:
+        - no disk cold cache
+        - build transient support features only when needed
+        - build transient text pool for CrossModal
+        """
+        exec_mode = str(getattr(self.cfg.METHOD, "EXEC_MODE", "online")).lower()
+        if exec_mode != "online":
+            return None
+
+        adapter = self.model.adapter
+
+        if self._is_cross_modal():
+            self._build_online_cross_modal_text_pool()
+
+        labels_train = None
+        logits_train = None
+        features_train = None
+
+        if self._needs_online_support_features():
+            labels_train, logits_train, features_train = self._collect_online_support_features(
+                trainer
+            )
+
+            # Expose these for debugging and cache-style compatibility.
+            trainer.labels_train = labels_train
+            trainer.logits_train = logits_train
+            trainer.features_train = features_train
+
+        if getattr(adapter, "apply_constraint", "none") != "none":
+            if labels_train is None or logits_train is None:
+                raise RuntimeError(
+                    "CLAP constraint in online mode requires support logits/labels, "
+                    "but online prefit did not build them."
+                )
+
+            print("[ClipAdaptersMethod] Online: initializing CLAP constraint multipliers")
+            adapter.init_lagrangian_multipliers(
+                labels_train.to(self.device),
+                logits_train.to(self.device),
+            )
+
+        if self._is_tip_adapter():
+            if labels_train is None or features_train is None:
+                raise RuntimeError(
+                    "TipA online mode requires support features/labels, "
+                    "but online prefit did not build them."
+                )
+
+            print("[ClipAdaptersMethod] Online: building TipA support feature bank")
+            adapter.build_cache(
+                features_train.to(self.device),
+                labels_train.to(self.device),
+            )
+
+        self._apply_tip_adapter_one_epoch(trainer)
+        return None
+
     def forward_train(self, batch):
         label = batch["label"].to(self.device)
         n_train_samples = int(getattr(self.cfg.CLIP_ADAPTERS, "N_SAMPLES", 3))
@@ -215,18 +475,50 @@ class ClipAdaptersMethod(BaseMethod):
             )
 
         image = batch["img"].to(self.device)
-        logits, image_features, logits_all = self.model(
-            image,
-            return_features=True,
-            n_samples=n_train_samples,
-        )
 
-        if self._is_bayes_adapter() and logits_all is not None:
-            aux_logits["bayes_logits_all"] = logits_all
+        try:
+            image_features = self.model.image_encoder(image.type(self.model.dtype))
+        except Exception:
+            image_features = self.model.image_encoder(image.float())
+
+        # Online CrossModal: mix realtime image features with sampled prompt features.
+        if self._is_cross_modal() and self.online_text_features is not None:
+            text_features, text_labels = self._sample_online_cross_modal_text(
+                n=int(image_features.shape[0])
+            )
+
+            if text_features is not None:
+                mixed_features = torch.cat(
+                    [image_features.to(torch.float32), text_features.to(torch.float32)],
+                    dim=0,
+                )
+                mixed_labels = torch.cat([label, text_labels.to(label.device)], dim=0)
+
+                head = self.model.forward_features(
+                    mixed_features,
+                    n_samples=n_train_samples,
+                )
+
+                if self._is_bayes_adapter() and head["logits_all"] is not None:
+                    aux_logits["bayes_logits_all"] = head["logits_all"]
+                    extras["bayes_kl_weight"] = self._bayes_kl_weight()
+
+                return MethodOutputs(
+                    logits=head["logits"],
+                    labels=mixed_labels,
+                    aux_logits=aux_logits,
+                    features={"img": head["features_for_logits"]},
+                    extras={"mode": "online_crossmodal", **extras},
+                )
+
+        head = self.model.forward_features(image_features, n_samples=n_train_samples)
+
+        if self._is_bayes_adapter() and head["logits_all"] is not None:
+            aux_logits["bayes_logits_all"] = head["logits_all"]
             extras["bayes_kl_weight"] = self._bayes_kl_weight()
 
         return MethodOutputs(
-            logits=logits,
+            logits=head["logits"],
             labels=label,
             aux_logits=aux_logits,
             features={"img": image_features},
@@ -262,6 +554,7 @@ class ClipAdaptersMethod(BaseMethod):
             return_features=True,
             n_samples=n_test_samples,
         )
+
         return MethodOutputs(
             logits=logits,
             labels=label,
@@ -272,8 +565,6 @@ class ClipAdaptersMethod(BaseMethod):
     def on_cache_ready(self, trainer):
         adapter = self.model.adapter
 
-        # CLAP constraint initialization happens after feature extraction
-        # and after CrossModal data expansion.
         if getattr(adapter, "apply_constraint", "none") != "none":
             print("[ClipAdaptersMethod] Initializing CLAP constraint multipliers")
             adapter.init_lagrangian_multipliers(
@@ -284,9 +575,4 @@ class ClipAdaptersMethod(BaseMethod):
         if hasattr(adapter, "build_cache"):
             adapter.build_cache(trainer.features_train, trainer.labels_train)
 
-        # CLAP TipA plain path: one epoch only.
-        if bool(getattr(adapter, "is_tip_adapter", False)):
-            one_epoch = bool(getattr(self.cfg.CLIP_ADAPTERS, "CLAP_TIPA_ONE_EPOCH", True))
-            if one_epoch and not bool(getattr(adapter, "finetune_cache", False)):
-                trainer.max_epoch = 1
-                print("[ClipAdaptersMethod] Plain TipA: set max_epoch=1 to match CLAP")
+        self._apply_tip_adapter_one_epoch(trainer)

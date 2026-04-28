@@ -29,13 +29,8 @@ class CLIPFeatureExtractor:
             is_train=(train_aug if split == "train" else default_train),
         )
 
-        # Do not reuse trainer.train_loader_x.sampler here.
-        # The training sampler is commonly RandomSampler. If CACHE_REPS > 1,
-        # each pass can yield a different sample order, and then averaging
-        # logits/features by tensor position silently mixes different images.
-        #
-        # SequentialSampler keeps the item order stable across reps while still
-        # allowing random image augmentations when train_aug=True.
+        # Keep item order stable across reps.
+        # Random image augmentations still happen through transform when train_aug=True.
         sampler = SequentialSampler(dataset)
 
         batch_size = (
@@ -88,6 +83,26 @@ class CLIPFeatureExtractor:
 
         return True
 
+    def _aggregation_mode(self, split: str) -> str:
+        """
+        CLAP-style default:
+        - train split uses a feature pool: reps augmentations are concatenated.
+        - val/test keep mean aggregation, though reps is normally 1 there.
+        """
+        clip_cfg = getattr(self.trainer.cfg, "CLIP_ADAPTERS", None)
+        mode = str(getattr(clip_cfg, "CACHE_AGGREGATION", "pool")).lower()
+
+        if mode not in {"pool", "mean"}:
+            raise ValueError(
+                "CLIP_ADAPTERS.CACHE_AGGREGATION must be 'pool' or 'mean', "
+                f"got {mode!r}"
+            )
+
+        if split != "train":
+            return "mean"
+
+        return mode
+
     def extract_split(
         self,
         split: str,
@@ -99,11 +114,14 @@ class CLIPFeatureExtractor:
         if reps < 1:
             raise ValueError(f"reps must be >= 1, got {reps}")
 
+        aggregation = self._aggregation_mode(split)
+
         spec = self.cache_manager.build_spec(
             split=split,
             reps=reps,
             train_aug=train_aug,
             mode=mode,
+            aggregation=aggregation,
         )
 
         cached = self.cache_manager.load(spec)
@@ -124,6 +142,7 @@ class CLIPFeatureExtractor:
             loader = self._build_loader(split, train_aug)
 
             base_labels = None
+            labels_all = []
             logits_all = []
             features_all = []
 
@@ -151,7 +170,8 @@ class CLIPFeatureExtractor:
                         feat = outputs.features.get("img")
                         if feat is None:
                             raise RuntimeError(
-                                "Cache mode requires image features in outputs.features['img']"
+                                "Cache mode requires image features in "
+                                "outputs.features['img']"
                             )
 
                         labels_rep.append(labels.detach().cpu())
@@ -167,16 +187,25 @@ class CLIPFeatureExtractor:
                 elif not torch.equal(labels_rep, base_labels):
                     raise RuntimeError(
                         "Feature-cache extraction produced different label order "
-                        f"between reps. This would corrupt averaged features/logits. "
-                        f"split={split}, rep={rep_idx + 1}"
+                        "between reps. This would corrupt repeated augmented "
+                        f"features. split={split}, rep={rep_idx + 1}"
                     )
 
+                labels_all.append(labels_rep)
                 logits_all.append(logits_rep)
                 features_all.append(features_rep)
 
-            labels = base_labels
-            logits = torch.stack(logits_all, dim=0).mean(0)
-            features = torch.stack(features_all, dim=0).mean(0)
+            if aggregation == "pool":
+                # CLAP-style feature pool:
+                # [reps, N, D] -> [reps * N, D]
+                labels = torch.cat(labels_all, dim=0)
+                logits = torch.cat(logits_all, dim=0)
+                features = torch.cat(features_all, dim=0)
+            else:
+                # TTA-style mean feature. Kept only for ablations/backward compatibility.
+                labels = base_labels
+                logits = torch.stack(logits_all, dim=0).mean(0)
+                features = torch.stack(features_all, dim=0).mean(0)
 
             payload = {
                 "labels": labels,
@@ -184,11 +213,13 @@ class CLIPFeatureExtractor:
                 "features": features,
                 "meta": {
                     "num_samples": int(labels.shape[0]),
+                    "base_num_samples": int(base_labels.shape[0]),
                     "num_classes": int(logits.shape[-1]),
                     "feature_dim": int(features.shape[-1]),
                     "reps": reps,
                     "train_aug": bool(train_aug),
                     "mode": mode,
+                    "aggregation": aggregation,
                 },
             }
 

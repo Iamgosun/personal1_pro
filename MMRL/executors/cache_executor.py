@@ -66,23 +66,44 @@ class CacheExecutor(BaseExecutor):
 
         trainer.method.on_cache_ready(trainer)
 
+
+
+    def _base_train_size(self, trainer) -> int:
+        try:
+            return int(len(trainer.dm.dataset.train_x))
+        except Exception:
+            return int(len(trainer.cache_train_loader.dataset))
+
     def _epoch_loader(self, trainer):
         """
-        CLAP CrossModal samples half of the concatenated feature pool each epoch.
-        This preserves the original modular data loader while matching that semantic.
+        CLAP-style feature-pool training.
+
+        If CACHE_REPS=20 and CACHE_AGGREGATION=pool, the cached train set has
+        roughly 20 * N features. Official CLAP does not consume all 20N features
+        every epoch; it uses the feature pool but keeps the epoch size tied to
+        the original training loader.
+
+        Therefore, each epoch samples N items from the cached pool, where N is
+        len(train_x). This also handles CrossModal after text features are added.
         """
-        adapter = getattr(trainer.method.model, "adapter", None)
-        is_cross_modal = bool(getattr(adapter, "uses_cross_modal", False))
+        dataset = trainer.cache_train_loader.dataset
+        dataset_size = int(len(dataset))
+        base_train_size = self._base_train_size(trainer)
+
         do_subsample = bool(
-            getattr(trainer.cfg.CLIP_ADAPTERS, "CROSS_MODAL_EPOCH_SUBSAMPLE", True)
+            getattr(trainer.cfg.CLIP_ADAPTERS, "CACHE_POOL_EPOCH_SUBSAMPLE", True)
         )
 
-        if not (is_cross_modal and do_subsample):
+        # Backward-compatible path: train over the full cached dataset.
+        if not do_subsample:
             return trainer.cache_train_loader
 
-        dataset = trainer.cache_train_loader.dataset
-        n = max(1, len(dataset) // 2)
-        indices = torch.randperm(len(dataset))[:n].tolist()
+        # If cache is already N, no need to create a subset.
+        if dataset_size <= base_train_size:
+            return trainer.cache_train_loader
+
+        n = max(1, base_train_size)
+        indices = torch.randperm(dataset_size)[:n].tolist()
 
         return DataLoader(
             Subset(dataset, indices),
@@ -92,6 +113,8 @@ class CacheExecutor(BaseExecutor):
             num_workers=0,
             pin_memory=torch.cuda.is_available(),
         )
+
+
 
     def run_epoch(self, trainer):
         trainer.set_model_mode("eval")

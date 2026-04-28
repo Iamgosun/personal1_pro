@@ -40,9 +40,20 @@ def _as_legacy_clipadapter(cfg):
     sec.TIPA_F_GRID_EPOCHS = cad.TIPA_F_GRID_EPOCHS
     sec.CROSS_MODAL_RESAMPLE_TEXT = cad.CROSS_MODAL_RESAMPLE_TEXT
     sec.CROSS_MODAL_EPOCH_SUBSAMPLE = cad.CROSS_MODAL_EPOCH_SUBSAMPLE
+
     sec.CACHE_REPS = cad.CACHE_REPS
     sec.CACHE_TRAIN_AUG = cad.CACHE_TRAIN_AUG
+    sec.CACHE_AGGREGATION = cad.CACHE_AGGREGATION
+    sec.CACHE_POOL_EPOCH_SUBSAMPLE = cad.CACHE_POOL_EPOCH_SUBSAMPLE
 
+
+    if hasattr(cad, "CACHE_AGGREGATION"):
+        sec.CACHE_AGGREGATION = cad.CACHE_AGGREGATION
+    if hasattr(cad, "CACHE_POOL_EPOCH_SUBSAMPLE"):
+        sec.CACHE_POOL_EPOCH_SUBSAMPLE = cad.CACHE_POOL_EPOCH_SUBSAMPLE
+
+    sec.ONLINE_PREFIT_REPS = cad.ONLINE_PREFIT_REPS
+    sec.ONLINE_PREFIT_TRAIN_AUG = cad.ONLINE_PREFIT_TRAIN_AUG
 
 
 
@@ -238,7 +249,18 @@ def get_refactor_defaults():
     # Cache extraction defaults. For closer CLAP behavior, override CACHE_REPS=20.
     cfg.CLIP_ADAPTERS.CACHE_REPS = 1
     cfg.CLIP_ADAPTERS.CACHE_TRAIN_AUG = True
+    # "pool" matches jusiro/CLAP-style repeated augmentation features.
+    # "mean" keeps the old behavior: average repeated features into one feature.
+    cfg.CLIP_ADAPTERS.CACHE_AGGREGATION = "pool"
+    # When using a feature pool, train on approximately one original train set
+    # per epoch instead of consuming all augmented views every epoch.
+    cfg.CLIP_ADAPTERS.CACHE_POOL_EPOCH_SUBSAMPLE = True
 
+    # Online mode:
+    # Build transient support features/statistics for CLAP constraint and TipA bank.
+    # This does not write disk cache.
+    cfg.CLIP_ADAPTERS.ONLINE_PREFIT_REPS = 1
+    cfg.CLIP_ADAPTERS.ONLINE_PREFIT_TRAIN_AUG = True
 
     # CLAP-aligned adapter behavior
     cfg.CLIP_ADAPTERS.GRID_SEARCH = False

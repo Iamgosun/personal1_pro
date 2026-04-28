@@ -12,8 +12,8 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-CLAP RANDOM}
-EXEC_MODE=${3:-online}
+METHODS_ARG=${2:-CLAP }
+EXEC_MODE=${3:-cache}
 DATASETS_ARG=${4:-"caltech101 ucf101 "}
 SHOTS_ARG=${5:-"1"}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
@@ -158,7 +158,15 @@ resolve_launch_exec_mode() {
 
   case "$method" in
     ZS|CLAP|ZS_CLAP|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2|ClipAdapters|ClipADAPTER)
-      echo "cache"
+      # Respect the third CLI argument.
+      #
+      # cache:
+      #   cold feature cache; feature extraction is done before training
+      #
+      # online:
+      #   realtime image augmentation + realtime CLIP image encoding;
+      #   only transient support features are built for CLAP/TipA/CrossModal
+      echo "$EXEC_MODE"
       ;;
     *)
       echo "$EXEC_MODE"
