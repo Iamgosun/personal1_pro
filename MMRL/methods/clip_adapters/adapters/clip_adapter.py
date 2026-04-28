@@ -13,8 +13,8 @@ class ClipAdapterResidual(BaseAdapter):
         super().__init__(cfg, clip_model, base_text_features)
         print("Using CLIP-Adapter")
 
-        feat_dim = int(base_text_features.shape[-1])
-        hidden_dim = max(1, feat_dim // 4)
+        self.feat_dim = int(base_text_features.shape[-1])
+        self.hidden_dim = max(1, self.feat_dim // 4)
 
         self.grid_search_param = {
             "lr": [1e-1, 1e-2, 1e-3],
@@ -22,12 +22,13 @@ class ClipAdapterResidual(BaseAdapter):
         }
 
         self.ratio = float(ratio)
+        self.mlp = self._build_mlp()
 
-        # CLIP-Adapter keeps the classifier anchored to the zero-shot text prototypes.
-        self.mlp = nn.Sequential(
-            nn.Linear(feat_dim, hidden_dim, bias=False),
+    def _build_mlp(self):
+        return nn.Sequential(
+            nn.Linear(self.feat_dim, self.hidden_dim, bias=False),
             nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, feat_dim, bias=False),
+            nn.Linear(self.hidden_dim, self.feat_dim, bias=False),
             nn.ReLU(inplace=True),
         )
 
@@ -41,3 +42,9 @@ class ClipAdapterResidual(BaseAdapter):
     def reset_hparams(self, params):
         if "ratio" in params:
             self.ratio = float(params["ratio"])
+
+    def reset_for_grid(self, params, features_train=None, labels_train=None):
+        self.reset_hparams(params)
+
+        # CLAP reset_hyperparams() re-calls init_clipA(), which rebuilds the MLP.
+        self.mlp = self._build_mlp().to(self.base_text_features.device)

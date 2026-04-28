@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import os.path as osp
-
+import copy
+import csv
+import json
 import torch
 import torch.nn as nn
 from torch.cuda.amp import GradScaler
@@ -11,6 +13,9 @@ from dassl.optim import build_lr_scheduler, build_optimizer
 from dassl.utils import load_checkpoint, load_pretrained_weights
 
 from core.registry import EXECUTOR_REGISTRY, METHOD_REGISTRY
+from sklearn.model_selection import ParameterGrid
+
+
 
 # ensure method / executor registration side effects
 import methods.mmrl  # noqa: F401
@@ -65,6 +70,180 @@ class RefactorRunner(TrainerX):
             print(f"Multiple GPUs detected (n_gpus={device_count}), use all of them!")
             self.model = nn.DataParallel(self.model)
 
+
+    def _clip_adapter_grid_search_enabled(self) -> bool:
+        if not hasattr(self.cfg, "CLIP_ADAPTERS"):
+            return False
+
+        init_name = str(getattr(self.cfg.CLIP_ADAPTERS, "INIT", ""))
+        explicit = bool(getattr(self.cfg.CLIP_ADAPTERS, "GRID_SEARCH", False))
+        legacy = "grid_search" in init_name.lower()
+        return explicit or legacy
+
+    def _set_optimizer_lr_from_grid(self, params):
+        if "lr" not in params:
+            return
+
+        self.cfg.defrost()
+        self.cfg.OPTIM.LR = float(params["lr"])
+        self.cfg.freeze()
+
+    def _rebuild_optimizer_for_grid(self):
+        optim_target = self.method.get_optimizer_target()
+        self.optim = build_optimizer(optim_target, self.cfg.OPTIM)
+        self.sched = build_lr_scheduler(self.optim, self.cfg.OPTIM)
+
+        # Update DASSL bookkeeping without re-registering duplicate names.
+        if hasattr(self, "_optims"):
+            self._optims["refactor_model"] = self.optim
+        if hasattr(self, "_scheds"):
+            self._scheds["refactor_model"] = self.sched
+
+        prec = self.method.get_precision()
+        self.scaler = GradScaler() if prec == "amp" else None
+
+    def _reset_adapter_for_grid(self, params):
+        adapter = self.method.model.adapter
+
+        if hasattr(adapter, "reset_for_grid"):
+            adapter.reset_for_grid(
+                params,
+                features_train=getattr(self, "features_train", None),
+                labels_train=getattr(self, "labels_train", None),
+            )
+        elif hasattr(adapter, "reset_hparams"):
+            adapter.reset_hparams(params)
+
+        # Reinitialize CLAP constraint multipliers after resetting params.
+        if getattr(adapter, "apply_constraint", "none") != "none":
+            adapter.init_lagrangian_multipliers(
+                self.labels_train.to(self.device),
+                self.logits_train.to(self.device),
+            )
+
+        self._set_optimizer_lr_from_grid(params)
+        self._rebuild_optimizer_for_grid()
+
+    def _grid_max_epoch(self, params, default_max_epoch):
+        adapter = self.method.model.adapter
+
+        if bool(getattr(adapter, "is_tip_adapter", False)):
+            if bool(getattr(adapter, "finetune_cache", False)):
+                return int(getattr(self.cfg.CLIP_ADAPTERS, "TIPA_F_GRID_EPOCHS", 20))
+            return 1
+
+        return int(default_max_epoch)
+
+    def _write_grid_summary(self, rows, best_row):
+        os.makedirs(self.cfg.OUTPUT_DIR, exist_ok=True)
+
+        json_path = osp.join(self.cfg.OUTPUT_DIR, "grid_search_summary.json")
+        csv_path = osp.join(self.cfg.OUTPUT_DIR, "grid_search_summary.csv")
+
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "rows": rows,
+                    "best": best_row,
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+        if rows:
+            fieldnames = sorted({k for row in rows for k in row.keys()})
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+
+        print(f"[GridSearch] saved summary to {json_path}")
+        print(f"[GridSearch] saved summary to {csv_path}")
+
+    def _run_clip_adapter_grid_search(self):
+        if self.cfg.METHOD.EXEC_MODE != "cache":
+            raise RuntimeError(
+                "CLIP_ADAPTERS.GRID_SEARCH requires METHOD.EXEC_MODE=cache "
+                "because CLAP-style adapter baselines are feature-cache based."
+            )
+
+        adapter = self.method.model.adapter
+        grid = getattr(adapter, "grid_search_param", None)
+
+        if not grid:
+            raise RuntimeError(
+                f"Grid search requested, but {adapter.__class__.__name__} "
+                "does not define grid_search_param."
+            )
+
+        original_max_epoch = int(self.max_epoch)
+        original_lr = float(self.cfg.OPTIM.LR)
+
+        best_score = -1.0
+        best_state = None
+        best_row = None
+        rows = []
+
+        split = str(getattr(self.cfg.CLIP_ADAPTERS, "GRID_SEARCH_SPLIT", "val"))
+        if split == "val" and self.val_loader is None:
+            split = "test"
+
+        print(f"[GridSearch] split={split}")
+        print(f"[GridSearch] grid={grid}")
+
+        self.before_train()
+
+        for i, params in enumerate(ParameterGrid(grid), start=1):
+            params = dict(params)
+            print(f"[GridSearch] candidate {i}: {params}")
+
+            self._reset_adapter_for_grid(params)
+
+            self.start_epoch = 0
+            self.epoch = 0
+            self.max_epoch = self._grid_max_epoch(params, original_max_epoch)
+
+            for self.epoch in range(self.start_epoch, self.max_epoch):
+                self.before_epoch()
+                self.run_epoch()
+
+                if "adaptative" in getattr(adapter, "apply_constraint", "none"):
+                    adapter.outer_step()
+
+                self.after_epoch()
+
+            score = float(self.test(split=split))
+
+            row = {k: v for k, v in params.items()}
+            row["score"] = score
+            row["split"] = split
+            row["max_epoch"] = self.max_epoch
+            rows.append(row)
+
+            print(f"[GridSearch] candidate {i} score={score:.4f}")
+
+            if score > best_score:
+                best_score = score
+                best_row = copy.deepcopy(row)
+                best_state = copy.deepcopy(self.model.state_dict())
+
+        if best_state is not None:
+            self.model.load_state_dict(best_state, strict=False)
+            print(f"[GridSearch] best={best_row}")
+
+        self._write_grid_summary(rows, best_row)
+
+        self.cfg.defrost()
+        self.cfg.OPTIM.LR = original_lr
+        self.cfg.freeze()
+
+        self.max_epoch = original_max_epoch
+        self.after_train()
+
+        return best_score
+
+
     def forward_backward(self, batch):
         return self.executor.forward_backward(self, batch)
 
@@ -76,6 +255,12 @@ class RefactorRunner(TrainerX):
         if self.cfg.METHOD.EXEC_MODE == "cache":
             return self.executor.run_epoch(self)
         return super().run_epoch()
+
+
+    def train(self):
+        if self._clip_adapter_grid_search_enabled():
+            return self._run_clip_adapter_grid_search()
+        return super().train()
 
     def load_model(self, directory, epoch=None):
         if not directory:

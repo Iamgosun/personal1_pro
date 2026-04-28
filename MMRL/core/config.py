@@ -32,6 +32,18 @@ def _as_legacy_clipadapter(cfg):
     sec.ENHANCED_BASE = cad.ENHANCED_BASE
     sec.TYPE = cad.TYPE
     sec.ALLOW_CACHE = cad.ALLOW_CACHE
+    sec.GRID_SEARCH = cad.GRID_SEARCH
+    sec.GRID_SEARCH_SPLIT = cad.GRID_SEARCH_SPLIT
+    sec.CLAP_TIPA_TRAINABLE_CACHE = cad.CLAP_TIPA_TRAINABLE_CACHE
+    sec.CLAP_TIPA_RAW_AFFINITY = cad.CLAP_TIPA_RAW_AFFINITY
+    sec.CLAP_TIPA_ONE_EPOCH = cad.CLAP_TIPA_ONE_EPOCH
+    sec.TIPA_F_GRID_EPOCHS = cad.TIPA_F_GRID_EPOCHS
+    sec.CROSS_MODAL_RESAMPLE_TEXT = cad.CROSS_MODAL_RESAMPLE_TEXT
+    sec.CROSS_MODAL_EPOCH_SUBSAMPLE = cad.CROSS_MODAL_EPOCH_SUBSAMPLE
+    sec.CACHE_REPS = cad.CACHE_REPS
+    sec.CACHE_TRAIN_AUG = cad.CACHE_TRAIN_AUG
+
+
 
 
 def _as_legacy_mmrl(cfg):
@@ -219,7 +231,37 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.INIT = "ZS"
     cfg.CLIP_ADAPTERS.CONSTRAINT = "none"
     cfg.CLIP_ADAPTERS.ENHANCED_BASE = "none"
+
+
     cfg.CLIP_ADAPTERS.ALLOW_CACHE = True
+
+    # Cache extraction defaults. For closer CLAP behavior, override CACHE_REPS=20.
+    cfg.CLIP_ADAPTERS.CACHE_REPS = 1
+    cfg.CLIP_ADAPTERS.CACHE_TRAIN_AUG = True
+
+
+    # CLAP-aligned adapter behavior
+    cfg.CLIP_ADAPTERS.GRID_SEARCH = False
+    cfg.CLIP_ADAPTERS.GRID_SEARCH_SPLIT = "val"
+
+    # CLAP TipA semantics:
+    # - plain TipA also uses trainable cache keys
+    # - plain TipA trains for one epoch
+    # - cache affinity uses raw query features, as in jusiro/CLAP
+    cfg.CLIP_ADAPTERS.CLAP_TIPA_TRAINABLE_CACHE = True
+    cfg.CLIP_ADAPTERS.CLAP_TIPA_RAW_AFFINITY = True
+    cfg.CLIP_ADAPTERS.CLAP_TIPA_ONE_EPOCH = True
+    cfg.CLIP_ADAPTERS.TIPA_F_GRID_EPOCHS = 20
+
+    # CrossModal semantics:
+    # - concatenate text prompt features into training feature pool
+    # - resample text features to match number of image features
+    # - each epoch samples half of the expanded pool, matching CLAP's trainer
+    cfg.CLIP_ADAPTERS.CROSS_MODAL_RESAMPLE_TEXT = True
+    cfg.CLIP_ADAPTERS.CROSS_MODAL_EPOCH_SUBSAMPLE = True
+
+
+
 
     # train / eval MC sampling
     cfg.CLIP_ADAPTERS.N_SAMPLES = 3
@@ -270,6 +312,17 @@ def _apply_method_dataset_overrides(cfg):
 def finalize_cfg(cfg):
     cfg.TASK = cfg.PROTOCOL.NAME
     _apply_method_dataset_overrides(cfg)
+
+    # Convenience method:
+    # METHOD.NAME=CLAP means CLAP's main method:
+    # ZS-initialized cosine linear probing + class-adaptive l2 constraint.
+    if str(cfg.METHOD.NAME).upper() == "CLAP":
+        cfg.METHOD.FAMILY = "adapter"
+        cfg.METHOD.EXEC_MODE = "cache"
+        cfg.CLIP_ADAPTERS.INIT = "ZS"
+        if str(cfg.CLIP_ADAPTERS.CONSTRAINT).lower() == "none":
+            cfg.CLIP_ADAPTERS.CONSTRAINT = "l2"
+        cfg.CLIP_ADAPTERS.ALLOW_CACHE = True
 
     _sync_active_mmrl_family(cfg)
     _as_legacy_mmrl(cfg)

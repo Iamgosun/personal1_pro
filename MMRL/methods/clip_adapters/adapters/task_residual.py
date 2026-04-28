@@ -27,3 +27,11 @@ class TaskResidualAdapter(BaseAdapter):
     def reset_hparams(self, params):
         if "alpha" in params:
             self.alpha = float(params["alpha"])
+
+    def reset_for_grid(self, params, features_train=None, labels_train=None):
+        self.reset_hparams(params)
+
+        # CLAP reset_hyperparams() re-calls init_TR(), which zero-initializes residual.
+        if "residual" in self._parameters:
+            del self._parameters["residual"]
+        self.residual = nn.Parameter(torch.zeros_like(self.base_text_features))

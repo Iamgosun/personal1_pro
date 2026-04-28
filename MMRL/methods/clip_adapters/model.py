@@ -90,10 +90,14 @@ class ClipAdaptersModel(nn.Module):
 
 @METHOD_REGISTRY.register("ClipAdapters")
 @METHOD_REGISTRY.register("ClipADAPTER")
+@METHOD_REGISTRY.register("CLAP")
 class ClipAdaptersMethod(BaseMethod):
     method_name = "ClipAdapters"
 
     def build(self):
+        if str(self.cfg.METHOD.NAME).upper() == "CLAP":
+            self.method_name = "CLAP"
+
         clip_model = load_raw_clip_to_cpu(self.cfg)
 
         if self.cfg.CLIP_ADAPTERS.PREC in {"fp32", "amp"}:
@@ -103,7 +107,7 @@ class ClipAdaptersMethod(BaseMethod):
         self.model = ClipAdaptersModel(self.cfg, classnames, clip_model).to(self.device)
 
         enabled = freeze_all_but(self.model, ["adapter"])
-        print(f"[ClipAdaptersMethod] trainable params: {enabled}")
+        print(f"[{self.method_name}] trainable params before cache hooks: {enabled}")
 
         self.current_epoch = 0
         self.total_epochs = 1
@@ -119,10 +123,6 @@ class ClipAdaptersMethod(BaseMethod):
         return str(getattr(self.model.adapter, "initialization_name", "")).upper() == "BAYES_ADAPTER"
 
     def _bayes_kl_weight(self) -> float:
-        """
-        Match the uploaded BayesAdapter schedule:
-            kl_weight = (epoch / num_epochs) * 1 / (1000 * C * D)
-        """
         if not self._is_bayes_adapter():
             return float(self.cfg.CLIP_ADAPTERS.KL_WEIGHT)
 
@@ -135,6 +135,61 @@ class ClipAdaptersMethod(BaseMethod):
 
     def supports_cache(self) -> bool:
         return bool(getattr(self.cfg.CLIP_ADAPTERS, "ALLOW_CACHE", True))
+
+    def _is_cross_modal(self) -> bool:
+        return bool(getattr(self.model.adapter, "uses_cross_modal", False))
+
+    def _prepare_cross_modal_cache_data(self, trainer):
+        """
+        CLAP CrossModal:
+        after image feature extraction, add text prompt features as extra samples.
+        """
+        device = trainer.features_train.device
+        text_embeddings_all = self.model.text_embeddings_all.detach().to(device=device, dtype=torch.float32)
+
+        if text_embeddings_all.ndim != 3:
+            raise ValueError(
+                "CrossModal expects text_embeddings_all with shape [C, T, D], "
+                f"got {tuple(text_embeddings_all.shape)}"
+            )
+
+        n_classes, n_templates, feat_dim = text_embeddings_all.shape
+        text_features = text_embeddings_all.reshape(n_classes * n_templates, feat_dim)
+        text_labels = (
+            torch.arange(n_classes, device=device, dtype=torch.long)
+            .repeat_interleave(n_templates)
+        )
+
+        resample = bool(getattr(self.cfg.CLIP_ADAPTERS, "CROSS_MODAL_RESAMPLE_TEXT", True))
+        if resample:
+            n_img = int(trainer.features_train.shape[0])
+            idx = torch.randint(0, text_features.shape[0], (n_img,), device=device)
+            text_features = text_features[idx]
+            text_labels = text_labels[idx]
+
+        trainer.features_train = torch.cat(
+            [trainer.features_train.to(device=device, dtype=torch.float32), text_features],
+            dim=0,
+        )
+        trainer.labels_train = torch.cat(
+            [trainer.labels_train.to(device=device, dtype=torch.long), text_labels],
+            dim=0,
+        )
+
+        # Keep logits aligned with the expanded feature pool.
+        with torch.no_grad():
+            head = self.model.forward_features(trainer.features_train)
+            trainer.logits_train = head["logits"].detach()
+
+        print(
+            "[ClipAdaptersMethod] CrossModal cache data prepared: "
+            f"features={tuple(trainer.features_train.shape)}, "
+            f"labels={tuple(trainer.labels_train.shape)}"
+        )
+
+    def prepare_cache_data(self, trainer):
+        if self._is_cross_modal():
+            self._prepare_cross_modal_cache_data(trainer)
 
     def forward_train(self, batch):
         label = batch["label"].to(self.device)
@@ -216,5 +271,22 @@ class ClipAdaptersMethod(BaseMethod):
 
     def on_cache_ready(self, trainer):
         adapter = self.model.adapter
+
+        # CLAP constraint initialization happens after feature extraction
+        # and after CrossModal data expansion.
+        if getattr(adapter, "apply_constraint", "none") != "none":
+            print("[ClipAdaptersMethod] Initializing CLAP constraint multipliers")
+            adapter.init_lagrangian_multipliers(
+                trainer.labels_train.to(self.device),
+                trainer.logits_train.to(self.device),
+            )
+
         if hasattr(adapter, "build_cache"):
             adapter.build_cache(trainer.features_train, trainer.labels_train)
+
+        # CLAP TipA plain path: one epoch only.
+        if bool(getattr(adapter, "is_tip_adapter", False)):
+            one_epoch = bool(getattr(self.cfg.CLIP_ADAPTERS, "CLAP_TIPA_ONE_EPOCH", True))
+            if one_epoch and not bool(getattr(adapter, "finetune_cache", False)):
+                trainer.max_epoch = 1
+                print("[ClipAdaptersMethod] Plain TipA: set max_epoch=1 to match CLAP")

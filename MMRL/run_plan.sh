@@ -2,46 +2,29 @@
 set -euo pipefail
 
 # Usage:
-#   NGPU=2 bash run_plan.sh FS "MMRL BayesMMRL" online "caltech101 oxford_pets ucf101" "1 2 3 4" "1 2 3"
+#   GPU_IDS="0 1" bash run_plan.sh FS "MMRL BayesMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
+#   GPU_IDS="0 1" bash run_plan.sh FS "CLAP ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
 #
-# Optional env:
-#   NGPU=2
-#   GPU_IDS="0 1"          # overrides NGPU-generated ids
-#   DATA_ROOT=DATASETS
-#   OUTPUT_ROOT=output_refactor
-#   BACKBONE=ViT-B/16
-#   TAG=default
-#   SEEDS="1 2 3"
-#   SKIP_EXISTING=1        # default: 1
-#   SLEEP_SEC=2            # scheduler polling interval
-#
-# Supported methods:
-#   MMRL MMRLMix BayesMMRL MMRLpp ClipAdapters
-#
-# Supported protocols:
-#   B2N FS CD
-#
-# Notes for B2N:
-#   - train stage: train_base on base classes
-#   - eval stage : auto-runs test_new on new classes using the trained checkpoint
-#   - outputs are separated into:
-#       .../B2N/train_base/...
-#       .../B2N/test_new/...
+# Notes:
+#   - Normal methods use their normal method config.
+#   - Adapter aliases map to specific configs/methods/clip_adapters_*.yaml.
+#   - For adapter aliases, launch method is always ClipAdapters.
+#   - B2N automatically runs test_new after train_base.
 
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-MMRL}
+METHODS_ARG=${2:-CLAP RANDOM}
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-  ucf101 }
-SHOTS_ARG=${5:-" 16"}
-SEEDS_ARG=${6:-${SEEDS:-"1 "}}
+DATASETS_ARG=${4:-"caltech101 ucf101 "}
+SHOTS_ARG=${5:-"1"}
+SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
 OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-3 }
-GPU_IDS=${GPU_IDS:-0 1 2}
+NGPU=${NGPU:-1}
+GPU_IDS=${GPU_IDS:-}
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}
 
@@ -59,28 +42,128 @@ resolve_phase_semantics() {
   esac
 }
 
+resolve_protocol_cfg() {
+  case "$1" in
+    B2N) echo "configs/protocols/b2n.yaml" ;;
+    FS)  echo "configs/protocols/fs.yaml" ;;
+    CD)  echo "configs/protocols/cd.yaml" ;;
+    *) echo "Unknown PROTOCOL=$1" >&2; exit 1 ;;
+  esac
+}
+
 resolve_configs() {
   local method=$1
   local method_cfg protocol_cfg runtime_cfg
 
   case "$method" in
-    MMRL) method_cfg="configs/methods/mmrl.yaml" ;;
-    MMRLMix) method_cfg="configs/methods/mmrl_mix.yaml" ;;
-    BayesMMRL) method_cfg="configs/methods/bayesmmrl.yaml" ;;
-    MMRLpp|MMRLPP) method_cfg="configs/methods/mmrlpp.yaml" ;;
-    ClipAdapters|ClipADAPTER) method_cfg="configs/methods/clip_adapters.yaml" ;;
-    *) echo "Unknown METHOD=$method" >&2; exit 1 ;;
+    MMRL)
+      method_cfg="configs/methods/mmrl.yaml"
+      ;;
+
+    MMRLMix)
+      method_cfg="configs/methods/mmrl_mix.yaml"
+      ;;
+
+    BayesMMRL)
+      method_cfg="configs/methods/bayesmmrl.yaml"
+      ;;
+
+    MMRLpp|MMRLPP)
+      method_cfg="configs/methods/mmrlpp.yaml"
+      ;;
+
+    ClipAdapters|ClipADAPTER)
+      method_cfg="configs/methods/clip_adapters.yaml"
+      ;;
+
+    ZS)
+      method_cfg="configs/methods/clip_adapters_zs.yaml"
+      ;;
+
+    CLAP)
+      method_cfg="configs/methods/clip_adapters_clap.yaml"
+      ;;
+
+    ZS_CLAP)
+      method_cfg="configs/methods/clip_adapters_clap.yaml"
+      ;;
+
+    RANDOM)
+      method_cfg="configs/methods/clip_adapters_random.yaml"
+      ;;
+
+    TR|TaskRes)
+      method_cfg="configs/methods/clip_adapters_tr.yaml"
+      ;;
+
+    TR_grid|TaskRes_grid)
+      method_cfg="configs/methods/clip_adapters_tr_grid.yaml"
+      ;;
+
+    ClipA|CLIPA)
+      method_cfg="configs/methods/clip_adapters_clipa.yaml"
+      ;;
+
+    TipA)
+      method_cfg="configs/methods/clip_adapters_tipa.yaml"
+      ;;
+
+    TipA-f-|TipA-F|TIPA-F)
+      method_cfg="configs/methods/clip_adapters_tipa_f.yaml"
+      ;;
+
+    TipA-f-_grid|TipA-F_grid|TIPA-F_grid)
+      method_cfg="configs/methods/clip_adapters_tipa_f_grid.yaml"
+      ;;
+
+    CrossModal|CROSSMODAL)
+      method_cfg="configs/methods/clip_adapters_crossmodal.yaml"
+      ;;
+
+    BayesAdapter|BAYES_ADAPTER)
+      method_cfg="configs/methods/clip_adapters_bayes.yaml"
+      ;;
+
+    BayesAdapter_l2|BAYES_ADAPTER_l2)
+      method_cfg="configs/methods/clip_adapters_bayes_clap.yaml"
+      ;;
+
+    *)
+      echo "Unknown METHOD=$method" >&2
+      exit 1
+      ;;
   esac
 
-  case "$PROTOCOL" in
-    B2N) protocol_cfg="configs/protocols/b2n.yaml" ;;
-    FS)  protocol_cfg="configs/protocols/fs.yaml" ;;
-    CD)  protocol_cfg="configs/protocols/cd.yaml" ;;
-    *) echo "Unknown PROTOCOL=$PROTOCOL" >&2; exit 1 ;;
-  esac
-
+  protocol_cfg="$(resolve_protocol_cfg "$PROTOCOL")"
   runtime_cfg="configs/runtime/default.yaml"
+
   echo "$method_cfg $protocol_cfg $runtime_cfg"
+}
+
+resolve_launch_method() {
+  local method=$1
+
+  case "$method" in
+    ZS|CLAP|ZS_CLAP|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2)
+      echo "ClipAdapters"
+      ;;
+    *)
+      echo "$method"
+      ;;
+  esac
+}
+
+resolve_launch_exec_mode() {
+  local method=$1
+
+  case "$method" in
+    ZS|CLAP|ZS_CLAP|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2|ClipAdapters|ClipADAPTER)
+      echo "cache"
+      ;;
+    *)
+      echo "$EXEC_MODE"
+      ;;
+  esac
 }
 
 resolve_run_tag() {
@@ -92,25 +175,19 @@ resolve_run_tag() {
     return 0
   fi
 
-  case "$method" in
-    ClipAdapters|ClipADAPTER)
-      local init_name
-      init_name=$(python - <<PY
+  python - <<PY
 import yaml
 from pathlib import Path
 
 path = Path("${method_cfg}")
 with path.open("r", encoding="utf-8") as f:
     cfg = yaml.safe_load(f) or {}
-print(cfg.get("CLIP_ADAPTERS", {}).get("INIT", "ClipAdapters"))
+
+method_cfg = cfg.get("METHOD", {}) or {}
+cad = cfg.get("CLIP_ADAPTERS", {}) or {}
+
+print(method_cfg.get("TAG") or cad.get("INIT") or "default")
 PY
-)
-      echo "${init_name}"
-      ;;
-    *)
-      echo "default"
-      ;;
-  esac
 }
 
 init_gpu_list() {
@@ -137,12 +214,15 @@ build_outdir() {
   local seed=$4
   local run_tag=$5
 
+  local launch_method
+  launch_method="$(resolve_launch_method "$method")"
+
   read -r phase _subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
 
-  if [[ "$method" == "ClipAdapters" || "$method" == "ClipADAPTER" ]]; then
-    echo "${OUTPUT_ROOT}/${method}/${run_tag}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/seed${seed}"
+  if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
+    echo "${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/seed${seed}"
   else
-    echo "${OUTPUT_ROOT}/${method}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/${run_tag}/seed${seed}"
+    echo "${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/${run_tag}/seed${seed}"
   fi
 }
 
@@ -153,10 +233,13 @@ build_b2n_new_eval_outdir() {
   local seed=$4
   local run_tag=$5
 
-  if [[ "$method" == "ClipAdapters" || "$method" == "ClipADAPTER" ]]; then
-    echo "${OUTPUT_ROOT}/${method}/${run_tag}/B2N/test_new/${dataset}/shots_${shot}/${BACKBONE//\//-}/seed${seed}"
+  local launch_method
+  launch_method="$(resolve_launch_method "$method")"
+
+  if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
+    echo "${OUTPUT_ROOT}/${launch_method}/${run_tag}/B2N/test_new/${dataset}/shots_${shot}/${BACKBONE//\//-}/seed${seed}"
   else
-    echo "${OUTPUT_ROOT}/${method}/B2N/test_new/${dataset}/shots_${shot}/${BACKBONE//\//-}/${run_tag}/seed${seed}"
+    echo "${OUTPUT_ROOT}/${launch_method}/B2N/test_new/${dataset}/shots_${shot}/${BACKBONE//\//-}/${run_tag}/seed${seed}"
   fi
 }
 
@@ -167,6 +250,7 @@ build_logfile() {
   local seed=$4
   local run_tag=$5
   local outdir
+
   outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
   echo "${outdir}/run.log"
 }
@@ -184,7 +268,7 @@ case_is_complete() {
   local train_outdir
   train_outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
 
-  if [[ ! -f "${train_outdir}/test_metrics.json" ]]; then
+  if [[ ! -f "${train_outdir}/test_metrics.json" && ! -f "${train_outdir}/grid_search_summary.json" ]]; then
     return 1
   fi
 
@@ -206,20 +290,30 @@ write_log_header() {
   local shot=$5
   local seed=$6
 
+  local method_cfg protocol_cfg runtime_cfg run_tag launch_method launch_exec_mode
+  read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+  run_tag="$(resolve_run_tag "$method" "$method_cfg")"
+  launch_method="$(resolve_launch_method "$method")"
+  launch_exec_mode="$(resolve_launch_exec_mode "$method")"
+
   {
     echo "============================================================"
     echo "START: $(date '+%F %T')"
     echo "GPU: ${gpu_id}"
-    echo "METHOD: ${method}"
+    echo "REQUESTED_METHOD: ${method}"
+    echo "LAUNCH_METHOD: ${launch_method}"
+    echo "RUN_TAG: ${run_tag}"
     echo "PROTOCOL: ${PROTOCOL}"
-    echo "EXEC_MODE: ${EXEC_MODE}"
+    echo "EXEC_MODE: ${launch_exec_mode}"
     echo "DATASET: ${dataset}"
     echo "SHOTS: ${shot}"
     echo "SEED: ${seed}"
     echo "DATA_ROOT: ${DATA_ROOT}"
     echo "OUTPUT_ROOT: ${OUTPUT_ROOT}"
     echo "BACKBONE: ${BACKBONE}"
-    echo "TAG: ${TAG}"
+    echo "METHOD_CONFIG: ${method_cfg}"
+    echo "PROTOCOL_CONFIG: ${protocol_cfg}"
+    echo "RUNTIME_CONFIG: ${runtime_cfg}"
     echo "============================================================"
   } >> "$logfile"
 }
@@ -233,14 +327,22 @@ write_b2n_new_eval_log_header() {
   local seed=$6
   local model_dir=$7
 
+  local method_cfg protocol_cfg runtime_cfg run_tag launch_method launch_exec_mode
+  read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+  run_tag="$(resolve_run_tag "$method" "$method_cfg")"
+  launch_method="$(resolve_launch_method "$method")"
+  launch_exec_mode="$(resolve_launch_exec_mode "$method")"
+
   {
     echo "============================================================"
     echo "START: $(date '+%F %T')"
     echo "STAGE: B2N test_new"
     echo "GPU: ${gpu_id}"
-    echo "METHOD: ${method}"
+    echo "REQUESTED_METHOD: ${method}"
+    echo "LAUNCH_METHOD: ${launch_method}"
+    echo "RUN_TAG: ${run_tag}"
     echo "PROTOCOL: B2N"
-    echo "EXEC_MODE: ${EXEC_MODE}"
+    echo "EXEC_MODE: ${launch_exec_mode}"
     echo "DATASET: ${dataset}"
     echo "SHOTS: ${shot}"
     echo "SEED: ${seed}"
@@ -248,6 +350,7 @@ write_b2n_new_eval_log_header() {
     echo "OUTPUT_ROOT: ${OUTPUT_ROOT}"
     echo "BACKBONE: ${BACKBONE}"
     echo "MODEL_DIR: ${model_dir}"
+    echo "METHOD_CONFIG: ${method_cfg}"
     echo "============================================================"
   } >> "$logfile"
 }
@@ -261,6 +364,10 @@ launch_b2n_new_eval() {
 
   local method_cfg protocol_cfg runtime_cfg
   read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+
+  local launch_method launch_exec_mode
+  launch_method="$(resolve_launch_method "$method")"
+  launch_exec_mode="$(resolve_launch_exec_mode "$method")"
 
   local run_tag
   run_tag="$(resolve_run_tag "$method" "$method_cfg")"
@@ -289,9 +396,9 @@ launch_b2n_new_eval() {
       --runtime-config-file "${runtime_cfg}" \
       --output-dir "${eval_outdir}" \
       --model-dir "${train_outdir}" \
-      --method "${method}" \
+      --method "${launch_method}" \
       --protocol "B2N" \
-      --exec-mode "${EXEC_MODE}" \
+      --exec-mode "${launch_exec_mode}" \
       --seed "${seed}" \
       --eval-only \
       DATASET.NUM_SHOTS "${shot}" \
@@ -328,8 +435,15 @@ launch_one_case() {
   local shot=$4
   local seed=$5
 
+  local phase subsample
   read -r phase subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
+
+  local method_cfg protocol_cfg runtime_cfg
   read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+
+  local launch_method launch_exec_mode
+  launch_method="$(resolve_launch_method "$method")"
+  launch_exec_mode="$(resolve_launch_exec_mode "$method")"
 
   local run_tag
   run_tag="$(resolve_run_tag "$method" "$method_cfg")"
@@ -347,8 +461,10 @@ launch_one_case() {
   fi
 
   local train_metrics="${outdir}/test_metrics.json"
+  local grid_metrics="${outdir}/grid_search_summary.json"
   local train_already_done=0
-  if [[ -f "$train_metrics" ]]; then
+
+  if [[ -f "$train_metrics" || -f "$grid_metrics" ]]; then
     train_already_done=1
   fi
 
@@ -363,9 +479,9 @@ launch_one_case() {
         --protocol-config-file "${protocol_cfg}" \
         --runtime-config-file "${runtime_cfg}" \
         --output-dir "${outdir}" \
-        --method "${method}" \
+        --method "${launch_method}" \
         --protocol "${PROTOCOL}" \
-        --exec-mode "${EXEC_MODE}" \
+        --exec-mode "${launch_exec_mode}" \
         --seed "${seed}" \
         DATASET.NUM_SHOTS "${shot}" \
         DATASET.SUBSAMPLE_CLASSES "${subsample}" \
@@ -395,7 +511,7 @@ launch_one_case() {
     touch "$logfile"
     {
       echo "============================================================"
-      echo "SKIP_TRAIN: existing metrics found at ${train_metrics}"
+      echo "SKIP_TRAIN: existing metrics found at ${outdir}"
       echo "TIME: $(date '+%F %T')"
       echo "============================================================"
     } >> "$logfile"
@@ -430,13 +546,15 @@ launch_one_case() {
 summarize_case() {
   local method=$1
   read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
-  local run_tag
-  run_tag="$(resolve_run_tag "$method" "$method_cfg")"
 
-  if [[ "$method" == "ClipAdapters" || "$method" == "ClipADAPTER" ]]; then
-    python evaluation/result_parser.py "${OUTPUT_ROOT}/${method}/${run_tag}/${PROTOCOL}" --split test >/dev/null 2>&1 || true
+  local run_tag launch_method
+  run_tag="$(resolve_run_tag "$method" "$method_cfg")"
+  launch_method="$(resolve_launch_method "$method")"
+
+  if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
+    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}" --split test >/dev/null 2>&1 || true
   else
-    python evaluation/result_parser.py "${OUTPUT_ROOT}/${method}/${PROTOCOL}" --split test >/dev/null 2>&1 || true
+    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}" --split test >/dev/null 2>&1 || true
   fi
 }
 
@@ -522,6 +640,7 @@ wait_all_jobs() {
   local idx
   for idx in "${!RUNNING_PIDS[@]}"; do
     local pid="${RUNNING_PIDS[$idx]}"
+
     if [[ -n "$pid" ]]; then
       local rc=0
       if wait "$pid"; then
@@ -586,8 +705,8 @@ main() {
     for dataset in "${DATASET_LIST[@]}"; do
       for shot in "${SHOT_LIST[@]}"; do
         for seed in "${SEED_LIST[@]}"; do
+          local method_cfg protocol_cfg runtime_cfg run_tag
           read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
-          local run_tag
           run_tag="$(resolve_run_tag "$method" "$method_cfg")"
 
           local outdir logfile statusfile
@@ -609,6 +728,7 @@ main() {
           (
             launch_one_case "$gpu_id" "$method" "$dataset" "$shot" "$seed"
           ) &
+
           RUNNING_PIDS[$slot]=$!
           SLOT_GPU[$slot]="$gpu_id"
           SLOT_METHOD[$slot]="$method"
@@ -616,6 +736,8 @@ main() {
           SLOT_SHOT[$slot]="$shot"
           SLOT_SEED[$slot]="$seed"
           SLOT_LOG[$slot]="$logfile"
+
+          echo "[LAUNCH] gpu=${gpu_id} method=${method} dataset=${dataset} shot=${shot} seed=${seed}"
         done
       done
     done
