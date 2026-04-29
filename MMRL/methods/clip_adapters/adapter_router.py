@@ -4,6 +4,7 @@ from .adapters import (
     BayesAdapter,
     CapelAdapter,
     ECKAAdapter,
+    PPProKeROneHotAdapter,
     ClipAdapterResidual,
     CrossModalProbeAdapter,
     RandomProbeAdapter,
@@ -51,5 +52,13 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
 
     if init_upper == "ECKA" or init_upper == "ECKA_CORE" or init_upper == "ECKA_CAL":
         return ECKAAdapter(cfg, clip_model, base_text_features)
+
+    if (
+        init_upper == "PP_PROKER_ONEHOT"
+        or init_upper == "PP-PROKER-ONEHOT"
+        or init_upper == "PPPROKER_ONEHOT"
+        or init_upper == "PPPROKER"
+    ):
+        return PPProKeROneHotAdapter(cfg, clip_model, base_text_features)
 
     raise NotImplementedError(f"Unknown clip adapter init: {init}")

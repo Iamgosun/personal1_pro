@@ -68,6 +68,17 @@ def _as_legacy_clipadapter(cfg):
     if hasattr(cad, "VNC_CAPEL_VNC_LAMBDA"):
         sec.VNC_CAPEL_VNC_LAMBDA = cad.VNC_CAPEL_VNC_LAMBDA
 
+    if hasattr(cad, "PP_PROKER_BETA"):
+        sec.PP_PROKER_BETA = cad.PP_PROKER_BETA
+        sec.PP_PROKER_LAMBDA = cad.PP_PROKER_LAMBDA
+        sec.PP_PROKER_GP_DELTA = cad.PP_PROKER_GP_DELTA
+        sec.PP_PROKER_USE_MC = cad.PP_PROKER_USE_MC
+        sec.PP_PROKER_MC_SAMPLES = cad.PP_PROKER_MC_SAMPLES
+        sec.PP_PROKER_RHO = cad.PP_PROKER_RHO
+        sec.PP_PROKER_TAU = cad.PP_PROKER_TAU
+        sec.PP_PROKER_RETURN_LOG_PROBS = cad.PP_PROKER_RETURN_LOG_PROBS
+        sec.PP_PROKER_VARIANCE_JITTER = cad.PP_PROKER_VARIANCE_JITTER
+        sec.PP_PROKER_MEAN_RESIDUAL_SCALE = cad.PP_PROKER_MEAN_RESIDUAL_SCALE
 
 
 def _as_legacy_mmrl(cfg):
@@ -388,6 +399,32 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.ECKA_RANGE_DELTA = -1.0
     cfg.CLIP_ADAPTERS.ECKA_UNCERTAINTY_BETA = 0.0
 
+
+    # PP-ProKeR-OneHot defaults
+    #
+    # Official ProKeR-compatible mean:
+    #   alpha = solve((1 / lambda) * K + I, one_hot - f_clip(S))
+    #
+    # Posterior predictive:
+    #   p(y|x,S) ~= mean_t softmax((m(x) + sqrt(rho * s2(x)) eps_t) / tau)
+    cfg.CLIP_ADAPTERS.PP_PROKER_BETA = 1.0
+    cfg.CLIP_ADAPTERS.PP_PROKER_LAMBDA = 1.0
+
+    # GP-style variance ridge. If <= 0, the adapter uses PP_PROKER_LAMBDA.
+    cfg.CLIP_ADAPTERS.PP_PROKER_GP_DELTA = -1.0
+
+    # Posterior predictive controls.
+    cfg.CLIP_ADAPTERS.PP_PROKER_USE_MC = True
+    cfg.CLIP_ADAPTERS.PP_PROKER_MC_SAMPLES = 64
+    cfg.CLIP_ADAPTERS.PP_PROKER_RHO = 1.0
+    cfg.CLIP_ADAPTERS.PP_PROKER_TAU = 1.0
+
+    # True means final output is log posterior predictive probability.
+    # This is preferred for CE/NLL-style evaluation.
+    cfg.CLIP_ADAPTERS.PP_PROKER_RETURN_LOG_PROBS = True
+
+    cfg.CLIP_ADAPTERS.PP_PROKER_VARIANCE_JITTER = 1.0e-6
+    cfg.CLIP_ADAPTERS.PP_PROKER_MEAN_RESIDUAL_SCALE = 1.0
 
 
 

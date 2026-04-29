@@ -1,0 +1,48 @@
+METHOD:
+  NAME: ClipAdapters
+  FAMILY: adapter
+  EXEC_MODE: cache
+  TAG: PP_PROKER_ONEHOT
+
+CLIP_ADAPTERS:
+  PREC: fp32
+  INIT: PP_PROKER_ONEHOT
+  TYPE: MP
+  CONSTRAINT: none
+  ENHANCED_BASE: none
+  ALLOW_CACHE: True
+
+  # For exact debugging, first use CACHE_REPS: 1.
+  # After the mean sanity check passes, use 10 to match official ProKeR README example.
+  CACHE_REPS: 20
+  CACHE_TRAIN_AUG: True
+  CACHE_AGGREGATION: pool
+  CACHE_POOL_EPOCH_SUBSAMPLE: True
+
+  GRID_SEARCH: False
+
+  # Official ProKeR-compatible mean:
+  # alpha = solve((1/lambda) K + I, one_hot - cosine_CLIP(S))
+  PP_PROKER_BETA: 1.0
+  PP_PROKER_LAMBDA: 1.0
+
+  # GP-style variance ridge.
+  # If <= 0, adapter uses PP_PROKER_LAMBDA.
+  PP_PROKER_GP_DELTA: -1.0
+
+  # First sanity check should be mean-only.
+  PP_PROKER_USE_MC: False
+  PP_PROKER_MC_SAMPLES: 64
+  PP_PROKER_RHO: 1.0
+  PP_PROKER_TAU: 1.0
+  PP_PROKER_RETURN_LOG_PROBS: True
+
+  # 0.0 should recover cosine zero-shot ranking.
+  # 1.0 is official ProKeR mean.
+  PP_PROKER_MEAN_RESIDUAL_SCALE: 1.0
+
+  PP_PROKER_VARIANCE_JITTER: 1.0e-6
+
+OPTIM:
+  MAX_EPOCH: 1
+  LR: 0.0
