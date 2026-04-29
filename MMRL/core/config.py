@@ -334,7 +334,6 @@ def get_refactor_defaults():
 
 
 
-
     # train / eval MC sampling
     cfg.CLIP_ADAPTERS.N_SAMPLES = 3
     cfg.CLIP_ADAPTERS.N_TEST_SAMPLES = 10
@@ -361,12 +360,48 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.CAPEL_FEATURE_CACHE_DIR = "/root/autodl-tmp/MMRL/prompts/capel_feature_cache"
     cfg.CLIP_ADAPTERS.VNC_CAPEL_VNC_LAMBDA = 0.2
 
+
+    # ECKA-specific defaults
+    cfg.CLIP_ADAPTERS.ECKA_KAPPA0 = 2.0
+    cfg.CLIP_ADAPTERS.ECKA_COV_SHRINK = 0.95
+    cfg.CLIP_ADAPTERS.ECKA_KERNEL_LAMBDA = -1.0
+    cfg.CLIP_ADAPTERS.ECKA_KERNEL_BETA_SCALE = 1.0
+
+    cfg.CLIP_ADAPTERS.ECKA_USE_GDA = True
+    cfg.CLIP_ADAPTERS.ECKA_USE_KERNEL = True
+    cfg.CLIP_ADAPTERS.ECKA_USE_FUSION_GRID = True
+
+    cfg.CLIP_ADAPTERS.ECKA_W0 = 0.3333333333
+    cfg.CLIP_ADAPTERS.ECKA_WG = 0.3333333333
+    cfg.CLIP_ADAPTERS.ECKA_WK = 0.3333333333
+    cfg.CLIP_ADAPTERS.ECKA_TEMPERATURE = 1.0
+
+    # Conservative residual mode.
+    # Default False means final logits = zero-shot logits + residual,
+    # not full ECKA replacement.
+    cfg.CLIP_ADAPTERS.ECKA_REPLACE_ZS = False
+    cfg.CLIP_ADAPTERS.ECKA_RESIDUAL_ALPHA = 0.1
+    cfg.CLIP_ADAPTERS.ECKA_MIN_W0 = 0.6
+
+    # Calibration switches. Keep disabled until accuracy sanity checks pass.
+    cfg.CLIP_ADAPTERS.ECKA_CALIBRATE = False
+    cfg.CLIP_ADAPTERS.ECKA_RANGE_DELTA = -1.0
+    cfg.CLIP_ADAPTERS.ECKA_UNCERTAINTY_BETA = 0.0
+
+
+
+
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"
 
     cfg.CALIBRATION = CN()
     cfg.CALIBRATION.USE_FULL_VAL = False
 
     cfg.TASK = "B2N"
+
+
+
+
+
 
 
 

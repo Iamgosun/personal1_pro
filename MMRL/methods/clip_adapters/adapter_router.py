@@ -3,6 +3,7 @@ from __future__ import annotations
 from .adapters import (
     BayesAdapter,
     CapelAdapter,
+    ECKAAdapter,
     ClipAdapterResidual,
     CrossModalProbeAdapter,
     RandomProbeAdapter,
@@ -47,5 +48,8 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
 
     if "BAYES_ADAPTER" in init_upper:
         return BayesAdapter(cfg, clip_model, base_text_features)
+
+    if init_upper == "ECKA" or init_upper == "ECKA_CORE" or init_upper == "ECKA_CAL":
+        return ECKAAdapter(cfg, clip_model, base_text_features)
 
     raise NotImplementedError(f"Unknown clip adapter init: {init}")

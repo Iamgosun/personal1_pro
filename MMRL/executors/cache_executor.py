@@ -176,6 +176,39 @@ class CacheExecutor(BaseExecutor):
 
         payload = {"features": features, "label": labels}
 
+
+        adapter = getattr(getattr(self.method, "model", None), "adapter", None)
+        is_closed_form = bool(getattr(adapter, "closed_form_adapter", False))
+
+        if is_closed_form:
+            with torch.no_grad():
+                outputs = self.method.forward_train(payload)
+                loss = self.method.loss(outputs)
+
+            train_logits = self.method.select_train_logits(outputs)
+            loss_summary = {
+                "loss": float(loss.detach().item()),
+                "acc": compute_accuracy(train_logits, outputs.labels)[0].item(),
+            }
+
+            if hasattr(outputs, "losses") and outputs.losses is not None:
+                for key in [
+                    "loss_ce",
+                    "loss_constraint",
+                    "loss_kl",
+                    "kl_term",
+                ]:
+                    if key in outputs.losses:
+                        value = outputs.losses[key]
+                        if torch.is_tensor(value):
+                            value = value.detach().item()
+                        loss_summary[key] = float(value)
+
+            # 不 backward，不 step，不 update_lr。
+            return loss_summary
+
+
+
         if prec == "amp":
             with autocast():
                 outputs = self.method.forward_train(payload)

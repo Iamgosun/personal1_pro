@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Usage:
 #   GPU_IDS="0 1" bash run_plan.sh FS " VCRMMMRL MMRL BayesMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
-#   GPU_IDS="0 1" bash run_plan.sh FS "CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
+#   GPU_IDS="0 1" bash run_plan.sh FS "ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
 #   online cache
 # Notes:
 #   - Normal methods use their normal method config.
@@ -12,10 +12,10 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 # caltech101 oxford_pets dtd
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-  VCRMMMRL }
-EXEC_MODE=${3:-online}
+METHODS_ARG=${2:-  ECKA }
+EXEC_MODE=${3:-cache}
 DATASETS_ARG=${4:-"  caltech101  "}
-SHOTS_ARG=${5:-"16  "}
+SHOTS_ARG=${5:-"2  "}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
@@ -62,7 +62,7 @@ resolve_runtime_cfg() {
       echo "configs/runtime/mmrl_family.yaml"
       ;;
 
-    ZS|CLAP|ZS_CLAP|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2|CAPEL|VNC_CAPEL|ClipAdapters|ClipADAPTER)
+    ZS|CLAP|ECKA|ZS_CLAP|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2|CAPEL|VNC_CAPEL|ClipAdapters|ClipADAPTER)
       echo "configs/runtime/adapter_family.yaml"
       ;;
 
@@ -107,7 +107,9 @@ resolve_configs() {
     CLAP)
       method_cfg="configs/methods/clip_adapters_clap.yaml"
       ;;
-
+    ECKA)
+      method_cfg="configs/methods/clip_adapters_ecka.yaml"
+      ;;
     ZS_CLAP)
       method_cfg="configs/methods/clip_adapters_clap.yaml"
       ;;
@@ -175,7 +177,7 @@ resolve_launch_method() {
   local method=$1
 
   case "$method" in
-    ZS|CLAP|ZS_CLAP|CAPEL|VNC_CAPEL|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2)
+    ZS|CLAP|ECKA|ZS_CLAP|CAPEL|VNC_CAPEL|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2)
       echo "ClipAdapters"
       ;;
     *)
@@ -188,7 +190,7 @@ resolve_launch_exec_mode() {
   local method=$1
 
   case "$method" in
-    ZS|CLAP|ZS_CLAP|CAPEL|VNC_CAPEL|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2|ClipAdapters|ClipADAPTER)
+    ZS|CLAP|ECKA|ZS_CLAP|CAPEL|VNC_CAPEL|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2|ClipAdapters|ClipADAPTER)
       # Respect the third CLI argument.
       #
       # cache:
