@@ -78,6 +78,62 @@ class ClipAdaptersLoss:
         outputs.losses.update(extras)
         return loss
 
+
+    def _vnccapel_loss(self, outputs):
+        loss_ce = F.cross_entropy(outputs.logits, outputs.labels)
+
+        if "capel_sub_logits" not in outputs.aux_logits:
+            raise KeyError(
+                "VNC-CAPEL loss requires outputs.aux_logits['capel_sub_logits']; "
+                "check ClipAdaptersModel.forward_features()/forward_train()."
+            )
+
+        if "vnc_assignment_logits" not in outputs.aux_logits:
+            raise KeyError(
+                "VNC-CAPEL loss requires outputs.aux_logits['vnc_assignment_logits']; "
+                "check ClipAdaptersModel.forward_features()."
+            )
+
+        if "img" not in outputs.features:
+            raise KeyError(
+                "VNC-CAPEL loss requires outputs.features['img'] as CLIP image features."
+            )
+
+        sub_logits = outputs.aux_logits["capel_sub_logits"]
+        assignment_logits = outputs.aux_logits["vnc_assignment_logits"]
+        image_features = outputs.features["img"]
+
+        # CAPEL CE 仍然来自 scaled logits。
+        # L_pc 和 L_vnc 使用 unscaled assignment logits，更稳定。
+        loss_pc = self.adapter.pc_loss(assignment_logits, outputs.labels)
+        loss_vnc = self.adapter.vnc_loss(
+            image_features=image_features,
+            labels=outputs.labels,
+            assignment_logits=assignment_logits,
+        )
+
+        lambda_pc = float(getattr(self.cfg.CLIP_ADAPTERS, "CAPEL_PC_LAMBDA", 3.0))
+        lambda_vnc = float(getattr(self.cfg.CLIP_ADAPTERS, "VNC_CAPEL_VNC_LAMBDA", 0.2))
+
+        loss = loss_ce + lambda_pc * loss_pc + lambda_vnc * loss_vnc
+
+        extras = {
+            "loss_ce": loss_ce.detach(),
+            "loss_pc": loss_pc.detach(),
+            "loss_capel_pc": (lambda_pc * loss_pc).detach(),
+            "loss_vnc": loss_vnc.detach(),
+            "loss_vnc_weighted": (lambda_vnc * loss_vnc).detach(),
+        }
+
+        if getattr(self.adapter, "apply_constraint", "none") != "none":
+            constraint = self.adapter.zero_shot_constraint()
+            loss = loss + constraint
+            extras["loss_constraint"] = constraint.detach()
+
+        outputs.losses.update(extras)
+        return loss
+
+
     def __call__(self, outputs):
         if (
             str(getattr(self.adapter, "initialization_name", "")).upper() == "CAPEL"

@@ -7,3 +7,4 @@ from .tip_adapter import TipAdapter
 from .cross_modal import CrossModalProbeAdapter
 from .bayes_adapter import BayesAdapter
 from .capel_adapter import CapelAdapter
+from .vnccapel_adapter import VncCapelAdapter

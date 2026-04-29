@@ -14,7 +14,7 @@ from methods.base import BaseMethod
 from .adapter_router import build_adapter
 from .loss import ClipAdaptersLoss
 from .online_heads import bayes_logits, bayes_logits_all, capel_logits, lp_logits
-
+import torch.nn.functional as F
 
 class ClipAdaptersModel(nn.Module):
     def __init__(self, cfg, classnames, clip_model):
@@ -63,19 +63,30 @@ class ClipAdaptersModel(nn.Module):
             return head["logits"], image_features, head["logits_all"]
         return head["logits"]
 
-
     def forward_features(self, features, n_samples=None):
         features_for_logits = self.adapter.adapt_features(features)
         logits_all = None
         sub_logits = None
+        assignment_logits = None
 
-        if self.adapter.adapter_kind == "capel_prototype":
+        if self.adapter.adapter_kind in {"capel_prototype", "vnccapel_prototype"}:
             logits, sub_logits = capel_logits(
                 self.logit_scale,
                 features_for_logits,
                 self.adapter.prototypes,
                 self.adapter.get_prompt_weights(),
             )
+
+            if self.adapter.adapter_kind == "vnccapel_prototype":
+                # VNC 使用未乘 logit_scale 的 cosine logits 计算 prompt assignment。
+                # 这样比 tau * cos 更稳定，不会让 q_i 过早变成 one-hot。
+                features_norm = F.normalize(features_for_logits.float(), dim=-1)
+                prototypes_norm = F.normalize(self.adapter.prototypes.float(), dim=-1)
+                assignment_logits = torch.einsum(
+                    "bd,ckd->bck",
+                    features_norm,
+                    prototypes_norm,
+                )
 
         elif self.adapter.adapter_kind == "stochastic_prototype":
             if n_samples is None:
@@ -88,6 +99,7 @@ class ClipAdaptersModel(nn.Module):
                 logits = logits_all.mean(dim=0)
             else:
                 logits = bayes_logits(self.logit_scale, features_for_logits, prototypes)
+
         else:
             prototypes = self.adapter.get_prototypes()
             logits = lp_logits(self.logit_scale, features_for_logits, prototypes)
@@ -102,9 +114,9 @@ class ClipAdaptersModel(nn.Module):
             "logits": logits,
             "logits_all": logits_all,
             "sub_logits": sub_logits,
+            "assignment_logits": assignment_logits,
             "features_for_logits": features_for_logits,
         }
-
 
 
 @METHOD_REGISTRY.register("ClipAdapters")
@@ -154,6 +166,9 @@ class ClipAdaptersMethod(BaseMethod):
     def _add_capel_aux(self, head, aux_logits):
         if head.get("sub_logits") is not None:
             aux_logits["capel_sub_logits"] = head["sub_logits"]
+
+        if head.get("assignment_logits") is not None:
+            aux_logits["vnc_assignment_logits"] = head["assignment_logits"]
 
 
     def _bayes_kl_weight(self) -> float:

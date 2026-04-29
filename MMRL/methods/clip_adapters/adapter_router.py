@@ -8,6 +8,7 @@ from .adapters import (
     RandomProbeAdapter,
     TaskResidualAdapter,
     TipAdapter,
+    VncCapelAdapter,
     ZeroShotProbeAdapter,
 )
 
@@ -15,6 +16,11 @@ from .adapters import (
 def build_adapter(cfg, clip_model, base_text_features, classnames=None):
     init = str(cfg.CLIP_ADAPTERS.INIT)
     init_upper = init.upper()
+
+    if init_upper == "VNC_CAPEL" or init_upper == "VNCCAPEL":
+        if classnames is None:
+            raise ValueError("VncCapelAdapter requires classnames.")
+        return VncCapelAdapter(cfg, clip_model, base_text_features, classnames)
 
     if init_upper == "CAPEL":
         if classnames is None:

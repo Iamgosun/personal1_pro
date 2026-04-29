@@ -65,6 +65,11 @@ def _as_legacy_clipadapter(cfg):
         sec.CAPEL_REBUILD_FEATURE_CACHE = cad.CAPEL_REBUILD_FEATURE_CACHE
         sec.CAPEL_FEATURE_CACHE_DIR = cad.CAPEL_FEATURE_CACHE_DIR
 
+    if hasattr(cad, "VNC_CAPEL_VNC_LAMBDA"):
+        sec.VNC_CAPEL_VNC_LAMBDA = cad.VNC_CAPEL_VNC_LAMBDA
+
+
+
 def _as_legacy_mmrl(cfg):
     if not hasattr(cfg.TRAINER, "MMRL"):
         cfg.TRAINER.MMRL = CN()
@@ -317,7 +322,7 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.CAPEL_USE_FEATURE_CACHE = True
     cfg.CLIP_ADAPTERS.CAPEL_REBUILD_FEATURE_CACHE = False
     cfg.CLIP_ADAPTERS.CAPEL_FEATURE_CACHE_DIR = "/root/autodl-tmp/MMRL/prompts/capel_feature_cache"
-    
+    cfg.CLIP_ADAPTERS.VNC_CAPEL_VNC_LAMBDA = 0.2
 
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"
 
