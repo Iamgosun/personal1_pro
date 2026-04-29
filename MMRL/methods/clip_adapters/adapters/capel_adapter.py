@@ -176,8 +176,35 @@ class CapelAdapter(BaseAdapter):
         )
 
 
+
     def _select_dataset_bank(self, bank: dict, dataset_name: str) -> dict:
-        datasets = bank.get("datasets", {})
+        """
+        New prompt-bank format only:
+
+        {
+        "Caltech101": {
+            "accordion": ["...", "..."],
+            "airplanes": ["...", "..."]
+        },
+        "DescText": {
+            "banded": ["...", "..."]
+        }
+        }
+
+        Return:
+        dataset_bank: dict[class_name, list[str]]
+        """
+        if not isinstance(bank, dict):
+            raise ValueError(f"CAPEL prompt bank root must be dict, got {type(bank)}")
+
+        datasets = {
+            k: v
+            for k, v in bank.items()
+            if isinstance(v, dict)
+        }
+
+        if not datasets:
+            raise ValueError("CAPEL prompt bank contains no dataset dictionaries.")
 
         # Direct match.
         if dataset_name in datasets:
@@ -196,16 +223,17 @@ class CapelAdapter(BaseAdapter):
             )
             return value
 
-        # Dataset-name aliases between Dassl/MMRL configs and prompt-bank names.
+        # Dataset-name aliases between MMRL/Dassl configs and new prompt-bank names.
         dataset_aliases = {
-            # MMRL/Dassl dataset name -> prompt bank name.
-            "describabletextures": ["dtd"],
-            "dtd": ["describabletextures"],
+            "describabletextures": ["desctext", "dtd"],
+            "dtd": ["desctext", "describabletextures"],
+            "desctext": ["describabletextures", "dtd"],
 
             "caltech101": ["caltech101"],
             "ucf101": ["ucf101"],
             "food101": ["food101"],
             "eurosat": ["eurosat"],
+            "imagenet": ["imagenet"],
             "sun397": ["sun397"],
 
             "oxfordpets": ["oxfordpets", "oxfordpet"],
@@ -243,9 +271,20 @@ class CapelAdapter(BaseAdapter):
 
 
 
-
-
     def _load_prompts_for_current_classes(self, cfg) -> List[List[str]]:
+        """
+        Load prompts from the new flat prompt-bank format:
+
+        {
+        "DatasetName": {
+            "class_name": [
+            "prompt 1",
+            ...
+            "prompt 50"
+            ]
+        }
+        }
+        """
         path = Path(self.prompt_bank_path)
         if not path.is_file():
             raise FileNotFoundError(f"CAPEL prompt bank not found: {path}")
@@ -254,17 +293,20 @@ class CapelAdapter(BaseAdapter):
             bank = json.load(f)
 
         dataset_bank = self._select_dataset_bank(bank, cfg.DATASET.NAME)
-        classes = dataset_bank.get("classes", [])
 
         by_name = {}
-        for item in classes:
-            prompts = item.get("prompts", [])
-            raw_name = item.get("raw_name", "")
-            name = item.get("name", "")
+        for raw_name, prompts in dataset_bank.items():
+            if not isinstance(prompts, list):
+                continue
 
-            for key_src in [raw_name, name]:
-                for key in _name_variants(key_src):
-                    by_name[key] = prompts
+            clean_prompts = [
+                str(p).strip()
+                for p in prompts
+                if str(p).strip()
+            ]
+
+            for key in _name_variants(raw_name):
+                by_name[key] = clean_prompts
 
         prompts_all = []
         missing = []
@@ -284,50 +326,40 @@ class CapelAdapter(BaseAdapter):
                 prompts_all.append(prompts)
 
         if missing:
-            if self.fallback_order and len(classes) == len(self.classnames):
-                print(
-                    "[CAPEL] WARNING: class-name matching failed for some classes; "
-                    "falling back to prompt-bank order. Use this only if the bank "
-                    "order is guaranteed to match dataset.classnames.",
-                    flush=True,
-                )
-                prompts_all = [item.get("prompts", []) for item in classes]
-            else:
-                available_preview = []
-                for item in classes[:20]:
-                    available_preview.append(
-                        {
-                            "raw_name": item.get("raw_name", ""),
-                            "name": item.get("name", ""),
-                        }
-                    )
-
-                raise KeyError(
-                    "CAPEL prompt bank cannot match these dataset classnames: "
-                    f"{missing[:20]} "
-                    f"(total missing={len(missing)}). "
-                    f"Dataset={cfg.DATASET.NAME}. "
-                    f"First prompt-bank classes={available_preview}. "
-                    "Set CLIP_ADAPTERS.CAPEL_FALLBACK_ORDER true only if bank order "
-                    "is guaranteed to match dataset.classnames."
-                )
+            available_preview = list(dataset_bank.keys())[:30]
+            raise KeyError(
+                "CAPEL prompt bank cannot match these dataset classnames: "
+                f"{missing[:20]} "
+                f"(total missing={len(missing)}). "
+                f"Dataset={cfg.DATASET.NAME}. "
+                f"First prompt-bank classes={available_preview}. "
+                "Please make sure JSON class keys match dataset.classnames after "
+                "normalization."
+            )
 
         fixed = []
         for cls_name, prompts in zip(self.classnames, prompts_all):
             prompts = list(prompts or [])
+
             if len(prompts) < self.k:
                 if self.strict_prompt_bank:
                     raise ValueError(
                         f"Class '{cls_name}' has only {len(prompts)} prompts, "
                         f"but CAPEL_PROMPTS_PER_CLASS={self.k}."
                     )
+
                 repeats = (self.k + len(prompts) - 1) // max(1, len(prompts))
                 prompts = (prompts * repeats)[: self.k]
             else:
                 prompts = prompts[: self.k]
+
             fixed.append(prompts)
 
         return fixed
+
+
+
+
 
     def _cache_metadata(self, cfg, base_text_features: torch.Tensor) -> dict:
         prompt_bank = Path(self.prompt_bank_path)

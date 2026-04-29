@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Usage:
-#   GPU_IDS="0 1" bash run_plan.sh FS "MMRL BayesMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
+#   GPU_IDS="0 1" bash run_plan.sh FS " VCRMMMRL MMRL BayesMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
 #   GPU_IDS="0 1" bash run_plan.sh FS "CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
 #   online cache
 # Notes:
@@ -12,11 +12,11 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 # caltech101 oxford_pets dtd
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-  VNC_CAPEL }
-EXEC_MODE=${3:-cache}
-DATASETS_ARG=${4:-"  dtd  caltech101 "}
-SHOTS_ARG=${5:-"1 4 8 "}
-SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
+METHODS_ARG=${2:-  VCRMMMRL }
+EXEC_MODE=${3:-online}
+DATASETS_ARG=${4:-"  caltech101  "}
+SHOTS_ARG=${5:-"16  "}
+SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
 OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
@@ -25,7 +25,7 @@ TAG=${TAG:-}
 
 NGPU=${NGPU:-1}
 GPU_IDS=${GPU_IDS:-0 }
-JOBS_PER_GPU=${JOBS_PER_GPU:-2}
+JOBS_PER_GPU=${JOBS_PER_GPU:-1}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}
@@ -58,7 +58,7 @@ resolve_runtime_cfg() {
   local method=$1
 
   case "$method" in
-    MMRL|MMRLMix|BayesMMRL|MMRLpp|MMRLPP)
+    MMRL|MMRLMix|BayesMMRL|VCRMMMRL|MMRLpp|MMRLPP)
       echo "configs/runtime/mmrl_family.yaml"
       ;;
 
@@ -87,6 +87,9 @@ resolve_configs() {
 
     BayesMMRL)
       method_cfg="configs/methods/bayesmmrl.yaml"
+      ;;
+    VCRMMMRL)
+      method_cfg="configs/methods/vcrm_mmrl.yaml"
       ;;
 
     MMRLpp|MMRLPP)

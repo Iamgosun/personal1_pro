@@ -22,6 +22,9 @@ def _resolve_mmrl_cfg(cfg):
     if method_name == "BayesMMRL":
         return cfg.BAYES_MMRL
 
+    if method_name == "VCRMMMRL":
+        return cfg.VCRM_MMRL
+
     return cfg.MMRL
 
 

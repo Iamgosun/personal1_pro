@@ -144,6 +144,27 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.PRIOR_STD = src.REP_PRIOR_STD
     sec.SIGMA_MODE = src.REP_SIGMA_MODE
 
+def _as_legacy_vcrm_mmrl(cfg):
+    if not hasattr(cfg.TRAINER, "VCRMMMRL"):
+        cfg.TRAINER.VCRMMMRL = CN()
+
+    sec = cfg.TRAINER.VCRMMMRL
+    src = cfg.VCRM_MMRL
+
+    sec.PREC = src.PREC
+    sec.ALPHA = src.ALPHA
+    sec.REG_WEIGHT = src.REG_WEIGHT
+    sec.N_REP_TOKENS = src.N_REP_TOKENS
+    sec.REP_LAYERS = src.REP_LAYERS
+    sec.REP_DIM = src.REP_DIM
+
+    sec.VCRM_CONTEXT_LAYER = src.VCRM_CONTEXT_LAYER
+    sec.VCRM_HIDDEN_DIM = src.VCRM_HIDDEN_DIM
+    sec.VCRM_ETA = src.VCRM_ETA
+    sec.VCRM_DETACH_CONTEXT = src.VCRM_DETACH_CONTEXT
+    sec.VCRM_MOD_WEIGHT = src.VCRM_MOD_WEIGHT
+
+
 
 def _sync_active_mmrl_family(cfg):
     if cfg.METHOD.NAME == "MMRLMix":
@@ -175,6 +196,22 @@ def get_refactor_defaults():
     cfg.MMRL.N_REP_TOKENS = 5
     cfg.MMRL.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
     cfg.MMRL.REP_DIM = 512
+
+    cfg.VCRM_MMRL = CN()
+    cfg.VCRM_MMRL.PREC = "amp"
+    cfg.VCRM_MMRL.ALPHA = 0.7
+    cfg.VCRM_MMRL.REG_WEIGHT = 0.5
+    cfg.VCRM_MMRL.N_REP_TOKENS = 5
+    cfg.VCRM_MMRL.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
+    cfg.VCRM_MMRL.REP_DIM = 512
+
+    cfg.VCRM_MMRL.VCRM_CONTEXT_LAYER = 3
+    cfg.VCRM_MMRL.VCRM_HIDDEN_DIM = 512
+    cfg.VCRM_MMRL.VCRM_ETA = 0.1
+    cfg.VCRM_MMRL.VCRM_DETACH_CONTEXT = True
+    cfg.VCRM_MMRL.VCRM_MOD_WEIGHT = 0.0
+
+
 
     cfg.MMRL_MIX = CN()
     cfg.MMRL_MIX.PREC = "amp"
@@ -338,6 +375,7 @@ def get_refactor_defaults():
     _as_legacy_mmrl_mix(cfg)
     _as_legacy_mmrlpp(cfg)
     _as_legacy_bayes_mmrl(cfg)
+    _as_legacy_vcrm_mmrl(cfg)
     _as_legacy_clipadapter(cfg)
     return cfg
 
@@ -377,6 +415,7 @@ def finalize_cfg(cfg):
     _as_legacy_mmrl_mix(cfg)
     _as_legacy_mmrlpp(cfg)
     _as_legacy_bayes_mmrl(cfg)
+    _as_legacy_vcrm_mmrl(cfg)
     _as_legacy_clipadapter(cfg)
 
     cfg.freeze()
