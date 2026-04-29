@@ -14,7 +14,7 @@ set -euo pipefail
 PROTOCOL=${1:-FS}
 METHODS_ARG=${2:-  CAPEL }
 EXEC_MODE=${3:-cache}
-DATASETS_ARG=${4:-"  dtd  "}
+DATASETS_ARG=${4:-"  caltech101  "}
 SHOTS_ARG=${5:-"1  "}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 

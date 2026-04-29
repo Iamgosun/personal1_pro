@@ -155,10 +155,8 @@ class CapelAdapter(BaseAdapter):
         # CAPEL trainable W: [C, K, D]
         self.prototypes = nn.Parameter(init_prototypes)
 
-        # CAPEL trainable attention logits: [C, K]
-        #
         self.prompt_logits = nn.Parameter(
-            torch.ones(
+            torch.zeros(
                 self.n_classes,
                 self.k,
                 dtype=torch.float32,
@@ -545,17 +543,19 @@ class CapelAdapter(BaseAdapter):
         }
 
 
-
     def get_prompt_weights(self) -> torch.Tensor:
         """
-        CAPEL learnable attention matrix alpha.
+        CAPEL learnable prompt attention weights.
 
-        alpha[y, k] is a raw prompt contribution weight for prompt k of class y.
-        It is not normalized over K and is not passed through sigmoid.
+        Old version:
+        - prompt_logits has shape [C, K]
+        - softmax over K gives per-class prompt weights
+        - zero initialization gives uniform average-logit ensembling at start
         """
-        return self.prompt_logits.float().to(self.prototypes.dtype)
+        return F.softmax(self.prompt_logits.float(), dim=-1).to(self.prototypes.dtype)
+    
 
-
+    
     def get_prototypes(self) -> torch.Tensor:
         raise RuntimeError(
             "CapelAdapter uses [C, K, D] prototypes and must be handled by "
