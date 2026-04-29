@@ -157,12 +157,8 @@ class CapelAdapter(BaseAdapter):
 
         # CAPEL trainable attention logits: [C, K]
         #
-        # The paper states alpha is learnable, but the PDF does not specify
-        # initialization or normalization. This implementation uses softmax
-        # normalization; zero initialization gives uniform prompt weighting at
-        # the start, i.e. average-logit ensembling.
         self.prompt_logits = nn.Parameter(
-            torch.zeros(
+            torch.ones(
                 self.n_classes,
                 self.k,
                 dtype=torch.float32,
@@ -538,8 +534,27 @@ class CapelAdapter(BaseAdapter):
 
         return prototypes
 
+    @torch.no_grad()
+    def prompt_weight_stats(self) -> dict:
+        w = self.get_prompt_weights().detach().float()
+        return {
+            "min": float(w.min().item()),
+            "max": float(w.max().item()),
+            "mean": float(w.mean().item()),
+            "std": float(w.std().item()),
+        }
+
+
+
     def get_prompt_weights(self) -> torch.Tensor:
-        return F.softmax(self.prompt_logits.float(), dim=-1).to(self.prototypes.dtype)
+        """
+        CAPEL learnable attention matrix alpha.
+
+        alpha[y, k] is a raw prompt contribution weight for prompt k of class y.
+        It is not normalized over K and is not passed through sigmoid.
+        """
+        return self.prompt_logits.float().to(self.prototypes.dtype)
+
 
     def get_prototypes(self) -> torch.Tensor:
         raise RuntimeError(

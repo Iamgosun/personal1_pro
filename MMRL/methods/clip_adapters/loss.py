@@ -45,6 +45,7 @@ class ClipAdaptersLoss:
         outputs.losses.update(extras)
         return loss
 
+
     def _capel_loss(self, outputs):
         loss_ce = F.cross_entropy(outputs.logits, outputs.labels)
 
@@ -54,10 +55,13 @@ class ClipAdaptersLoss:
                 "check ClipAdaptersModel.forward_features()/forward_train()."
             )
 
+        # Paper Eq.10:
+        # P(k | x_i, y) corresponds to logits Z_y^k after Softmax.
+        # Here capel_sub_logits is exactly Z_yk = tau * cos(x, w_yk).
         sub_logits = outputs.aux_logits["capel_sub_logits"]
         loss_pc = self.adapter.pc_loss(sub_logits, outputs.labels)
-        lam = float(getattr(self.cfg.CLIP_ADAPTERS, "CAPEL_PC_LAMBDA", 3.0))
 
+        lam = float(getattr(self.cfg.CLIP_ADAPTERS, "CAPEL_PC_LAMBDA", 3.0))
         loss = loss_ce + lam * loss_pc
 
         extras = {
@@ -66,8 +70,6 @@ class ClipAdaptersLoss:
             "loss_capel_pc": (lam * loss_pc).detach(),
         }
 
-        # Keep compatibility if you deliberately combine CAPEL with an existing
-        # zero-shot constraint. Default CAPEL config sets CONSTRAINT: none.
         if getattr(self.adapter, "apply_constraint", "none") != "none":
             constraint = self.adapter.zero_shot_constraint()
             loss = loss + constraint

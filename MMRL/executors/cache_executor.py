@@ -220,6 +220,28 @@ class CacheExecutor(BaseExecutor):
                         value = value.detach().item()
                     loss_summary[key] = float(value)
 
+
+
+
+        # CAPEL prompt-gate debug: print once every N epochs, at the last batch.
+        if (
+            (trainer.batch_idx + 1) == trainer.num_batches
+            and hasattr(self.method.model.adapter, "prompt_weight_stats")
+        ):
+            interval = int(getattr(trainer.cfg.CLIP_ADAPTERS, "CAPEL_GATE_PRINT_EVERY", 10))
+            if interval > 0 and ((trainer.epoch + 1) % interval == 0 or trainer.epoch == 0):
+                stats = self.method.model.adapter.prompt_weight_stats()
+                print(
+                    "[CAPEL] "
+                    f"epoch={trainer.epoch + 1}/{trainer.max_epoch} "
+                    f"prompt_gate min={stats['min']:.6f} "
+                    f"max={stats['max']:.6f} "
+                    f"mean={stats['mean']:.6f} "
+                    f"std={stats['std']:.6f}",
+                    flush=True,
+                )
+
+
         if (trainer.batch_idx + 1) == trainer.num_batches:
             trainer.update_lr()
 

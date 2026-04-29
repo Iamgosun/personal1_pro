@@ -4,7 +4,7 @@ set -euo pipefail
 # Usage:
 #   GPU_IDS="0 1" bash run_plan.sh FS "MMRL BayesMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
 #   GPU_IDS="0 1" bash run_plan.sh FS "CLAP CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
-#
+#   online cache
 # Notes:
 #   - Normal methods use their normal method config.
 #   - Adapter aliases map to specific configs/methods/clip_adapters_*.yaml.
@@ -12,10 +12,10 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:- CLAP  CAPEL BayesAdapter MMRL}
-EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-"caltech101  dtd  eurosat fgvc_aircraft oxford_pets stanford_cars ucf101"}
-SHOTS_ARG=${5:-"1 2 4 8 16 32 "}
+METHODS_ARG=${2:-  CAPEL }
+EXEC_MODE=${3:-cache}
+DATASETS_ARG=${4:-"  dtd  "}
+SHOTS_ARG=${5:-"1  "}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
@@ -23,8 +23,8 @@ OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-2}
-GPU_IDS=${GPU_IDS:-0 1}
+NGPU=${NGPU:-1}
+GPU_IDS=${GPU_IDS:-0 }
 JOBS_PER_GPU=${JOBS_PER_GPU:-2}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}

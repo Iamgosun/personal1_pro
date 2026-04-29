@@ -63,6 +63,7 @@ class ClipAdaptersModel(nn.Module):
             return head["logits"], image_features, head["logits_all"]
         return head["logits"]
 
+
     def forward_features(self, features, n_samples=None):
         features_for_logits = self.adapter.adapt_features(features)
         logits_all = None
@@ -103,6 +104,7 @@ class ClipAdaptersModel(nn.Module):
             "sub_logits": sub_logits,
             "features_for_logits": features_for_logits,
         }
+
 
 
 @METHOD_REGISTRY.register("ClipAdapters")
@@ -152,6 +154,7 @@ class ClipAdaptersMethod(BaseMethod):
     def _add_capel_aux(self, head, aux_logits):
         if head.get("sub_logits") is not None:
             aux_logits["capel_sub_logits"] = head["sub_logits"]
+
 
     def _bayes_kl_weight(self) -> float:
         if not self._is_bayes_adapter():

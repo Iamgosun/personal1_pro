@@ -20,15 +20,15 @@ def lp_logits(logit_scale, features, prototypes):
 
 def capel_logits(logit_scale, features, prototypes, prompt_weights):
     """
-    CAPEL logits-space prompt ensemble.
+    CAPEL logits-space prompt ensemble, following the paper equations.
 
     features:       [B, D]
     prototypes:     [C, K, D]
-    prompt_weights: [C, K]
+    prompt_weights: [C, K], raw learnable alpha
 
     returns:
       logits:     [B, C]
-      sub_logits: [B, C, K]
+      sub_logits: [B, C, K], where Z_yk = tau * cos(x, w_yk)
     """
     if features.ndim != 2:
         raise ValueError(f"capel_logits expects features [B, D], got {tuple(features.shape)}")
@@ -48,8 +48,14 @@ def capel_logits(logit_scale, features, prototypes, prompt_weights):
     features = _normalize(features.float())
     prototypes = _normalize(prototypes.float())
 
+    # Paper Eq.4:
+    #   Z_yk = tau * cos(x, w_yk)
     sub_logits = torch.einsum("bd,ckd->bck", features, prototypes) * logit_scale.exp()
-    logits = (sub_logits * prompt_weights.float().unsqueeze(0)).sum(dim=-1)
+
+    # Paper Eq.5 / Eq.12:
+    #   class_logit_y = sum_k alpha_yk * Z_yk
+    alpha = prompt_weights.float()
+    logits = (sub_logits * alpha.unsqueeze(0)).sum(dim=-1)
 
     return logits, sub_logits
 
