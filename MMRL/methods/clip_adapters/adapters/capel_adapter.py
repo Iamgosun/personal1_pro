@@ -181,21 +181,75 @@ class CapelAdapter(BaseAdapter):
             flush=True,
         )
 
+
     def _select_dataset_bank(self, bank: dict, dataset_name: str) -> dict:
         datasets = bank.get("datasets", {})
+
+        # Direct match.
         if dataset_name in datasets:
             return datasets[dataset_name]
 
-        normalized = {_norm_dataset_key(k): v for k, v in datasets.items()}
+        normalized = {_norm_dataset_key(k): (k, v) for k, v in datasets.items()}
         key = _norm_dataset_key(dataset_name)
+
+        # Normalized match, e.g. oxford_pets -> OxfordPets.
         if key in normalized:
-            return normalized[key]
+            bank_key, value = normalized[key]
+            print(
+                f"[CAPEL] matched dataset bank by normalized key: "
+                f"{dataset_name} -> {bank_key}",
+                flush=True,
+            )
+            return value
+
+        # Dataset-name aliases between Dassl/MMRL configs and prompt-bank names.
+        dataset_aliases = {
+            # MMRL/Dassl dataset name -> prompt bank name.
+            "describabletextures": ["dtd"],
+            "dtd": ["describabletextures"],
+
+            "caltech101": ["caltech101"],
+            "ucf101": ["ucf101"],
+            "food101": ["food101"],
+            "eurosat": ["eurosat"],
+            "sun397": ["sun397"],
+
+            "oxfordpets": ["oxfordpets", "oxfordpet"],
+            "oxfordpet": ["oxfordpets"],
+
+            "oxfordflowers": ["oxfordflowers", "oxfordflower", "flowers102"],
+            "oxfordflower": ["oxfordflowers", "flowers102"],
+            "flowers102": ["oxfordflowers"],
+
+            "stanfordcars": ["stanfordcars", "stanfordcar", "cars"],
+            "stanfordcar": ["stanfordcars"],
+            "cars": ["stanfordcars"],
+
+            "fgvcaircraft": ["fgvcaircraft", "aircraft", "fgvc"],
+            "aircraft": ["fgvcaircraft"],
+            "fgvc": ["fgvcaircraft"],
+        }
+
+        for alias in dataset_aliases.get(key, []):
+            alias_key = _norm_dataset_key(alias)
+            if alias_key in normalized:
+                bank_key, value = normalized[alias_key]
+                print(
+                    f"[CAPEL] matched dataset bank by alias: "
+                    f"{dataset_name} -> {bank_key}",
+                    flush=True,
+                )
+                return value
 
         available = ", ".join(sorted(datasets.keys()))
         raise KeyError(
             f"CAPEL prompt bank has no dataset '{dataset_name}'. "
             f"Available datasets: {available}"
         )
+
+
+
+
 
     def _load_prompts_for_current_classes(self, cfg) -> List[List[str]]:
         path = Path(self.prompt_bank_path)

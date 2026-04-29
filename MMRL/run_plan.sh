@@ -12,10 +12,10 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-CAPEL }
-EXEC_MODE=${3:-cache}
-DATASETS_ARG=${4:-"caltech101 ucf101 "}
-SHOTS_ARG=${5:-"1 "}
+METHODS_ARG=${2:- CLAP  CAPEL BayesAdapter MMRL}
+EXEC_MODE=${3:-online}
+DATASETS_ARG=${4:-"caltech101  dtd  eurosat fgvc_aircraft oxford_pets stanford_cars ucf101"}
+SHOTS_ARG=${5:-"1 2 4 8 16 32 "}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
@@ -23,8 +23,10 @@ OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-1}
-GPU_IDS=${GPU_IDS:-}
+NGPU=${NGPU:-2}
+GPU_IDS=${GPU_IDS:-0 1}
+JOBS_PER_GPU=${JOBS_PER_GPU:-2}
+
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}
 
@@ -48,6 +50,25 @@ resolve_protocol_cfg() {
     FS)  echo "configs/protocols/fs.yaml" ;;
     CD)  echo "configs/protocols/cd.yaml" ;;
     *) echo "Unknown PROTOCOL=$1" >&2; exit 1 ;;
+  esac
+}
+
+
+resolve_runtime_cfg() {
+  local method=$1
+
+  case "$method" in
+    MMRL|MMRLMix|BayesMMRL|MMRLpp|MMRLPP)
+      echo "configs/runtime/mmrl_family.yaml"
+      ;;
+
+    ZS|CLAP|ZS_CLAP|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2|CAPEL|ClipAdapters|ClipADAPTER)
+      echo "configs/runtime/adapter_family.yaml"
+      ;;
+
+    *)
+      echo "configs/runtime/default.yaml"
+      ;;
   esac
 }
 
@@ -137,10 +158,12 @@ resolve_configs() {
       ;;
   esac
 
+
   protocol_cfg="$(resolve_protocol_cfg "$PROTOCOL")"
-  runtime_cfg="configs/runtime/default.yaml"
+  runtime_cfg="$(resolve_runtime_cfg "$method")"
 
   echo "$method_cfg $protocol_cfg $runtime_cfg"
+  
 }
 
 resolve_launch_method() {
@@ -202,20 +225,29 @@ PY
 }
 
 init_gpu_list() {
+  local BASE_GPU_LIST=()
+
   if [[ -n "$GPU_IDS" ]]; then
-    read -r -a GPU_LIST <<< "$GPU_IDS"
+    read -r -a BASE_GPU_LIST <<< "$GPU_IDS"
   else
-    GPU_LIST=()
     local i
     for ((i=0; i<NGPU; i++)); do
-      GPU_LIST+=("$i")
+      BASE_GPU_LIST+=("$i")
     done
   fi
 
-  if [[ ${#GPU_LIST[@]} -eq 0 ]]; then
+  if [[ ${#BASE_GPU_LIST[@]} -eq 0 ]]; then
     echo "No GPU ids resolved. Set NGPU or GPU_IDS." >&2
     exit 1
   fi
+
+  GPU_LIST=()
+  local gpu_id rep
+  for gpu_id in "${BASE_GPU_LIST[@]}"; do
+    for ((rep=0; rep<JOBS_PER_GPU; rep++)); do
+      GPU_LIST+=("$gpu_id")
+    done
+  done
 }
 
 build_outdir() {
@@ -767,5 +799,12 @@ main() {
 
   echo "[DONE] all jobs finished successfully."
 }
+
+if [[ "${SUMMARY_ONLY:-0}" == "1" ]]; then
+  for method in "${METHODS[@]}"; do
+    summarize_case "$method"
+  done
+  exit 0
+fi
 
 main "$@"

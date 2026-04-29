@@ -1,11 +1,11 @@
 ============================================================
-START: 2026-04-28 18:50:25
-GPU: 0
+START: 2026-04-29 05:26:58
+GPU: 1
 REQUESTED_METHOD: CLAP
 LAUNCH_METHOD: ClipAdapters
 RUN_TAG: CLAP
 PROTOCOL: FS
-EXEC_MODE: cache
+EXEC_MODE: online
 DATASET: ucf101
 SHOTS: 2
 SEED: 3
@@ -14,7 +14,7 @@ OUTPUT_ROOT: output_refactor
 BACKBONE: ViT-B/16
 METHOD_CONFIG: configs/methods/clip_adapters_clap.yaml
 PROTOCOL_CONFIG: configs/protocols/fs.yaml
-RUNTIME_CONFIG: configs/runtime/default.yaml
+RUNTIME_CONFIG: configs/runtime/adapter_family.yaml
 ============================================================
 Setting fixed seed: 3
 ***************
@@ -22,7 +22,7 @@ Setting fixed seed: 3
 ***************
 dataset_config_file: configs/datasets/ucf101.yaml
 eval_only: False
-exec_mode: cache
+exec_mode: online
 exp_config: 
 load_epoch: None
 method: ClipAdapters
@@ -34,7 +34,7 @@ output_dir: output_refactor/ClipAdapters/CLAP/FS/fewshot_train/ucf101/shots_2/Vi
 protocol: FS
 protocol_config_file: configs/protocols/fs.yaml
 root: DATASETS
-runtime_config_file: configs/runtime/default.yaml
+runtime_config_file: configs/runtime/adapter_family.yaml
 seed: 3
 trainer: RefactorRunner
 ************
@@ -79,6 +79,14 @@ CLIP_ADAPTERS:
   CACHE_POOL_EPOCH_SUBSAMPLE: True
   CACHE_REPS: 20
   CACHE_TRAIN_AUG: True
+  CAPEL_FALLBACK_ORDER: False
+  CAPEL_FEATURE_CACHE_DIR: /root/autodl-tmp/MMRL/prompts/capel_feature_cache
+  CAPEL_PC_LAMBDA: 3.0
+  CAPEL_PROMPTS_PER_CLASS: 50
+  CAPEL_PROMPT_BANK: /root/autodl-tmp/MMRL/prompts/capel_prompt_bank_all.json
+  CAPEL_REBUILD_FEATURE_CACHE: False
+  CAPEL_STRICT_PROMPT_BANK: True
+  CAPEL_USE_FEATURE_CACHE: True
   CLAP_TIPA_ONE_EPOCH: True
   CLAP_TIPA_RAW_AFFINITY: True
   CLAP_TIPA_TRAINABLE_CACHE: True
@@ -151,7 +159,7 @@ INPUT:
   SIZE: (224, 224)
   TRANSFORMS: ('random_resized_crop', 'random_flip', 'normalize')
 METHOD:
-  EXEC_MODE: cache
+  EXEC_MODE: online
   FAMILY: adapter
   NAME: ClipAdapters
   TAG: CLAP
@@ -284,6 +292,14 @@ TRAINER:
     CACHE_POOL_EPOCH_SUBSAMPLE: True
     CACHE_REPS: 20
     CACHE_TRAIN_AUG: True
+    CAPEL_FALLBACK_ORDER: False
+    CAPEL_FEATURE_CACHE_DIR: /root/autodl-tmp/MMRL/prompts/capel_feature_cache
+    CAPEL_PC_LAMBDA: 3.0
+    CAPEL_PROMPTS_PER_CLASS: 50
+    CAPEL_PROMPT_BANK: /root/autodl-tmp/MMRL/prompts/capel_prompt_bank_all.json
+    CAPEL_REBUILD_FEATURE_CACHE: False
+    CAPEL_STRICT_PROMPT_BANK: True
+    CAPEL_USE_FEATURE_CACHE: True
     CLAP_TIPA_ONE_EPOCH: True
     CLAP_TIPA_RAW_AFFINITY: True
     CLAP_TIPA_TRAINABLE_CACHE: True
@@ -378,9 +394,9 @@ VERBOSE: True
 VERSION: 1
 Collecting env info ...
 ** System info **
-PyTorch version: 2.4.0+cu121
+PyTorch version: 2.11.0+cu128
 Is debug build: False
-CUDA used to build PyTorch: 12.1
+CUDA used to build PyTorch: 12.8
 ROCM used to build PyTorch: N/A
 
 OS: Ubuntu 22.04.1 LTS (x86_64)
@@ -393,9 +409,12 @@ Python version: 3.10.20 (main, Mar 11 2026, 17:46:40) [GCC 14.3.0] (64-bit runti
 Python platform: Linux-5.15.0-78-generic-x86_64-with-glibc2.35
 Is CUDA available: True
 CUDA runtime version: 11.8.89
-CUDA_MODULE_LOADING set to: LAZY
-GPU models and configuration: GPU 0: NVIDIA GeForce RTX 4090
-Nvidia driver version: 580.76.05
+CUDA_MODULE_LOADING set to: 
+GPU models and configuration: 
+GPU 0: NVIDIA GeForce RTX 5090
+GPU 1: NVIDIA GeForce RTX 5090
+
+Nvidia driver version: 580.105.08
 cuDNN version: Probably one of the following:
 /usr/lib/x86_64-linux-gnu/libcudnn.so.8.6.0
 /usr/lib/x86_64-linux-gnu/libcudnn_adv_infer.so.8.6.0
@@ -404,38 +423,40 @@ cuDNN version: Probably one of the following:
 /usr/lib/x86_64-linux-gnu/libcudnn_cnn_train.so.8.6.0
 /usr/lib/x86_64-linux-gnu/libcudnn_ops_infer.so.8.6.0
 /usr/lib/x86_64-linux-gnu/libcudnn_ops_train.so.8.6.0
+Is XPU available: False
 HIP runtime version: N/A
 MIOpen runtime version: N/A
 Is XNNPACK available: True
+Caching allocator config: N/A
 
 CPU:
 Architecture:                    x86_64
 CPU op-mode(s):                  32-bit, 64-bit
-Address sizes:                   46 bits physical, 57 bits virtual
+Address sizes:                   52 bits physical, 57 bits virtual
 Byte Order:                      Little Endian
-CPU(s):                          128
-On-line CPU(s) list:             0-127
+CPU(s):                          208
+On-line CPU(s) list:             0-207
 Vendor ID:                       GenuineIntel
-Model name:                      Intel(R) Xeon(R) Gold 6459C
+Model name:                      Intel(R) Xeon(R) Platinum 8470Q
 CPU family:                      6
 Model:                           143
 Thread(s) per core:              2
-Core(s) per socket:              32
+Core(s) per socket:              52
 Socket(s):                       2
 Stepping:                        8
 Frequency boost:                 enabled
-CPU max MHz:                     3900.0000
+CPU max MHz:                     2101.0000
 CPU min MHz:                     800.0000
-BogoMIPS:                        6000.00
-Flags:                           fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cat_l2 cdp_l3 invpcid_single intel_ppin cdp_l2 ssbd mba ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb intel_pt avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local split_lock_detect avx_vnni avx512_bf16 wbnoinvd dtherm ida arat pln pts avx512vbmi umip pku ospke waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg tme avx512_vpopcntdq la57 rdpid bus_lock_detect cldemote movdiri movdir64b enqcmd fsrm md_clear serialize tsxldtrk pconfig arch_lbr amx_bf16 avx512_fp16 amx_tile amx_int8 flush_l1d arch_capabilities
+BogoMIPS:                        4200.00
+Flags:                           fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cat_l2 cdp_l3 invpcid_single intel_ppin cdp_l2 ssbd mba ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb intel_pt avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local split_lock_detect avx_vnni avx512_bf16 wbnoinvd dtherm ida arat pln pts avx512vbmi umip pku ospke waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg tme avx512_vpopcntdq la57 rdpid bus_lock_detect cldemote movdiri movdir64b enqcmd fsrm md_clear serialize tsxldtrk pconfig arch_lbr amx_bf16 avx512_fp16 amx_tile amx_int8 flush_l1d arch_capabilities
 Virtualization:                  VT-x
-L1d cache:                       3 MiB (64 instances)
-L1i cache:                       2 MiB (64 instances)
-L2 cache:                        128 MiB (64 instances)
-L3 cache:                        120 MiB (2 instances)
+L1d cache:                       4.9 MiB (104 instances)
+L1i cache:                       3.3 MiB (104 instances)
+L2 cache:                        208 MiB (104 instances)
+L3 cache:                        210 MiB (2 instances)
 NUMA node(s):                    2
-NUMA node0 CPU(s):               0-31,64-95
-NUMA node1 CPU(s):               32-63,96-127
+NUMA node0 CPU(s):               0-51,104-155
+NUMA node1 CPU(s):               52-103,156-207
 Vulnerability Itlb multihit:     Not affected
 Vulnerability L1tf:              Not affected
 Vulnerability Mds:               Not affected
@@ -451,16 +472,42 @@ Vulnerability Tsx async abort:   Not affected
 Versions of relevant libraries:
 [pip3] flake8==3.7.9
 [pip3] numpy==2.2.6
-[pip3] torch==2.4.0
-[pip3] torchaudio==2.4.0
-[pip3] torchvision==0.19.0
-[pip3] triton==3.0.0
+[pip3] nvidia-cublas-cu12==12.8.4.1
+[pip3] nvidia-cuda-cupti-cu12==12.8.90
+[pip3] nvidia-cuda-nvrtc-cu12==12.8.93
+[pip3] nvidia-cuda-runtime-cu12==12.8.90
+[pip3] nvidia-cudnn-cu12==9.19.0.56
+[pip3] nvidia-cufft-cu12==11.3.3.83
+[pip3] nvidia-curand-cu12==10.3.9.90
+[pip3] nvidia-cusolver-cu12==11.7.3.90
+[pip3] nvidia-cusparse-cu12==12.5.8.93
+[pip3] nvidia-cusparselt-cu12==0.7.1
+[pip3] nvidia-nccl-cu12==2.28.9
+[pip3] nvidia-nvjitlink-cu12==12.8.93
+[pip3] nvidia-nvtx-cu12==12.8.90
+[pip3] torch==2.11.0+cu128
+[pip3] torchaudio==2.11.0+cu128
+[pip3] torchvision==0.26.0+cu128
+[pip3] triton==3.6.0
 [conda] numpy                     2.2.6                    pypi_0    pypi
-[conda] torch                     2.4.0                    pypi_0    pypi
-[conda] torchaudio                2.4.0                    pypi_0    pypi
-[conda] torchvision               0.19.0                   pypi_0    pypi
-[conda] triton                    3.0.0                    pypi_0    pypi
-        Pillow (12.2.0)
+[conda] nvidia-cublas-cu12        12.8.4.1                 pypi_0    pypi
+[conda] nvidia-cuda-cupti-cu12    12.8.90                  pypi_0    pypi
+[conda] nvidia-cuda-nvrtc-cu12    12.8.93                  pypi_0    pypi
+[conda] nvidia-cuda-runtime-cu12  12.8.90                  pypi_0    pypi
+[conda] nvidia-cudnn-cu12         9.19.0.56                pypi_0    pypi
+[conda] nvidia-cufft-cu12         11.3.3.83                pypi_0    pypi
+[conda] nvidia-curand-cu12        10.3.9.90                pypi_0    pypi
+[conda] nvidia-cusolver-cu12      11.7.3.90                pypi_0    pypi
+[conda] nvidia-cusparse-cu12      12.5.8.93                pypi_0    pypi
+[conda] nvidia-cusparselt-cu12    0.7.1                    pypi_0    pypi
+[conda] nvidia-nccl-cu12          2.28.9                   pypi_0    pypi
+[conda] nvidia-nvjitlink-cu12     12.8.93                  pypi_0    pypi
+[conda] nvidia-nvtx-cu12          12.8.90                  pypi_0    pypi
+[conda] torch                     2.11.0+cu128             pypi_0    pypi
+[conda] torchaudio                2.11.0+cu128             pypi_0    pypi
+[conda] torchvision               0.26.0+cu128             pypi_0    pypi
+[conda] triton                    3.6.0                    pypi_0    pypi
+        Pillow (12.1.1)
 
 Loading trainer: RefactorRunner
 Loading dataset: UCF101
@@ -485,353 +532,349 @@ Dataset    UCF101
 ---------  ------
 Using Zero-Shot initialization in Linear Probing
 [ClipAdapters] trainable params before cache hooks: {'adapter.prototypes'}
-Building transform_train
-+ random resized crop (size=(224, 224), scale=(0.5, 1))
-+ random flip
-+ to torch tensor of range [0, 1]
-+ normalization (mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
-cache train rep 1/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 1/20: 100%|██████████| 1/1 [00:00<00:00,  1.18it/s]                                                                   cache train rep 2/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 2/20: 100%|██████████| 1/1 [00:00<00:00,  1.39it/s]                                                                   cache train rep 3/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 3/20: 100%|██████████| 1/1 [00:00<00:00,  1.48it/s]                                                                   cache train rep 4/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 4/20: 100%|██████████| 1/1 [00:00<00:00,  1.47it/s]                                                                   cache train rep 5/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 5/20: 100%|██████████| 1/1 [00:00<00:00,  1.50it/s]                                                                   cache train rep 6/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 6/20: 100%|██████████| 1/1 [00:00<00:00,  1.46it/s]                                                                   cache train rep 7/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 7/20: 100%|██████████| 1/1 [00:00<00:00,  1.48it/s]                                                                   cache train rep 8/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 8/20: 100%|██████████| 1/1 [00:00<00:00,  1.47it/s]                                                                   cache train rep 9/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 9/20: 100%|██████████| 1/1 [00:00<00:00,  1.46it/s]                                                                   cache train rep 10/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 10/20: 100%|██████████| 1/1 [00:00<00:00,  1.47it/s]                                                                    cache train rep 11/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 11/20: 100%|██████████| 1/1 [00:00<00:00,  1.48it/s]                                                                    cache train rep 12/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 12/20: 100%|██████████| 1/1 [00:00<00:00,  1.49it/s]                                                                    cache train rep 13/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 13/20: 100%|██████████| 1/1 [00:00<00:00,  1.48it/s]                                                                    cache train rep 14/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 14/20: 100%|██████████| 1/1 [00:00<00:00,  1.48it/s]                                                                    cache train rep 15/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 15/20: 100%|██████████| 1/1 [00:00<00:00,  1.46it/s]                                                                    cache train rep 16/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 16/20: 100%|██████████| 1/1 [00:00<00:00,  1.48it/s]                                                                    cache train rep 17/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 17/20: 100%|██████████| 1/1 [00:00<00:00,  1.46it/s]                                                                    cache train rep 18/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 18/20: 100%|██████████| 1/1 [00:00<00:00,  1.48it/s]                                                                    cache train rep 19/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 19/20: 100%|██████████| 1/1 [00:00<00:00,  1.46it/s]                                                                    cache train rep 20/20:   0%|          | 0/1 [00:00<?, ?it/s]cache train rep 20/20: 100%|██████████| 1/1 [00:00<00:00,  1.48it/s]                                                                    /root/autodl-tmp/MMRL/trainers/refactor_runner.py:66: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+[ClipAdaptersMethod] online prefit support pass 1/1
+/root/autodl-tmp/MMRL/trainers/refactor_runner.py:72: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
   self.scaler = GradScaler() if prec == "amp" else None
-/root/autodl-tmp/MMRL/executors/cache_executor.py:184: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
-  with autocast():
-/root/miniconda3/envs/mmrl/lib/python3.10/site-packages/torch/optim/lr_scheduler.py:216: UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`. In PyTorch 1.1.0 and later, you should call them in the opposite order: `optimizer.step()` before `lr_scheduler.step()`.  Failure to do this will result in PyTorch skipping the first value of the learning rate schedule. See more details at https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
-  warnings.warn(
-[ClipAdaptersMethod] Initializing CLAP constraint multipliers
+[ClipAdaptersMethod] online support features built: features=(202, 512), labels=(202,), logits=(202, 101)
+[ClipAdaptersMethod] Online: initializing CLAP constraint multipliers
 Loading evaluator: Classification
 No checkpoint found, train from scratch
 Initialize tensorboard (log_dir=output_refactor/ClipAdapters/CLAP/FS/fewshot_train/ucf101/shots_2/ViT-B-16/seed3/tensorboard)
-epoch [1/300] batch [1/1] loss 1.2228 (1.2228) acc 63.8614 (63.8614) loss_ce 1.2228 (1.2228) loss_constraint 0.0000 (0.0000) eta 0:00:37
-epoch [2/300] batch [1/1] loss 1.1802 (1.1802) acc 67.8218 (67.8218) loss_ce 1.1802 (1.1802) loss_constraint 0.0000 (0.0000) eta 0:00:02
-epoch [3/300] batch [1/1] loss 1.0947 (1.0947) acc 67.3267 (67.3267) loss_ce 1.0947 (1.0947) loss_constraint 0.0000 (0.0000) eta 0:00:01
-epoch [4/300] batch [1/1] loss 1.2644 (1.2644) acc 61.3861 (61.3861) loss_ce 1.2643 (1.2643) loss_constraint 0.0001 (0.0001) eta 0:00:00
-epoch [5/300] batch [1/1] loss 1.2237 (1.2237) acc 68.3168 (68.3168) loss_ce 1.2233 (1.2233) loss_constraint 0.0003 (0.0003) eta 0:00:00
-epoch [6/300] batch [1/1] loss 0.9979 (0.9979) acc 70.2970 (70.2970) loss_ce 0.9971 (0.9971) loss_constraint 0.0008 (0.0008) eta 0:00:00
-epoch [7/300] batch [1/1] loss 1.0457 (1.0457) acc 73.2673 (73.2673) loss_ce 1.0441 (1.0441) loss_constraint 0.0016 (0.0016) eta 0:00:00
-epoch [8/300] batch [1/1] loss 0.9388 (0.9388) acc 74.2574 (74.2574) loss_ce 0.9362 (0.9362) loss_constraint 0.0027 (0.0027) eta 0:00:00
-epoch [9/300] batch [1/1] loss 0.9277 (0.9277) acc 72.2772 (72.2772) loss_ce 0.9237 (0.9237) loss_constraint 0.0040 (0.0040) eta 0:00:00
-epoch [10/300] batch [1/1] loss 0.9477 (0.9477) acc 73.2673 (73.2673) loss_ce 0.9422 (0.9422) loss_constraint 0.0055 (0.0055) eta 0:00:00
-epoch [11/300] batch [1/1] loss 0.7088 (0.7088) acc 82.1782 (82.1782) loss_ce 0.7016 (0.7016) loss_constraint 0.0072 (0.0072) eta 0:00:00
-epoch [12/300] batch [1/1] loss 0.7991 (0.7991) acc 79.2079 (79.2079) loss_ce 0.7902 (0.7902) loss_constraint 0.0089 (0.0089) eta 0:00:00
-epoch [13/300] batch [1/1] loss 0.7734 (0.7734) acc 77.7228 (77.7228) loss_ce 0.7627 (0.7627) loss_constraint 0.0107 (0.0107) eta 0:00:00
-epoch [14/300] batch [1/1] loss 0.7345 (0.7345) acc 78.7129 (78.7129) loss_ce 0.7219 (0.7219) loss_constraint 0.0126 (0.0126) eta 0:00:00
-epoch [15/300] batch [1/1] loss 0.6262 (0.6262) acc 84.1584 (84.1584) loss_ce 0.6118 (0.6118) loss_constraint 0.0144 (0.0144) eta 0:00:00
-epoch [16/300] batch [1/1] loss 0.6330 (0.6330) acc 85.1485 (85.1485) loss_ce 0.6167 (0.6167) loss_constraint 0.0162 (0.0162) eta 0:00:00
-epoch [17/300] batch [1/1] loss 0.5908 (0.5908) acc 86.6337 (86.6337) loss_ce 0.5728 (0.5728) loss_constraint 0.0180 (0.0180) eta 0:00:00
-epoch [18/300] batch [1/1] loss 0.6139 (0.6139) acc 83.1683 (83.1683) loss_ce 0.5940 (0.5940) loss_constraint 0.0199 (0.0199) eta 0:00:00
-epoch [19/300] batch [1/1] loss 0.5354 (0.5354) acc 87.6238 (87.6238) loss_ce 0.5136 (0.5136) loss_constraint 0.0218 (0.0218) eta 0:00:00
-epoch [20/300] batch [1/1] loss 0.4939 (0.4939) acc 88.6139 (88.6139) loss_ce 0.4701 (0.4701) loss_constraint 0.0238 (0.0238) eta 0:00:00
-epoch [21/300] batch [1/1] loss 0.5213 (0.5213) acc 88.1188 (88.1188) loss_ce 0.4954 (0.4954) loss_constraint 0.0259 (0.0259) eta 0:00:00
-epoch [22/300] batch [1/1] loss 0.4561 (0.4561) acc 90.0990 (90.0990) loss_ce 0.4280 (0.4280) loss_constraint 0.0281 (0.0281) eta 0:00:00
-epoch [23/300] batch [1/1] loss 0.4765 (0.4765) acc 93.5644 (93.5644) loss_ce 0.4463 (0.4463) loss_constraint 0.0303 (0.0303) eta 0:00:00
-epoch [24/300] batch [1/1] loss 0.4938 (0.4938) acc 89.6040 (89.6040) loss_ce 0.4612 (0.4612) loss_constraint 0.0326 (0.0326) eta 0:00:00
-epoch [25/300] batch [1/1] loss 0.3688 (0.3688) acc 95.0495 (95.0495) loss_ce 0.3338 (0.3338) loss_constraint 0.0350 (0.0350) eta 0:00:00
-epoch [26/300] batch [1/1] loss 0.3446 (0.3446) acc 95.5446 (95.5446) loss_ce 0.3072 (0.3072) loss_constraint 0.0374 (0.0374) eta 0:00:00
-epoch [27/300] batch [1/1] loss 0.3904 (0.3904) acc 94.0594 (94.0594) loss_ce 0.3506 (0.3506) loss_constraint 0.0398 (0.0398) eta 0:00:00
-epoch [28/300] batch [1/1] loss 0.3705 (0.3705) acc 92.5743 (92.5743) loss_ce 0.3282 (0.3282) loss_constraint 0.0423 (0.0423) eta 0:00:00
-epoch [29/300] batch [1/1] loss 0.3622 (0.3622) acc 95.5446 (95.5446) loss_ce 0.3175 (0.3175) loss_constraint 0.0447 (0.0447) eta 0:00:00
-epoch [30/300] batch [1/1] loss 0.3681 (0.3681) acc 94.0594 (94.0594) loss_ce 0.3209 (0.3209) loss_constraint 0.0472 (0.0472) eta 0:00:00
-epoch [31/300] batch [1/1] loss 0.3469 (0.3469) acc 94.5545 (94.5545) loss_ce 0.2972 (0.2972) loss_constraint 0.0497 (0.0497) eta 0:00:00
-epoch [32/300] batch [1/1] loss 0.3291 (0.3291) acc 96.0396 (96.0396) loss_ce 0.2769 (0.2769) loss_constraint 0.0522 (0.0522) eta 0:00:00
-epoch [33/300] batch [1/1] loss 0.3417 (0.3417) acc 95.5446 (95.5446) loss_ce 0.2870 (0.2870) loss_constraint 0.0547 (0.0547) eta 0:00:00
-epoch [34/300] batch [1/1] loss 0.3287 (0.3287) acc 97.0297 (97.0297) loss_ce 0.2717 (0.2717) loss_constraint 0.0571 (0.0571) eta 0:00:00
-epoch [35/300] batch [1/1] loss 0.3367 (0.3367) acc 97.5247 (97.5247) loss_ce 0.2773 (0.2773) loss_constraint 0.0594 (0.0594) eta 0:00:00
-epoch [36/300] batch [1/1] loss 0.2980 (0.2980) acc 98.0198 (98.0198) loss_ce 0.2364 (0.2364) loss_constraint 0.0616 (0.0616) eta 0:00:00
-epoch [37/300] batch [1/1] loss 0.3255 (0.3255) acc 97.0297 (97.0297) loss_ce 0.2617 (0.2617) loss_constraint 0.0638 (0.0638) eta 0:00:00
-epoch [38/300] batch [1/1] loss 0.2959 (0.2959) acc 98.5149 (98.5149) loss_ce 0.2301 (0.2301) loss_constraint 0.0658 (0.0658) eta 0:00:00
-epoch [39/300] batch [1/1] loss 0.2544 (0.2544) acc 99.5050 (99.5050) loss_ce 0.1866 (0.1866) loss_constraint 0.0678 (0.0678) eta 0:00:00
-epoch [40/300] batch [1/1] loss 0.2657 (0.2657) acc 99.0099 (99.0099) loss_ce 0.1961 (0.1961) loss_constraint 0.0697 (0.0697) eta 0:00:00
-epoch [41/300] batch [1/1] loss 0.2566 (0.2566) acc 99.0099 (99.0099) loss_ce 0.1851 (0.1851) loss_constraint 0.0714 (0.0714) eta 0:00:00
-epoch [42/300] batch [1/1] loss 0.2649 (0.2649) acc 99.5050 (99.5050) loss_ce 0.1918 (0.1918) loss_constraint 0.0731 (0.0731) eta 0:00:00
-epoch [43/300] batch [1/1] loss 0.2872 (0.2872) acc 98.5149 (98.5149) loss_ce 0.2125 (0.2125) loss_constraint 0.0747 (0.0747) eta 0:00:00
-epoch [44/300] batch [1/1] loss 0.2351 (0.2351) acc 100.0000 (100.0000) loss_ce 0.1588 (0.1588) loss_constraint 0.0763 (0.0763) eta 0:00:00
-epoch [45/300] batch [1/1] loss 0.2455 (0.2455) acc 100.0000 (100.0000) loss_ce 0.1677 (0.1677) loss_constraint 0.0777 (0.0777) eta 0:00:00
-epoch [46/300] batch [1/1] loss 0.2550 (0.2550) acc 99.0099 (99.0099) loss_ce 0.1759 (0.1759) loss_constraint 0.0791 (0.0791) eta 0:00:00
-epoch [47/300] batch [1/1] loss 0.2360 (0.2360) acc 99.5050 (99.5050) loss_ce 0.1556 (0.1556) loss_constraint 0.0804 (0.0804) eta 0:00:00
-epoch [48/300] batch [1/1] loss 0.2334 (0.2334) acc 99.5050 (99.5050) loss_ce 0.1517 (0.1517) loss_constraint 0.0817 (0.0817) eta 0:00:00
-epoch [49/300] batch [1/1] loss 0.2562 (0.2562) acc 99.0099 (99.0099) loss_ce 0.1733 (0.1733) loss_constraint 0.0828 (0.0828) eta 0:00:00
-epoch [50/300] batch [1/1] loss 0.2198 (0.2198) acc 99.5050 (99.5050) loss_ce 0.1359 (0.1359) loss_constraint 0.0839 (0.0839) eta 0:00:00
-epoch [51/300] batch [1/1] loss 0.2175 (0.2175) acc 100.0000 (100.0000) loss_ce 0.1326 (0.1326) loss_constraint 0.0849 (0.0849) eta 0:00:00
-epoch [52/300] batch [1/1] loss 0.2201 (0.2201) acc 100.0000 (100.0000) loss_ce 0.1342 (0.1342) loss_constraint 0.0858 (0.0858) eta 0:00:00
-epoch [53/300] batch [1/1] loss 0.2150 (0.2150) acc 99.5050 (99.5050) loss_ce 0.1283 (0.1283) loss_constraint 0.0867 (0.0867) eta 0:00:00
-epoch [54/300] batch [1/1] loss 0.2294 (0.2294) acc 99.0099 (99.0099) loss_ce 0.1418 (0.1418) loss_constraint 0.0875 (0.0875) eta 0:00:00
-epoch [55/300] batch [1/1] loss 0.2306 (0.2306) acc 99.5050 (99.5050) loss_ce 0.1423 (0.1423) loss_constraint 0.0883 (0.0883) eta 0:00:00
-epoch [56/300] batch [1/1] loss 0.2325 (0.2325) acc 99.5050 (99.5050) loss_ce 0.1435 (0.1435) loss_constraint 0.0890 (0.0890) eta 0:00:00
-epoch [57/300] batch [1/1] loss 0.1927 (0.1927) acc 100.0000 (100.0000) loss_ce 0.1030 (0.1030) loss_constraint 0.0897 (0.0897) eta 0:00:00
-epoch [58/300] batch [1/1] loss 0.2350 (0.2350) acc 99.5050 (99.5050) loss_ce 0.1447 (0.1447) loss_constraint 0.0903 (0.0903) eta 0:00:00
-epoch [59/300] batch [1/1] loss 0.2124 (0.2124) acc 99.5050 (99.5050) loss_ce 0.1216 (0.1216) loss_constraint 0.0909 (0.0909) eta 0:00:00
-epoch [60/300] batch [1/1] loss 0.2177 (0.2177) acc 100.0000 (100.0000) loss_ce 0.1263 (0.1263) loss_constraint 0.0914 (0.0914) eta 0:00:00
-epoch [61/300] batch [1/1] loss 0.2340 (0.2340) acc 100.0000 (100.0000) loss_ce 0.1422 (0.1422) loss_constraint 0.0919 (0.0919) eta 0:00:00
-epoch [62/300] batch [1/1] loss 0.2226 (0.2226) acc 99.5050 (99.5050) loss_ce 0.1303 (0.1303) loss_constraint 0.0923 (0.0923) eta 0:00:00
-epoch [63/300] batch [1/1] loss 0.2050 (0.2050) acc 100.0000 (100.0000) loss_ce 0.1123 (0.1123) loss_constraint 0.0927 (0.0927) eta 0:00:00
-epoch [64/300] batch [1/1] loss 0.2125 (0.2125) acc 100.0000 (100.0000) loss_ce 0.1195 (0.1195) loss_constraint 0.0930 (0.0930) eta 0:00:00
-epoch [65/300] batch [1/1] loss 0.2087 (0.2087) acc 100.0000 (100.0000) loss_ce 0.1153 (0.1153) loss_constraint 0.0934 (0.0934) eta 0:00:00
-epoch [66/300] batch [1/1] loss 0.2068 (0.2068) acc 99.5050 (99.5050) loss_ce 0.1131 (0.1131) loss_constraint 0.0937 (0.0937) eta 0:00:00
-epoch [67/300] batch [1/1] loss 0.2120 (0.2120) acc 99.5050 (99.5050) loss_ce 0.1180 (0.1180) loss_constraint 0.0939 (0.0939) eta 0:00:00
-epoch [68/300] batch [1/1] loss 0.2411 (0.2411) acc 99.5050 (99.5050) loss_ce 0.1470 (0.1470) loss_constraint 0.0942 (0.0942) eta 0:00:00
-epoch [69/300] batch [1/1] loss 0.2170 (0.2170) acc 99.5050 (99.5050) loss_ce 0.1226 (0.1226) loss_constraint 0.0944 (0.0944) eta 0:00:00
-epoch [70/300] batch [1/1] loss 0.1980 (0.1980) acc 100.0000 (100.0000) loss_ce 0.1034 (0.1034) loss_constraint 0.0946 (0.0946) eta 0:00:00
-epoch [71/300] batch [1/1] loss 0.2180 (0.2180) acc 100.0000 (100.0000) loss_ce 0.1232 (0.1232) loss_constraint 0.0948 (0.0948) eta 0:00:00
-epoch [72/300] batch [1/1] loss 0.2056 (0.2056) acc 100.0000 (100.0000) loss_ce 0.1106 (0.1106) loss_constraint 0.0950 (0.0950) eta 0:00:00
-epoch [73/300] batch [1/1] loss 0.1838 (0.1838) acc 100.0000 (100.0000) loss_ce 0.0887 (0.0887) loss_constraint 0.0952 (0.0952) eta 0:00:00
-epoch [74/300] batch [1/1] loss 0.2102 (0.2102) acc 100.0000 (100.0000) loss_ce 0.1149 (0.1149) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [75/300] batch [1/1] loss 0.2237 (0.2237) acc 100.0000 (100.0000) loss_ce 0.1283 (0.1283) loss_constraint 0.0954 (0.0954) eta 0:00:00
-epoch [76/300] batch [1/1] loss 0.2221 (0.2221) acc 100.0000 (100.0000) loss_ce 0.1265 (0.1265) loss_constraint 0.0955 (0.0955) eta 0:00:00
-epoch [77/300] batch [1/1] loss 0.1973 (0.1973) acc 100.0000 (100.0000) loss_ce 0.1017 (0.1017) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [78/300] batch [1/1] loss 0.2236 (0.2236) acc 100.0000 (100.0000) loss_ce 0.1279 (0.1279) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [79/300] batch [1/1] loss 0.2000 (0.2000) acc 99.5050 (99.5050) loss_ce 0.1043 (0.1043) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [80/300] batch [1/1] loss 0.1900 (0.1900) acc 100.0000 (100.0000) loss_ce 0.0942 (0.0942) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [81/300] batch [1/1] loss 0.1994 (0.1994) acc 100.0000 (100.0000) loss_ce 0.1036 (0.1036) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [82/300] batch [1/1] loss 0.2027 (0.2027) acc 100.0000 (100.0000) loss_ce 0.1069 (0.1069) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [83/300] batch [1/1] loss 0.1963 (0.1963) acc 100.0000 (100.0000) loss_ce 0.1005 (0.1005) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [84/300] batch [1/1] loss 0.1971 (0.1971) acc 99.5050 (99.5050) loss_ce 0.1013 (0.1013) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [85/300] batch [1/1] loss 0.2125 (0.2125) acc 99.5050 (99.5050) loss_ce 0.1167 (0.1167) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [86/300] batch [1/1] loss 0.2138 (0.2138) acc 99.5050 (99.5050) loss_ce 0.1181 (0.1181) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [87/300] batch [1/1] loss 0.1983 (0.1983) acc 100.0000 (100.0000) loss_ce 0.1025 (0.1025) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [88/300] batch [1/1] loss 0.1951 (0.1951) acc 100.0000 (100.0000) loss_ce 0.0994 (0.0994) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [89/300] batch [1/1] loss 0.1969 (0.1969) acc 100.0000 (100.0000) loss_ce 0.1011 (0.1011) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [90/300] batch [1/1] loss 0.2001 (0.2001) acc 100.0000 (100.0000) loss_ce 0.1043 (0.1043) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [91/300] batch [1/1] loss 0.2215 (0.2215) acc 99.0099 (99.0099) loss_ce 0.1257 (0.1257) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [92/300] batch [1/1] loss 0.1888 (0.1888) acc 100.0000 (100.0000) loss_ce 0.0930 (0.0930) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [93/300] batch [1/1] loss 0.2111 (0.2111) acc 99.5050 (99.5050) loss_ce 0.1153 (0.1153) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [94/300] batch [1/1] loss 0.2033 (0.2033) acc 99.5050 (99.5050) loss_ce 0.1075 (0.1075) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [95/300] batch [1/1] loss 0.2039 (0.2039) acc 100.0000 (100.0000) loss_ce 0.1081 (0.1081) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [96/300] batch [1/1] loss 0.1984 (0.1984) acc 99.5050 (99.5050) loss_ce 0.1026 (0.1026) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [97/300] batch [1/1] loss 0.2025 (0.2025) acc 100.0000 (100.0000) loss_ce 0.1068 (0.1068) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [98/300] batch [1/1] loss 0.1916 (0.1916) acc 100.0000 (100.0000) loss_ce 0.0959 (0.0959) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [99/300] batch [1/1] loss 0.2069 (0.2069) acc 99.5050 (99.5050) loss_ce 0.1112 (0.1112) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [100/300] batch [1/1] loss 0.1882 (0.1882) acc 100.0000 (100.0000) loss_ce 0.0925 (0.0925) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [101/300] batch [1/1] loss 0.1901 (0.1901) acc 100.0000 (100.0000) loss_ce 0.0945 (0.0945) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [102/300] batch [1/1] loss 0.2250 (0.2250) acc 100.0000 (100.0000) loss_ce 0.1294 (0.1294) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [103/300] batch [1/1] loss 0.1983 (0.1983) acc 100.0000 (100.0000) loss_ce 0.1026 (0.1026) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [104/300] batch [1/1] loss 0.1858 (0.1858) acc 100.0000 (100.0000) loss_ce 0.0901 (0.0901) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [105/300] batch [1/1] loss 0.1902 (0.1902) acc 100.0000 (100.0000) loss_ce 0.0945 (0.0945) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [106/300] batch [1/1] loss 0.1987 (0.1987) acc 99.5050 (99.5050) loss_ce 0.1030 (0.1030) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [107/300] batch [1/1] loss 0.2130 (0.2130) acc 99.0099 (99.0099) loss_ce 0.1173 (0.1173) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [108/300] batch [1/1] loss 0.2112 (0.2112) acc 100.0000 (100.0000) loss_ce 0.1155 (0.1155) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [109/300] batch [1/1] loss 0.1853 (0.1853) acc 100.0000 (100.0000) loss_ce 0.0896 (0.0896) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [110/300] batch [1/1] loss 0.1984 (0.1984) acc 99.5050 (99.5050) loss_ce 0.1028 (0.1028) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [111/300] batch [1/1] loss 0.1881 (0.1881) acc 100.0000 (100.0000) loss_ce 0.0924 (0.0924) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [112/300] batch [1/1] loss 0.2060 (0.2060) acc 100.0000 (100.0000) loss_ce 0.1103 (0.1103) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [113/300] batch [1/1] loss 0.1910 (0.1910) acc 100.0000 (100.0000) loss_ce 0.0954 (0.0954) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [114/300] batch [1/1] loss 0.1941 (0.1941) acc 100.0000 (100.0000) loss_ce 0.0986 (0.0986) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [115/300] batch [1/1] loss 0.1947 (0.1947) acc 100.0000 (100.0000) loss_ce 0.0992 (0.0992) loss_constraint 0.0955 (0.0955) eta 0:00:00
-epoch [116/300] batch [1/1] loss 0.2180 (0.2180) acc 100.0000 (100.0000) loss_ce 0.1224 (0.1224) loss_constraint 0.0955 (0.0955) eta 0:00:00
-epoch [117/300] batch [1/1] loss 0.1969 (0.1969) acc 100.0000 (100.0000) loss_ce 0.1013 (0.1013) loss_constraint 0.0955 (0.0955) eta 0:00:00
-epoch [118/300] batch [1/1] loss 0.1959 (0.1959) acc 100.0000 (100.0000) loss_ce 0.1004 (0.1004) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [119/300] batch [1/1] loss 0.2014 (0.2014) acc 100.0000 (100.0000) loss_ce 0.1058 (0.1058) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [120/300] batch [1/1] loss 0.1897 (0.1897) acc 100.0000 (100.0000) loss_ce 0.0942 (0.0942) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [121/300] batch [1/1] loss 0.2216 (0.2216) acc 99.0099 (99.0099) loss_ce 0.1260 (0.1260) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [122/300] batch [1/1] loss 0.2164 (0.2164) acc 100.0000 (100.0000) loss_ce 0.1208 (0.1208) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [123/300] batch [1/1] loss 0.1998 (0.1998) acc 100.0000 (100.0000) loss_ce 0.1042 (0.1042) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [124/300] batch [1/1] loss 0.1888 (0.1888) acc 100.0000 (100.0000) loss_ce 0.0931 (0.0931) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [125/300] batch [1/1] loss 0.2072 (0.2072) acc 100.0000 (100.0000) loss_ce 0.1115 (0.1115) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [126/300] batch [1/1] loss 0.1955 (0.1955) acc 100.0000 (100.0000) loss_ce 0.0998 (0.0998) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [127/300] batch [1/1] loss 0.2075 (0.2075) acc 100.0000 (100.0000) loss_ce 0.1117 (0.1117) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [128/300] batch [1/1] loss 0.1979 (0.1979) acc 100.0000 (100.0000) loss_ce 0.1021 (0.1021) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [129/300] batch [1/1] loss 0.1930 (0.1930) acc 100.0000 (100.0000) loss_ce 0.0971 (0.0971) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [130/300] batch [1/1] loss 0.2013 (0.2013) acc 100.0000 (100.0000) loss_ce 0.1055 (0.1055) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [131/300] batch [1/1] loss 0.1763 (0.1763) acc 100.0000 (100.0000) loss_ce 0.0804 (0.0804) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [132/300] batch [1/1] loss 0.2022 (0.2022) acc 100.0000 (100.0000) loss_ce 0.1063 (0.1063) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [133/300] batch [1/1] loss 0.2052 (0.2052) acc 99.5050 (99.5050) loss_ce 0.1093 (0.1093) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [134/300] batch [1/1] loss 0.1938 (0.1938) acc 99.5050 (99.5050) loss_ce 0.0979 (0.0979) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [135/300] batch [1/1] loss 0.1847 (0.1847) acc 100.0000 (100.0000) loss_ce 0.0888 (0.0888) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [136/300] batch [1/1] loss 0.1986 (0.1986) acc 100.0000 (100.0000) loss_ce 0.1026 (0.1026) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [137/300] batch [1/1] loss 0.1857 (0.1857) acc 100.0000 (100.0000) loss_ce 0.0897 (0.0897) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [138/300] batch [1/1] loss 0.2120 (0.2120) acc 100.0000 (100.0000) loss_ce 0.1160 (0.1160) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [139/300] batch [1/1] loss 0.1809 (0.1809) acc 100.0000 (100.0000) loss_ce 0.0849 (0.0849) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [140/300] batch [1/1] loss 0.2034 (0.2034) acc 100.0000 (100.0000) loss_ce 0.1074 (0.1074) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [141/300] batch [1/1] loss 0.2001 (0.2001) acc 99.5050 (99.5050) loss_ce 0.1041 (0.1041) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [142/300] batch [1/1] loss 0.1943 (0.1943) acc 100.0000 (100.0000) loss_ce 0.0983 (0.0983) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [143/300] batch [1/1] loss 0.1815 (0.1815) acc 100.0000 (100.0000) loss_ce 0.0855 (0.0855) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [144/300] batch [1/1] loss 0.1938 (0.1938) acc 100.0000 (100.0000) loss_ce 0.0978 (0.0978) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [145/300] batch [1/1] loss 0.1897 (0.1897) acc 100.0000 (100.0000) loss_ce 0.0937 (0.0937) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [146/300] batch [1/1] loss 0.1899 (0.1899) acc 100.0000 (100.0000) loss_ce 0.0939 (0.0939) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [147/300] batch [1/1] loss 0.2027 (0.2027) acc 100.0000 (100.0000) loss_ce 0.1067 (0.1067) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [148/300] batch [1/1] loss 0.1980 (0.1980) acc 99.0099 (99.0099) loss_ce 0.1020 (0.1020) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [149/300] batch [1/1] loss 0.2057 (0.2057) acc 100.0000 (100.0000) loss_ce 0.1097 (0.1097) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [150/300] batch [1/1] loss 0.2030 (0.2030) acc 99.5050 (99.5050) loss_ce 0.1070 (0.1070) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [151/300] batch [1/1] loss 0.1968 (0.1968) acc 100.0000 (100.0000) loss_ce 0.1009 (0.1009) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [152/300] batch [1/1] loss 0.2023 (0.2023) acc 100.0000 (100.0000) loss_ce 0.1063 (0.1063) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [153/300] batch [1/1] loss 0.1861 (0.1861) acc 100.0000 (100.0000) loss_ce 0.0901 (0.0901) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [154/300] batch [1/1] loss 0.1909 (0.1909) acc 100.0000 (100.0000) loss_ce 0.0949 (0.0949) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [155/300] batch [1/1] loss 0.1984 (0.1984) acc 99.5050 (99.5050) loss_ce 0.1025 (0.1025) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [156/300] batch [1/1] loss 0.1919 (0.1919) acc 100.0000 (100.0000) loss_ce 0.0960 (0.0960) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [157/300] batch [1/1] loss 0.2059 (0.2059) acc 99.5050 (99.5050) loss_ce 0.1099 (0.1099) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [158/300] batch [1/1] loss 0.1872 (0.1872) acc 100.0000 (100.0000) loss_ce 0.0913 (0.0913) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [159/300] batch [1/1] loss 0.1843 (0.1843) acc 100.0000 (100.0000) loss_ce 0.0884 (0.0884) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [160/300] batch [1/1] loss 0.1882 (0.1882) acc 100.0000 (100.0000) loss_ce 0.0922 (0.0922) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [161/300] batch [1/1] loss 0.1910 (0.1910) acc 100.0000 (100.0000) loss_ce 0.0950 (0.0950) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [162/300] batch [1/1] loss 0.1960 (0.1960) acc 100.0000 (100.0000) loss_ce 0.1001 (0.1001) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [163/300] batch [1/1] loss 0.2055 (0.2055) acc 99.5050 (99.5050) loss_ce 0.1095 (0.1095) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [164/300] batch [1/1] loss 0.2073 (0.2073) acc 100.0000 (100.0000) loss_ce 0.1113 (0.1113) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [165/300] batch [1/1] loss 0.1751 (0.1751) acc 99.5050 (99.5050) loss_ce 0.0792 (0.0792) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [166/300] batch [1/1] loss 0.2024 (0.2024) acc 100.0000 (100.0000) loss_ce 0.1064 (0.1064) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [167/300] batch [1/1] loss 0.1952 (0.1952) acc 100.0000 (100.0000) loss_ce 0.0992 (0.0992) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [168/300] batch [1/1] loss 0.2006 (0.2006) acc 100.0000 (100.0000) loss_ce 0.1046 (0.1046) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [169/300] batch [1/1] loss 0.1956 (0.1956) acc 99.5050 (99.5050) loss_ce 0.0996 (0.0996) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [170/300] batch [1/1] loss 0.1877 (0.1877) acc 100.0000 (100.0000) loss_ce 0.0917 (0.0917) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [171/300] batch [1/1] loss 0.1886 (0.1886) acc 100.0000 (100.0000) loss_ce 0.0926 (0.0926) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [172/300] batch [1/1] loss 0.1853 (0.1853) acc 100.0000 (100.0000) loss_ce 0.0893 (0.0893) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [173/300] batch [1/1] loss 0.1890 (0.1890) acc 100.0000 (100.0000) loss_ce 0.0930 (0.0930) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [174/300] batch [1/1] loss 0.1957 (0.1957) acc 99.5050 (99.5050) loss_ce 0.0996 (0.0996) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [175/300] batch [1/1] loss 0.1844 (0.1844) acc 100.0000 (100.0000) loss_ce 0.0883 (0.0883) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [176/300] batch [1/1] loss 0.1835 (0.1835) acc 100.0000 (100.0000) loss_ce 0.0876 (0.0876) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [177/300] batch [1/1] loss 0.1861 (0.1861) acc 100.0000 (100.0000) loss_ce 0.0902 (0.0902) loss_constraint 0.0960 (0.0960) eta 0:00:00
-epoch [178/300] batch [1/1] loss 0.1880 (0.1880) acc 100.0000 (100.0000) loss_ce 0.0920 (0.0920) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [179/300] batch [1/1] loss 0.1900 (0.1900) acc 100.0000 (100.0000) loss_ce 0.0941 (0.0941) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [180/300] batch [1/1] loss 0.1938 (0.1938) acc 100.0000 (100.0000) loss_ce 0.0979 (0.0979) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [181/300] batch [1/1] loss 0.1924 (0.1924) acc 100.0000 (100.0000) loss_ce 0.0965 (0.0965) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [182/300] batch [1/1] loss 0.1748 (0.1748) acc 100.0000 (100.0000) loss_ce 0.0790 (0.0790) loss_constraint 0.0959 (0.0959) eta 0:00:00
-epoch [183/300] batch [1/1] loss 0.1870 (0.1870) acc 100.0000 (100.0000) loss_ce 0.0912 (0.0912) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [184/300] batch [1/1] loss 0.1784 (0.1784) acc 100.0000 (100.0000) loss_ce 0.0826 (0.0826) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [185/300] batch [1/1] loss 0.1820 (0.1820) acc 100.0000 (100.0000) loss_ce 0.0862 (0.0862) loss_constraint 0.0958 (0.0958) eta 0:00:00
-epoch [186/300] batch [1/1] loss 0.2195 (0.2195) acc 100.0000 (100.0000) loss_ce 0.1237 (0.1237) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [187/300] batch [1/1] loss 0.1825 (0.1825) acc 100.0000 (100.0000) loss_ce 0.0868 (0.0868) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [188/300] batch [1/1] loss 0.1869 (0.1869) acc 99.5050 (99.5050) loss_ce 0.0912 (0.0912) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [189/300] batch [1/1] loss 0.2050 (0.2050) acc 100.0000 (100.0000) loss_ce 0.1093 (0.1093) loss_constraint 0.0957 (0.0957) eta 0:00:00
-epoch [190/300] batch [1/1] loss 0.1907 (0.1907) acc 100.0000 (100.0000) loss_ce 0.0951 (0.0951) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [191/300] batch [1/1] loss 0.1831 (0.1831) acc 100.0000 (100.0000) loss_ce 0.0875 (0.0875) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [192/300] batch [1/1] loss 0.1899 (0.1899) acc 100.0000 (100.0000) loss_ce 0.0944 (0.0944) loss_constraint 0.0956 (0.0956) eta 0:00:00
-epoch [193/300] batch [1/1] loss 0.1863 (0.1863) acc 100.0000 (100.0000) loss_ce 0.0908 (0.0908) loss_constraint 0.0955 (0.0955) eta 0:00:00
-epoch [194/300] batch [1/1] loss 0.1793 (0.1793) acc 99.5050 (99.5050) loss_ce 0.0838 (0.0838) loss_constraint 0.0955 (0.0955) eta 0:00:00
-epoch [195/300] batch [1/1] loss 0.1759 (0.1759) acc 100.0000 (100.0000) loss_ce 0.0804 (0.0804) loss_constraint 0.0955 (0.0955) eta 0:00:00
-epoch [196/300] batch [1/1] loss 0.1690 (0.1690) acc 100.0000 (100.0000) loss_ce 0.0736 (0.0736) loss_constraint 0.0955 (0.0955) eta 0:00:00
-epoch [197/300] batch [1/1] loss 0.1764 (0.1764) acc 100.0000 (100.0000) loss_ce 0.0810 (0.0810) loss_constraint 0.0954 (0.0954) eta 0:00:00
-epoch [198/300] batch [1/1] loss 0.1873 (0.1873) acc 100.0000 (100.0000) loss_ce 0.0920 (0.0920) loss_constraint 0.0954 (0.0954) eta 0:00:00
-epoch [199/300] batch [1/1] loss 0.2122 (0.2122) acc 99.0099 (99.0099) loss_ce 0.1169 (0.1169) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [200/300] batch [1/1] loss 0.1942 (0.1942) acc 100.0000 (100.0000) loss_ce 0.0989 (0.0989) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [201/300] batch [1/1] loss 0.1999 (0.1999) acc 99.5050 (99.5050) loss_ce 0.1046 (0.1046) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [202/300] batch [1/1] loss 0.1879 (0.1879) acc 100.0000 (100.0000) loss_ce 0.0926 (0.0926) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [203/300] batch [1/1] loss 0.1871 (0.1871) acc 100.0000 (100.0000) loss_ce 0.0919 (0.0919) loss_constraint 0.0952 (0.0952) eta 0:00:00
-epoch [204/300] batch [1/1] loss 0.1953 (0.1953) acc 99.5050 (99.5050) loss_ce 0.1001 (0.1001) loss_constraint 0.0952 (0.0952) eta 0:00:00
-epoch [205/300] batch [1/1] loss 0.1945 (0.1945) acc 100.0000 (100.0000) loss_ce 0.0992 (0.0992) loss_constraint 0.0952 (0.0952) eta 0:00:00
-epoch [206/300] batch [1/1] loss 0.2076 (0.2076) acc 99.5050 (99.5050) loss_ce 0.1124 (0.1124) loss_constraint 0.0952 (0.0952) eta 0:00:00
-epoch [207/300] batch [1/1] loss 0.1906 (0.1906) acc 100.0000 (100.0000) loss_ce 0.0953 (0.0953) loss_constraint 0.0952 (0.0952) eta 0:00:00
-epoch [208/300] batch [1/1] loss 0.2028 (0.2028) acc 100.0000 (100.0000) loss_ce 0.1076 (0.1076) loss_constraint 0.0952 (0.0952) eta 0:00:00
-epoch [209/300] batch [1/1] loss 0.1916 (0.1916) acc 100.0000 (100.0000) loss_ce 0.0963 (0.0963) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [210/300] batch [1/1] loss 0.1872 (0.1872) acc 100.0000 (100.0000) loss_ce 0.0920 (0.0920) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [211/300] batch [1/1] loss 0.1848 (0.1848) acc 99.5050 (99.5050) loss_ce 0.0895 (0.0895) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [212/300] batch [1/1] loss 0.1884 (0.1884) acc 99.5050 (99.5050) loss_ce 0.0931 (0.0931) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [213/300] batch [1/1] loss 0.2029 (0.2029) acc 99.5050 (99.5050) loss_ce 0.1076 (0.1076) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [214/300] batch [1/1] loss 0.1834 (0.1834) acc 100.0000 (100.0000) loss_ce 0.0881 (0.0881) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [215/300] batch [1/1] loss 0.1777 (0.1777) acc 100.0000 (100.0000) loss_ce 0.0824 (0.0824) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [216/300] batch [1/1] loss 0.1960 (0.1960) acc 99.5050 (99.5050) loss_ce 0.1006 (0.1006) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [217/300] batch [1/1] loss 0.2004 (0.2004) acc 100.0000 (100.0000) loss_ce 0.1051 (0.1051) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [218/300] batch [1/1] loss 0.1734 (0.1734) acc 100.0000 (100.0000) loss_ce 0.0781 (0.0781) loss_constraint 0.0954 (0.0954) eta 0:00:00
-epoch [219/300] batch [1/1] loss 0.1712 (0.1712) acc 100.0000 (100.0000) loss_ce 0.0758 (0.0758) loss_constraint 0.0954 (0.0954) eta 0:00:00
-epoch [220/300] batch [1/1] loss 0.1818 (0.1818) acc 100.0000 (100.0000) loss_ce 0.0865 (0.0865) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [221/300] batch [1/1] loss 0.1920 (0.1920) acc 99.5050 (99.5050) loss_ce 0.0966 (0.0966) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [222/300] batch [1/1] loss 0.1738 (0.1738) acc 100.0000 (100.0000) loss_ce 0.0784 (0.0784) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [223/300] batch [1/1] loss 0.2057 (0.2057) acc 100.0000 (100.0000) loss_ce 0.1104 (0.1104) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [224/300] batch [1/1] loss 0.1951 (0.1951) acc 100.0000 (100.0000) loss_ce 0.0998 (0.0998) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [225/300] batch [1/1] loss 0.1841 (0.1841) acc 99.5050 (99.5050) loss_ce 0.0887 (0.0887) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [226/300] batch [1/1] loss 0.2055 (0.2055) acc 100.0000 (100.0000) loss_ce 0.1102 (0.1102) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [227/300] batch [1/1] loss 0.1794 (0.1794) acc 100.0000 (100.0000) loss_ce 0.0841 (0.0841) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [228/300] batch [1/1] loss 0.1970 (0.1970) acc 100.0000 (100.0000) loss_ce 0.1017 (0.1017) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [229/300] batch [1/1] loss 0.1836 (0.1836) acc 100.0000 (100.0000) loss_ce 0.0883 (0.0883) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [230/300] batch [1/1] loss 0.1906 (0.1906) acc 99.0099 (99.0099) loss_ce 0.0953 (0.0953) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [231/300] batch [1/1] loss 0.1908 (0.1908) acc 99.5050 (99.5050) loss_ce 0.0955 (0.0955) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [232/300] batch [1/1] loss 0.1811 (0.1811) acc 100.0000 (100.0000) loss_ce 0.0858 (0.0858) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [233/300] batch [1/1] loss 0.1888 (0.1888) acc 99.5050 (99.5050) loss_ce 0.0935 (0.0935) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [234/300] batch [1/1] loss 0.1888 (0.1888) acc 99.5050 (99.5050) loss_ce 0.0934 (0.0934) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [235/300] batch [1/1] loss 0.1993 (0.1993) acc 100.0000 (100.0000) loss_ce 0.1040 (0.1040) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [236/300] batch [1/1] loss 0.2047 (0.2047) acc 99.5050 (99.5050) loss_ce 0.1093 (0.1093) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [237/300] batch [1/1] loss 0.1904 (0.1904) acc 100.0000 (100.0000) loss_ce 0.0951 (0.0951) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [238/300] batch [1/1] loss 0.1712 (0.1712) acc 100.0000 (100.0000) loss_ce 0.0759 (0.0759) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [239/300] batch [1/1] loss 0.1845 (0.1845) acc 100.0000 (100.0000) loss_ce 0.0891 (0.0891) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [240/300] batch [1/1] loss 0.1990 (0.1990) acc 99.5050 (99.5050) loss_ce 0.1037 (0.1037) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [241/300] batch [1/1] loss 0.1726 (0.1726) acc 100.0000 (100.0000) loss_ce 0.0773 (0.0773) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [242/300] batch [1/1] loss 0.1865 (0.1865) acc 99.5050 (99.5050) loss_ce 0.0912 (0.0912) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [243/300] batch [1/1] loss 0.1850 (0.1850) acc 100.0000 (100.0000) loss_ce 0.0897 (0.0897) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [244/300] batch [1/1] loss 0.2015 (0.2015) acc 99.0099 (99.0099) loss_ce 0.1062 (0.1062) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [245/300] batch [1/1] loss 0.1947 (0.1947) acc 100.0000 (100.0000) loss_ce 0.0994 (0.0994) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [246/300] batch [1/1] loss 0.1904 (0.1904) acc 100.0000 (100.0000) loss_ce 0.0951 (0.0951) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [247/300] batch [1/1] loss 0.1996 (0.1996) acc 100.0000 (100.0000) loss_ce 0.1043 (0.1043) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [248/300] batch [1/1] loss 0.1939 (0.1939) acc 99.5050 (99.5050) loss_ce 0.0986 (0.0986) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [249/300] batch [1/1] loss 0.2013 (0.2013) acc 99.5050 (99.5050) loss_ce 0.1060 (0.1060) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [250/300] batch [1/1] loss 0.1834 (0.1834) acc 100.0000 (100.0000) loss_ce 0.0881 (0.0881) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [251/300] batch [1/1] loss 0.1864 (0.1864) acc 100.0000 (100.0000) loss_ce 0.0911 (0.0911) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [252/300] batch [1/1] loss 0.1911 (0.1911) acc 100.0000 (100.0000) loss_ce 0.0958 (0.0958) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [253/300] batch [1/1] loss 0.1973 (0.1973) acc 100.0000 (100.0000) loss_ce 0.1020 (0.1020) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [254/300] batch [1/1] loss 0.1922 (0.1922) acc 99.5050 (99.5050) loss_ce 0.0969 (0.0969) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [255/300] batch [1/1] loss 0.1829 (0.1829) acc 100.0000 (100.0000) loss_ce 0.0876 (0.0876) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [256/300] batch [1/1] loss 0.1807 (0.1807) acc 100.0000 (100.0000) loss_ce 0.0854 (0.0854) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [257/300] batch [1/1] loss 0.1889 (0.1889) acc 100.0000 (100.0000) loss_ce 0.0937 (0.0937) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [258/300] batch [1/1] loss 0.1910 (0.1910) acc 99.5050 (99.5050) loss_ce 0.0958 (0.0958) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [259/300] batch [1/1] loss 0.2113 (0.2113) acc 100.0000 (100.0000) loss_ce 0.1160 (0.1160) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [260/300] batch [1/1] loss 0.1806 (0.1806) acc 100.0000 (100.0000) loss_ce 0.0854 (0.0854) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [261/300] batch [1/1] loss 0.1826 (0.1826) acc 100.0000 (100.0000) loss_ce 0.0873 (0.0873) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [262/300] batch [1/1] loss 0.1876 (0.1876) acc 100.0000 (100.0000) loss_ce 0.0923 (0.0923) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [263/300] batch [1/1] loss 0.1939 (0.1939) acc 99.5050 (99.5050) loss_ce 0.0987 (0.0987) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [264/300] batch [1/1] loss 0.1984 (0.1984) acc 99.5050 (99.5050) loss_ce 0.1031 (0.1031) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [265/300] batch [1/1] loss 0.1855 (0.1855) acc 100.0000 (100.0000) loss_ce 0.0902 (0.0902) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [266/300] batch [1/1] loss 0.1960 (0.1960) acc 99.5050 (99.5050) loss_ce 0.1007 (0.1007) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [267/300] batch [1/1] loss 0.1738 (0.1738) acc 100.0000 (100.0000) loss_ce 0.0785 (0.0785) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [268/300] batch [1/1] loss 0.1873 (0.1873) acc 100.0000 (100.0000) loss_ce 0.0920 (0.0920) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [269/300] batch [1/1] loss 0.1819 (0.1819) acc 99.5050 (99.5050) loss_ce 0.0867 (0.0867) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [270/300] batch [1/1] loss 0.1815 (0.1815) acc 100.0000 (100.0000) loss_ce 0.0863 (0.0863) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [271/300] batch [1/1] loss 0.1813 (0.1813) acc 100.0000 (100.0000) loss_ce 0.0861 (0.0861) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [272/300] batch [1/1] loss 0.1950 (0.1950) acc 99.5050 (99.5050) loss_ce 0.0997 (0.0997) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [273/300] batch [1/1] loss 0.1833 (0.1833) acc 100.0000 (100.0000) loss_ce 0.0880 (0.0880) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [274/300] batch [1/1] loss 0.1932 (0.1932) acc 99.5050 (99.5050) loss_ce 0.0979 (0.0979) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [275/300] batch [1/1] loss 0.1782 (0.1782) acc 100.0000 (100.0000) loss_ce 0.0829 (0.0829) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [276/300] batch [1/1] loss 0.1825 (0.1825) acc 100.0000 (100.0000) loss_ce 0.0873 (0.0873) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [277/300] batch [1/1] loss 0.1794 (0.1794) acc 99.5050 (99.5050) loss_ce 0.0842 (0.0842) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [278/300] batch [1/1] loss 0.1858 (0.1858) acc 100.0000 (100.0000) loss_ce 0.0905 (0.0905) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [279/300] batch [1/1] loss 0.1852 (0.1852) acc 99.5050 (99.5050) loss_ce 0.0899 (0.0899) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [280/300] batch [1/1] loss 0.2013 (0.2013) acc 99.5050 (99.5050) loss_ce 0.1061 (0.1061) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [281/300] batch [1/1] loss 0.1877 (0.1877) acc 100.0000 (100.0000) loss_ce 0.0924 (0.0924) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [282/300] batch [1/1] loss 0.1723 (0.1723) acc 100.0000 (100.0000) loss_ce 0.0770 (0.0770) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [283/300] batch [1/1] loss 0.2201 (0.2201) acc 99.5050 (99.5050) loss_ce 0.1248 (0.1248) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [284/300] batch [1/1] loss 0.1918 (0.1918) acc 99.5050 (99.5050) loss_ce 0.0965 (0.0965) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [285/300] batch [1/1] loss 0.1823 (0.1823) acc 99.5050 (99.5050) loss_ce 0.0870 (0.0870) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [286/300] batch [1/1] loss 0.1854 (0.1854) acc 100.0000 (100.0000) loss_ce 0.0902 (0.0902) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [287/300] batch [1/1] loss 0.2014 (0.2014) acc 99.5050 (99.5050) loss_ce 0.1062 (0.1062) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [288/300] batch [1/1] loss 0.2116 (0.2116) acc 99.5050 (99.5050) loss_ce 0.1163 (0.1163) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [289/300] batch [1/1] loss 0.1909 (0.1909) acc 100.0000 (100.0000) loss_ce 0.0957 (0.0957) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [290/300] batch [1/1] loss 0.1888 (0.1888) acc 99.0099 (99.0099) loss_ce 0.0935 (0.0935) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [291/300] batch [1/1] loss 0.1852 (0.1852) acc 99.5050 (99.5050) loss_ce 0.0899 (0.0899) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [292/300] batch [1/1] loss 0.1819 (0.1819) acc 100.0000 (100.0000) loss_ce 0.0866 (0.0866) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [293/300] batch [1/1] loss 0.1980 (0.1980) acc 99.5050 (99.5050) loss_ce 0.1028 (0.1028) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [294/300] batch [1/1] loss 0.1820 (0.1820) acc 100.0000 (100.0000) loss_ce 0.0868 (0.0868) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [295/300] batch [1/1] loss 0.1788 (0.1788) acc 100.0000 (100.0000) loss_ce 0.0835 (0.0835) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [296/300] batch [1/1] loss 0.1754 (0.1754) acc 100.0000 (100.0000) loss_ce 0.0801 (0.0801) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [297/300] batch [1/1] loss 0.1935 (0.1935) acc 100.0000 (100.0000) loss_ce 0.0982 (0.0982) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [298/300] batch [1/1] loss 0.1858 (0.1858) acc 100.0000 (100.0000) loss_ce 0.0905 (0.0905) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [299/300] batch [1/1] loss 0.2005 (0.2005) acc 100.0000 (100.0000) loss_ce 0.1053 (0.1053) loss_constraint 0.0953 (0.0953) eta 0:00:00
-epoch [300/300] batch [1/1] loss 0.1745 (0.1745) acc 100.0000 (100.0000) loss_ce 0.0792 (0.0792) loss_constraint 0.0953 (0.0953) eta 0:00:00
-Checkpoint saved to output_refactor/ClipAdapters/CLAP/FS/fewshot_train/ucf101/shots_2/ViT-B-16/seed3/refactor_model/model.pth.tar-300
+/root/autodl-tmp/MMRL/executors/online_executor.py:46: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+epoch [1/300] batch [1/1] time 1.329 (1.329) data 0.795 (0.795) loss 1.2274 (1.2274) acc 60.8911 (60.8911) loss_ce 1.2274 (1.2274) loss_constraint 0.0000 (0.0000) lr 1.0000e-01 eta 0:06:37
+epoch [2/300] batch [1/1] time 0.851 (0.851) data 0.768 (0.768) loss 1.2080 (1.2080) acc 62.3762 (62.3762) loss_ce 1.2080 (1.2080) loss_constraint 0.0000 (0.0000) lr 9.9997e-02 eta 0:04:13
+epoch [3/300] batch [1/1] time 0.964 (0.964) data 0.808 (0.808) loss 1.2335 (1.2335) acc 63.3663 (63.3663) loss_ce 1.2335 (1.2335) loss_constraint 0.0000 (0.0000) lr 9.9989e-02 eta 0:04:46
+epoch [4/300] batch [1/1] time 0.881 (0.881) data 0.809 (0.809) loss 1.1258 (1.1258) acc 69.8020 (69.8020) loss_ce 1.1256 (1.1256) loss_constraint 0.0002 (0.0002) lr 9.9975e-02 eta 0:04:20
+epoch [5/300] batch [1/1] time 0.882 (0.882) data 0.810 (0.810) loss 1.0709 (1.0709) acc 68.8119 (68.8119) loss_ce 1.0703 (1.0703) loss_constraint 0.0006 (0.0006) lr 9.9956e-02 eta 0:04:20
+epoch [6/300] batch [1/1] time 0.904 (0.904) data 0.832 (0.832) loss 0.9440 (0.9440) acc 71.2871 (71.2871) loss_ce 0.9428 (0.9428) loss_constraint 0.0012 (0.0012) lr 9.9931e-02 eta 0:04:25
+epoch [7/300] batch [1/1] time 0.950 (0.950) data 0.813 (0.813) loss 0.9144 (0.9144) acc 72.7723 (72.7723) loss_ce 0.9122 (0.9122) loss_constraint 0.0022 (0.0022) lr 9.9901e-02 eta 0:04:38
+epoch [8/300] batch [1/1] time 0.895 (0.895) data 0.824 (0.824) loss 0.8729 (0.8729) acc 75.7426 (75.7426) loss_ce 0.8695 (0.8695) loss_constraint 0.0034 (0.0034) lr 9.9866e-02 eta 0:04:21
+epoch [9/300] batch [1/1] time 0.883 (0.883) data 0.812 (0.812) loss 0.8364 (0.8364) acc 79.2079 (79.2079) loss_ce 0.8317 (0.8317) loss_constraint 0.0048 (0.0048) lr 9.9825e-02 eta 0:04:17
+epoch [10/300] batch [1/1] time 0.956 (0.956) data 0.837 (0.837) loss 0.8054 (0.8054) acc 76.2376 (76.2376) loss_ce 0.7991 (0.7991) loss_constraint 0.0063 (0.0063) lr 9.9778e-02 eta 0:04:37
+epoch [11/300] batch [1/1] time 0.870 (0.870) data 0.798 (0.798) loss 0.8412 (0.8412) acc 78.7129 (78.7129) loss_ce 0.8332 (0.8332) loss_constraint 0.0080 (0.0080) lr 9.9726e-02 eta 0:04:11
+epoch [12/300] batch [1/1] time 0.831 (0.831) data 0.759 (0.759) loss 0.7659 (0.7659) acc 79.2079 (79.2079) loss_ce 0.7561 (0.7561) loss_constraint 0.0098 (0.0098) lr 9.9669e-02 eta 0:03:59
+epoch [13/300] batch [1/1] time 0.960 (0.960) data 0.815 (0.815) loss 0.7692 (0.7692) acc 80.1980 (80.1980) loss_ce 0.7576 (0.7576) loss_constraint 0.0116 (0.0116) lr 9.9606e-02 eta 0:04:35
+epoch [14/300] batch [1/1] time 0.829 (0.829) data 0.757 (0.757) loss 0.6982 (0.6982) acc 83.6634 (83.6634) loss_ce 0.6848 (0.6848) loss_constraint 0.0134 (0.0134) lr 9.9537e-02 eta 0:03:57
+epoch [15/300] batch [1/1] time 0.980 (0.980) data 0.831 (0.831) loss 0.6685 (0.6685) acc 84.6535 (84.6535) loss_ce 0.6531 (0.6531) loss_constraint 0.0153 (0.0153) lr 9.9464e-02 eta 0:04:39
+epoch [16/300] batch [1/1] time 0.915 (0.915) data 0.843 (0.843) loss 0.5949 (0.5949) acc 87.6238 (87.6238) loss_ce 0.5777 (0.5777) loss_constraint 0.0173 (0.0173) lr 9.9384e-02 eta 0:04:19
+epoch [17/300] batch [1/1] time 0.959 (0.959) data 0.804 (0.804) loss 0.6350 (0.6350) acc 86.6337 (86.6337) loss_ce 0.6157 (0.6157) loss_constraint 0.0193 (0.0193) lr 9.9300e-02 eta 0:04:31
+epoch [18/300] batch [1/1] time 0.895 (0.895) data 0.822 (0.822) loss 0.6082 (0.6082) acc 86.6337 (86.6337) loss_ce 0.5869 (0.5869) loss_constraint 0.0213 (0.0213) lr 9.9210e-02 eta 0:04:12
+epoch [19/300] batch [1/1] time 0.874 (0.874) data 0.803 (0.803) loss 0.5275 (0.5275) acc 90.0990 (90.0990) loss_ce 0.5041 (0.5041) loss_constraint 0.0233 (0.0233) lr 9.9114e-02 eta 0:04:05
+epoch [20/300] batch [1/1] time 0.887 (0.887) data 0.815 (0.815) loss 0.4911 (0.4911) acc 91.0891 (91.0891) loss_ce 0.4657 (0.4657) loss_constraint 0.0255 (0.0255) lr 9.9014e-02 eta 0:04:08
+epoch [21/300] batch [1/1] time 0.955 (0.955) data 0.811 (0.811) loss 0.4756 (0.4756) acc 94.5545 (94.5545) loss_ce 0.4479 (0.4479) loss_constraint 0.0276 (0.0276) lr 9.8907e-02 eta 0:04:26
+epoch [22/300] batch [1/1] time 0.894 (0.894) data 0.761 (0.761) loss 0.4292 (0.4292) acc 93.0693 (93.0693) loss_ce 0.3993 (0.3993) loss_constraint 0.0299 (0.0299) lr 9.8796e-02 eta 0:04:08
+epoch [23/300] batch [1/1] time 0.819 (0.819) data 0.745 (0.745) loss 0.4243 (0.4243) acc 93.0693 (93.0693) loss_ce 0.3921 (0.3921) loss_constraint 0.0322 (0.0322) lr 9.8679e-02 eta 0:03:46
+epoch [24/300] batch [1/1] time 0.849 (0.849) data 0.777 (0.777) loss 0.3941 (0.3941) acc 92.5743 (92.5743) loss_ce 0.3595 (0.3595) loss_constraint 0.0346 (0.0346) lr 9.8557e-02 eta 0:03:54
+epoch [25/300] batch [1/1] time 0.890 (0.890) data 0.818 (0.818) loss 0.3779 (0.3779) acc 95.0495 (95.0495) loss_ce 0.3410 (0.3410) loss_constraint 0.0369 (0.0369) lr 9.8429e-02 eta 0:04:04
+epoch [26/300] batch [1/1] time 0.908 (0.908) data 0.837 (0.837) loss 0.3685 (0.3685) acc 99.0099 (99.0099) loss_ce 0.3292 (0.3292) loss_constraint 0.0393 (0.0393) lr 9.8296e-02 eta 0:04:08
+epoch [27/300] batch [1/1] time 0.870 (0.870) data 0.798 (0.798) loss 0.3619 (0.3619) acc 95.0495 (95.0495) loss_ce 0.3203 (0.3203) loss_constraint 0.0416 (0.0416) lr 9.8158e-02 eta 0:03:57
+epoch [28/300] batch [1/1] time 0.896 (0.896) data 0.824 (0.824) loss 0.3686 (0.3686) acc 97.5247 (97.5247) loss_ce 0.3246 (0.3246) loss_constraint 0.0440 (0.0440) lr 9.8015e-02 eta 0:04:03
+epoch [29/300] batch [1/1] time 0.893 (0.893) data 0.821 (0.821) loss 0.3613 (0.3613) acc 95.5446 (95.5446) loss_ce 0.3149 (0.3149) loss_constraint 0.0464 (0.0464) lr 9.7866e-02 eta 0:04:01
+epoch [30/300] batch [1/1] time 0.892 (0.892) data 0.820 (0.820) loss 0.3305 (0.3305) acc 98.0198 (98.0198) loss_ce 0.2818 (0.2818) loss_constraint 0.0487 (0.0487) lr 9.7712e-02 eta 0:04:00
+epoch [31/300] batch [1/1] time 0.899 (0.899) data 0.827 (0.827) loss 0.2814 (0.2814) acc 98.5149 (98.5149) loss_ce 0.2304 (0.2304) loss_constraint 0.0510 (0.0510) lr 9.7553e-02 eta 0:04:01
+epoch [32/300] batch [1/1] time 0.879 (0.879) data 0.806 (0.806) loss 0.2936 (0.2936) acc 99.5050 (99.5050) loss_ce 0.2403 (0.2403) loss_constraint 0.0532 (0.0532) lr 9.7388e-02 eta 0:03:55
+epoch [33/300] batch [1/1] time 0.876 (0.876) data 0.804 (0.804) loss 0.3230 (0.3230) acc 96.5347 (96.5347) loss_ce 0.2676 (0.2676) loss_constraint 0.0554 (0.0554) lr 9.7219e-02 eta 0:03:53
+epoch [34/300] batch [1/1] time 0.882 (0.882) data 0.811 (0.811) loss 0.3103 (0.3103) acc 98.5149 (98.5149) loss_ce 0.2528 (0.2528) loss_constraint 0.0575 (0.0575) lr 9.7044e-02 eta 0:03:54
+epoch [35/300] batch [1/1] time 0.867 (0.867) data 0.795 (0.795) loss 0.2722 (0.2722) acc 99.0099 (99.0099) loss_ce 0.2125 (0.2125) loss_constraint 0.0596 (0.0596) lr 9.6864e-02 eta 0:03:49
+epoch [36/300] batch [1/1] time 0.869 (0.869) data 0.797 (0.797) loss 0.2814 (0.2814) acc 98.5149 (98.5149) loss_ce 0.2198 (0.2198) loss_constraint 0.0616 (0.0616) lr 9.6679e-02 eta 0:03:49
+epoch [37/300] batch [1/1] time 0.851 (0.851) data 0.780 (0.780) loss 0.2618 (0.2618) acc 99.0099 (99.0099) loss_ce 0.1983 (0.1983) loss_constraint 0.0635 (0.0635) lr 9.6489e-02 eta 0:03:43
+epoch [38/300] batch [1/1] time 0.884 (0.884) data 0.812 (0.812) loss 0.2638 (0.2638) acc 98.5149 (98.5149) loss_ce 0.1984 (0.1984) loss_constraint 0.0653 (0.0653) lr 9.6294e-02 eta 0:03:51
+epoch [39/300] batch [1/1] time 0.878 (0.878) data 0.807 (0.807) loss 0.2838 (0.2838) acc 98.5149 (98.5149) loss_ce 0.2167 (0.2167) loss_constraint 0.0671 (0.0671) lr 9.6093e-02 eta 0:03:49
+epoch [40/300] batch [1/1] time 0.903 (0.903) data 0.831 (0.831) loss 0.2265 (0.2265) acc 99.5050 (99.5050) loss_ce 0.1578 (0.1578) loss_constraint 0.0687 (0.0687) lr 9.5888e-02 eta 0:03:54
+epoch [41/300] batch [1/1] time 0.909 (0.909) data 0.837 (0.837) loss 0.2766 (0.2766) acc 99.0099 (99.0099) loss_ce 0.2063 (0.2063) loss_constraint 0.0703 (0.0703) lr 9.5677e-02 eta 0:03:55
+epoch [42/300] batch [1/1] time 0.910 (0.910) data 0.838 (0.838) loss 0.2433 (0.2433) acc 99.0099 (99.0099) loss_ce 0.1715 (0.1715) loss_constraint 0.0718 (0.0718) lr 9.5462e-02 eta 0:03:54
+epoch [43/300] batch [1/1] time 0.908 (0.908) data 0.836 (0.836) loss 0.2254 (0.2254) acc 99.5050 (99.5050) loss_ce 0.1522 (0.1522) loss_constraint 0.0732 (0.0732) lr 9.5241e-02 eta 0:03:53
+epoch [44/300] batch [1/1] time 0.882 (0.882) data 0.810 (0.810) loss 0.2241 (0.2241) acc 99.0099 (99.0099) loss_ce 0.1496 (0.1496) loss_constraint 0.0745 (0.0745) lr 9.5016e-02 eta 0:03:45
+epoch [45/300] batch [1/1] time 0.877 (0.877) data 0.805 (0.805) loss 0.2386 (0.2386) acc 99.5050 (99.5050) loss_ce 0.1630 (0.1630) loss_constraint 0.0756 (0.0756) lr 9.4786e-02 eta 0:03:43
+epoch [46/300] batch [1/1] time 0.896 (0.896) data 0.825 (0.825) loss 0.2457 (0.2457) acc 100.0000 (100.0000) loss_ce 0.1689 (0.1689) loss_constraint 0.0767 (0.0767) lr 9.4550e-02 eta 0:03:47
+epoch [47/300] batch [1/1] time 0.932 (0.932) data 0.796 (0.796) loss 0.2659 (0.2659) acc 99.5050 (99.5050) loss_ce 0.1881 (0.1881) loss_constraint 0.0778 (0.0778) lr 9.4310e-02 eta 0:03:55
+epoch [48/300] batch [1/1] time 0.849 (0.849) data 0.777 (0.777) loss 0.2056 (0.2056) acc 100.0000 (100.0000) loss_ce 0.1268 (0.1268) loss_constraint 0.0787 (0.0787) lr 9.4065e-02 eta 0:03:33
+epoch [49/300] batch [1/1] time 0.868 (0.868) data 0.797 (0.797) loss 0.2310 (0.2310) acc 99.5050 (99.5050) loss_ce 0.1513 (0.1513) loss_constraint 0.0796 (0.0796) lr 9.3815e-02 eta 0:03:37
+epoch [50/300] batch [1/1] time 0.796 (0.796) data 0.725 (0.725) loss 0.2374 (0.2374) acc 99.0099 (99.0099) loss_ce 0.1569 (0.1569) loss_constraint 0.0805 (0.0805) lr 9.3561e-02 eta 0:03:18
+epoch [51/300] batch [1/1] time 0.918 (0.918) data 0.815 (0.815) loss 0.2260 (0.2260) acc 99.0099 (99.0099) loss_ce 0.1447 (0.1447) loss_constraint 0.0812 (0.0812) lr 9.3301e-02 eta 0:03:48
+epoch [52/300] batch [1/1] time 0.888 (0.888) data 0.816 (0.816) loss 0.2236 (0.2236) acc 99.5050 (99.5050) loss_ce 0.1416 (0.1416) loss_constraint 0.0820 (0.0820) lr 9.3037e-02 eta 0:03:40
+epoch [53/300] batch [1/1] time 0.900 (0.900) data 0.828 (0.828) loss 0.2037 (0.2037) acc 99.5050 (99.5050) loss_ce 0.1211 (0.1211) loss_constraint 0.0826 (0.0826) lr 9.2768e-02 eta 0:03:42
+epoch [54/300] batch [1/1] time 0.866 (0.866) data 0.794 (0.794) loss 0.2251 (0.2251) acc 99.5050 (99.5050) loss_ce 0.1419 (0.1419) loss_constraint 0.0832 (0.0832) lr 9.2495e-02 eta 0:03:33
+epoch [55/300] batch [1/1] time 0.963 (0.963) data 0.830 (0.830) loss 0.2128 (0.2128) acc 99.5050 (99.5050) loss_ce 0.1291 (0.1291) loss_constraint 0.0837 (0.0837) lr 9.2216e-02 eta 0:03:55
+epoch [56/300] batch [1/1] time 0.963 (0.963) data 0.816 (0.816) loss 0.2288 (0.2288) acc 100.0000 (100.0000) loss_ce 0.1446 (0.1446) loss_constraint 0.0842 (0.0842) lr 9.1934e-02 eta 0:03:55
+epoch [57/300] batch [1/1] time 0.956 (0.956) data 0.813 (0.813) loss 0.2219 (0.2219) acc 99.5050 (99.5050) loss_ce 0.1372 (0.1372) loss_constraint 0.0847 (0.0847) lr 9.1646e-02 eta 0:03:52
+epoch [58/300] batch [1/1] time 0.906 (0.906) data 0.789 (0.789) loss 0.2113 (0.2113) acc 99.5050 (99.5050) loss_ce 0.1262 (0.1262) loss_constraint 0.0851 (0.0851) lr 9.1354e-02 eta 0:03:39
+epoch [59/300] batch [1/1] time 0.924 (0.924) data 0.780 (0.780) loss 0.2345 (0.2345) acc 99.0099 (99.0099) loss_ce 0.1490 (0.1490) loss_constraint 0.0855 (0.0855) lr 9.1057e-02 eta 0:03:42
+epoch [60/300] batch [1/1] time 0.825 (0.825) data 0.753 (0.753) loss 0.2350 (0.2350) acc 100.0000 (100.0000) loss_ce 0.1491 (0.1491) loss_constraint 0.0859 (0.0859) lr 9.0756e-02 eta 0:03:17
+epoch [61/300] batch [1/1] time 0.875 (0.875) data 0.803 (0.803) loss 0.1938 (0.1938) acc 100.0000 (100.0000) loss_ce 0.1076 (0.1076) loss_constraint 0.0862 (0.0862) lr 9.0451e-02 eta 0:03:29
+epoch [62/300] batch [1/1] time 0.894 (0.894) data 0.822 (0.822) loss 0.2209 (0.2209) acc 99.0099 (99.0099) loss_ce 0.1343 (0.1343) loss_constraint 0.0865 (0.0865) lr 9.0141e-02 eta 0:03:32
+epoch [63/300] batch [1/1] time 0.860 (0.860) data 0.788 (0.788) loss 0.2013 (0.2013) acc 100.0000 (100.0000) loss_ce 0.1144 (0.1144) loss_constraint 0.0868 (0.0868) lr 8.9826e-02 eta 0:03:23
+epoch [64/300] batch [1/1] time 0.899 (0.899) data 0.827 (0.827) loss 0.2053 (0.2053) acc 100.0000 (100.0000) loss_ce 0.1182 (0.1182) loss_constraint 0.0871 (0.0871) lr 8.9508e-02 eta 0:03:32
+epoch [65/300] batch [1/1] time 0.882 (0.882) data 0.810 (0.810) loss 0.1985 (0.1985) acc 100.0000 (100.0000) loss_ce 0.1112 (0.1112) loss_constraint 0.0873 (0.0873) lr 8.9185e-02 eta 0:03:27
+epoch [66/300] batch [1/1] time 0.890 (0.890) data 0.818 (0.818) loss 0.2031 (0.2031) acc 99.5050 (99.5050) loss_ce 0.1156 (0.1156) loss_constraint 0.0875 (0.0875) lr 8.8857e-02 eta 0:03:28
+epoch [67/300] batch [1/1] time 0.937 (0.937) data 0.847 (0.847) loss 0.2140 (0.2140) acc 100.0000 (100.0000) loss_ce 0.1263 (0.1263) loss_constraint 0.0877 (0.0877) lr 8.8526e-02 eta 0:03:38
+epoch [68/300] batch [1/1] time 0.866 (0.866) data 0.795 (0.795) loss 0.2098 (0.2098) acc 99.5050 (99.5050) loss_ce 0.1219 (0.1219) loss_constraint 0.0879 (0.0879) lr 8.8190e-02 eta 0:03:20
+epoch [69/300] batch [1/1] time 0.886 (0.886) data 0.814 (0.814) loss 0.2072 (0.2072) acc 100.0000 (100.0000) loss_ce 0.1191 (0.1191) loss_constraint 0.0881 (0.0881) lr 8.7850e-02 eta 0:03:24
+epoch [70/300] batch [1/1] time 0.889 (0.889) data 0.817 (0.817) loss 0.2131 (0.2131) acc 99.0099 (99.0099) loss_ce 0.1248 (0.1248) loss_constraint 0.0883 (0.0883) lr 8.7506e-02 eta 0:03:24
+epoch [71/300] batch [1/1] time 0.949 (0.949) data 0.804 (0.804) loss 0.2175 (0.2175) acc 99.0099 (99.0099) loss_ce 0.1291 (0.1291) loss_constraint 0.0884 (0.0884) lr 8.7157e-02 eta 0:03:37
+epoch [72/300] batch [1/1] time 0.875 (0.875) data 0.803 (0.803) loss 0.2151 (0.2151) acc 99.5050 (99.5050) loss_ce 0.1265 (0.1265) loss_constraint 0.0886 (0.0886) lr 8.6805e-02 eta 0:03:19
+epoch [73/300] batch [1/1] time 0.863 (0.863) data 0.790 (0.790) loss 0.2102 (0.2102) acc 99.5050 (99.5050) loss_ce 0.1215 (0.1215) loss_constraint 0.0887 (0.0887) lr 8.6448e-02 eta 0:03:15
+epoch [74/300] batch [1/1] time 0.922 (0.922) data 0.850 (0.850) loss 0.2152 (0.2152) acc 98.5149 (98.5149) loss_ce 0.1263 (0.1263) loss_constraint 0.0889 (0.0889) lr 8.6088e-02 eta 0:03:28
+epoch [75/300] batch [1/1] time 0.975 (0.975) data 0.842 (0.842) loss 0.2014 (0.2014) acc 99.5050 (99.5050) loss_ce 0.1123 (0.1123) loss_constraint 0.0890 (0.0890) lr 8.5724e-02 eta 0:03:39
+epoch [76/300] batch [1/1] time 0.889 (0.889) data 0.818 (0.818) loss 0.1996 (0.1996) acc 100.0000 (100.0000) loss_ce 0.1104 (0.1104) loss_constraint 0.0892 (0.0892) lr 8.5355e-02 eta 0:03:19
+epoch [77/300] batch [1/1] time 0.884 (0.884) data 0.812 (0.812) loss 0.2117 (0.2117) acc 99.0099 (99.0099) loss_ce 0.1225 (0.1225) loss_constraint 0.0892 (0.0892) lr 8.4983e-02 eta 0:03:17
+epoch [78/300] batch [1/1] time 0.884 (0.884) data 0.811 (0.811) loss 0.2106 (0.2106) acc 99.5050 (99.5050) loss_ce 0.1212 (0.1212) loss_constraint 0.0893 (0.0893) lr 8.4607e-02 eta 0:03:16
+epoch [79/300] batch [1/1] time 0.955 (0.955) data 0.807 (0.807) loss 0.1936 (0.1936) acc 99.5050 (99.5050) loss_ce 0.1042 (0.1042) loss_constraint 0.0894 (0.0894) lr 8.4227e-02 eta 0:03:31
+epoch [80/300] batch [1/1] time 0.844 (0.844) data 0.772 (0.772) loss 0.1932 (0.1932) acc 100.0000 (100.0000) loss_ce 0.1038 (0.1038) loss_constraint 0.0894 (0.0894) lr 8.3844e-02 eta 0:03:05
+epoch [81/300] batch [1/1] time 0.898 (0.898) data 0.800 (0.800) loss 0.1990 (0.1990) acc 100.0000 (100.0000) loss_ce 0.1095 (0.1095) loss_constraint 0.0894 (0.0894) lr 8.3457e-02 eta 0:03:16
+epoch [82/300] batch [1/1] time 0.874 (0.874) data 0.802 (0.802) loss 0.2242 (0.2242) acc 99.5050 (99.5050) loss_ce 0.1348 (0.1348) loss_constraint 0.0895 (0.0895) lr 8.3066e-02 eta 0:03:10
+epoch [83/300] batch [1/1] time 0.829 (0.829) data 0.757 (0.757) loss 0.2048 (0.2048) acc 100.0000 (100.0000) loss_ce 0.1152 (0.1152) loss_constraint 0.0895 (0.0895) lr 8.2671e-02 eta 0:02:59
+epoch [84/300] batch [1/1] time 0.870 (0.870) data 0.798 (0.798) loss 0.1983 (0.1983) acc 99.5050 (99.5050) loss_ce 0.1087 (0.1087) loss_constraint 0.0896 (0.0896) lr 8.2273e-02 eta 0:03:07
+epoch [85/300] batch [1/1] time 0.837 (0.837) data 0.765 (0.765) loss 0.1984 (0.1984) acc 100.0000 (100.0000) loss_ce 0.1088 (0.1088) loss_constraint 0.0897 (0.0897) lr 8.1871e-02 eta 0:02:59
+epoch [86/300] batch [1/1] time 0.891 (0.891) data 0.820 (0.820) loss 0.2095 (0.2095) acc 100.0000 (100.0000) loss_ce 0.1198 (0.1198) loss_constraint 0.0897 (0.0897) lr 8.1466e-02 eta 0:03:10
+epoch [87/300] batch [1/1] time 0.854 (0.854) data 0.782 (0.782) loss 0.2107 (0.2107) acc 100.0000 (100.0000) loss_ce 0.1209 (0.1209) loss_constraint 0.0898 (0.0898) lr 8.1057e-02 eta 0:03:01
+epoch [88/300] batch [1/1] time 0.877 (0.877) data 0.806 (0.806) loss 0.1955 (0.1955) acc 100.0000 (100.0000) loss_ce 0.1057 (0.1057) loss_constraint 0.0898 (0.0898) lr 8.0645e-02 eta 0:03:06
+epoch [89/300] batch [1/1] time 0.880 (0.880) data 0.808 (0.808) loss 0.1975 (0.1975) acc 100.0000 (100.0000) loss_ce 0.1076 (0.1076) loss_constraint 0.0898 (0.0898) lr 8.0230e-02 eta 0:03:05
+epoch [90/300] batch [1/1] time 0.908 (0.908) data 0.836 (0.836) loss 0.1991 (0.1991) acc 99.5050 (99.5050) loss_ce 0.1093 (0.1093) loss_constraint 0.0898 (0.0898) lr 7.9811e-02 eta 0:03:10
+epoch [91/300] batch [1/1] time 0.961 (0.961) data 0.889 (0.889) loss 0.2021 (0.2021) acc 100.0000 (100.0000) loss_ce 0.1122 (0.1122) loss_constraint 0.0899 (0.0899) lr 7.9389e-02 eta 0:03:20
+epoch [92/300] batch [1/1] time 0.895 (0.895) data 0.823 (0.823) loss 0.1973 (0.1973) acc 99.5050 (99.5050) loss_ce 0.1074 (0.1074) loss_constraint 0.0899 (0.0899) lr 7.8964e-02 eta 0:03:06
+epoch [93/300] batch [1/1] time 0.938 (0.938) data 0.792 (0.792) loss 0.1817 (0.1817) acc 100.0000 (100.0000) loss_ce 0.0918 (0.0918) loss_constraint 0.0899 (0.0899) lr 7.8536e-02 eta 0:03:14
+epoch [94/300] batch [1/1] time 0.845 (0.845) data 0.773 (0.773) loss 0.1982 (0.1982) acc 99.5050 (99.5050) loss_ce 0.1084 (0.1084) loss_constraint 0.0899 (0.0899) lr 7.8104e-02 eta 0:02:54
+epoch [95/300] batch [1/1] time 0.926 (0.926) data 0.799 (0.799) loss 0.1890 (0.1890) acc 100.0000 (100.0000) loss_ce 0.0992 (0.0992) loss_constraint 0.0898 (0.0898) lr 7.7670e-02 eta 0:03:09
+epoch [96/300] batch [1/1] time 0.873 (0.873) data 0.802 (0.802) loss 0.2046 (0.2046) acc 100.0000 (100.0000) loss_ce 0.1148 (0.1148) loss_constraint 0.0898 (0.0898) lr 7.7232e-02 eta 0:02:58
+epoch [97/300] batch [1/1] time 0.872 (0.872) data 0.801 (0.801) loss 0.1894 (0.1894) acc 100.0000 (100.0000) loss_ce 0.0996 (0.0996) loss_constraint 0.0898 (0.0898) lr 7.6791e-02 eta 0:02:57
+epoch [98/300] batch [1/1] time 0.841 (0.841) data 0.769 (0.769) loss 0.2064 (0.2064) acc 100.0000 (100.0000) loss_ce 0.1166 (0.1166) loss_constraint 0.0898 (0.0898) lr 7.6348e-02 eta 0:02:49
+epoch [99/300] batch [1/1] time 0.879 (0.879) data 0.807 (0.807) loss 0.2014 (0.2014) acc 99.5050 (99.5050) loss_ce 0.1116 (0.1116) loss_constraint 0.0898 (0.0898) lr 7.5901e-02 eta 0:02:56
+epoch [100/300] batch [1/1] time 0.867 (0.867) data 0.795 (0.795) loss 0.1895 (0.1895) acc 99.0099 (99.0099) loss_ce 0.0997 (0.0997) loss_constraint 0.0898 (0.0898) lr 7.5452e-02 eta 0:02:53
+epoch [101/300] batch [1/1] time 0.951 (0.951) data 0.807 (0.807) loss 0.1893 (0.1893) acc 100.0000 (100.0000) loss_ce 0.0995 (0.0995) loss_constraint 0.0898 (0.0898) lr 7.5000e-02 eta 0:03:09
+epoch [102/300] batch [1/1] time 0.834 (0.834) data 0.762 (0.762) loss 0.2053 (0.2053) acc 100.0000 (100.0000) loss_ce 0.1156 (0.1156) loss_constraint 0.0897 (0.0897) lr 7.4545e-02 eta 0:02:45
+epoch [103/300] batch [1/1] time 0.875 (0.875) data 0.803 (0.803) loss 0.1920 (0.1920) acc 100.0000 (100.0000) loss_ce 0.1022 (0.1022) loss_constraint 0.0897 (0.0897) lr 7.4088e-02 eta 0:02:52
+epoch [104/300] batch [1/1] time 0.879 (0.879) data 0.807 (0.807) loss 0.1952 (0.1952) acc 99.5050 (99.5050) loss_ce 0.1055 (0.1055) loss_constraint 0.0897 (0.0897) lr 7.3628e-02 eta 0:02:52
+epoch [105/300] batch [1/1] time 0.895 (0.895) data 0.823 (0.823) loss 0.1999 (0.1999) acc 99.5050 (99.5050) loss_ce 0.1101 (0.1101) loss_constraint 0.0897 (0.0897) lr 7.3165e-02 eta 0:02:54
+epoch [106/300] batch [1/1] time 0.885 (0.885) data 0.813 (0.813) loss 0.2033 (0.2033) acc 99.5050 (99.5050) loss_ce 0.1136 (0.1136) loss_constraint 0.0897 (0.0897) lr 7.2700e-02 eta 0:02:51
+epoch [107/300] batch [1/1] time 1.016 (1.016) data 0.944 (0.944) loss 0.1972 (0.1972) acc 99.5050 (99.5050) loss_ce 0.1074 (0.1074) loss_constraint 0.0898 (0.0898) lr 7.2232e-02 eta 0:03:16
+epoch [108/300] batch [1/1] time 0.906 (0.906) data 0.819 (0.819) loss 0.1962 (0.1962) acc 99.5050 (99.5050) loss_ce 0.1065 (0.1065) loss_constraint 0.0898 (0.0898) lr 7.1762e-02 eta 0:02:54
+epoch [109/300] batch [1/1] time 0.929 (0.929) data 0.787 (0.787) loss 0.1912 (0.1912) acc 100.0000 (100.0000) loss_ce 0.1014 (0.1014) loss_constraint 0.0898 (0.0898) lr 7.1289e-02 eta 0:02:57
+epoch [110/300] batch [1/1] time 0.915 (0.915) data 0.843 (0.843) loss 0.1985 (0.1985) acc 99.5050 (99.5050) loss_ce 0.1087 (0.1087) loss_constraint 0.0898 (0.0898) lr 7.0814e-02 eta 0:02:53
+epoch [111/300] batch [1/1] time 0.879 (0.879) data 0.799 (0.799) loss 0.2183 (0.2183) acc 99.5050 (99.5050) loss_ce 0.1285 (0.1285) loss_constraint 0.0898 (0.0898) lr 7.0337e-02 eta 0:02:46
+epoch [112/300] batch [1/1] time 0.898 (0.898) data 0.826 (0.826) loss 0.1855 (0.1855) acc 100.0000 (100.0000) loss_ce 0.0957 (0.0957) loss_constraint 0.0898 (0.0898) lr 6.9857e-02 eta 0:02:48
+epoch [113/300] batch [1/1] time 0.865 (0.865) data 0.793 (0.793) loss 0.2047 (0.2047) acc 99.5050 (99.5050) loss_ce 0.1149 (0.1149) loss_constraint 0.0898 (0.0898) lr 6.9376e-02 eta 0:02:41
+epoch [114/300] batch [1/1] time 0.896 (0.896) data 0.825 (0.825) loss 0.1912 (0.1912) acc 100.0000 (100.0000) loss_ce 0.1014 (0.1014) loss_constraint 0.0898 (0.0898) lr 6.8892e-02 eta 0:02:46
+epoch [115/300] batch [1/1] time 0.925 (0.925) data 0.853 (0.853) loss 0.2204 (0.2204) acc 99.0099 (99.0099) loss_ce 0.1306 (0.1306) loss_constraint 0.0898 (0.0898) lr 6.8406e-02 eta 0:02:51
+epoch [116/300] batch [1/1] time 0.911 (0.911) data 0.839 (0.839) loss 0.1843 (0.1843) acc 100.0000 (100.0000) loss_ce 0.0945 (0.0945) loss_constraint 0.0899 (0.0899) lr 6.7918e-02 eta 0:02:47
+epoch [117/300] batch [1/1] time 0.906 (0.906) data 0.834 (0.834) loss 0.2014 (0.2014) acc 99.5050 (99.5050) loss_ce 0.1115 (0.1115) loss_constraint 0.0899 (0.0899) lr 6.7429e-02 eta 0:02:45
+epoch [118/300] batch [1/1] time 0.912 (0.912) data 0.841 (0.841) loss 0.1975 (0.1975) acc 100.0000 (100.0000) loss_ce 0.1076 (0.1076) loss_constraint 0.0899 (0.0899) lr 6.6937e-02 eta 0:02:46
+epoch [119/300] batch [1/1] time 0.889 (0.889) data 0.816 (0.816) loss 0.1891 (0.1891) acc 100.0000 (100.0000) loss_ce 0.0992 (0.0992) loss_constraint 0.0899 (0.0899) lr 6.6443e-02 eta 0:02:40
+epoch [120/300] batch [1/1] time 0.872 (0.872) data 0.801 (0.801) loss 0.1937 (0.1937) acc 100.0000 (100.0000) loss_ce 0.1037 (0.1037) loss_constraint 0.0900 (0.0900) lr 6.5948e-02 eta 0:02:37
+epoch [121/300] batch [1/1] time 0.897 (0.897) data 0.825 (0.825) loss 0.2004 (0.2004) acc 99.5050 (99.5050) loss_ce 0.1104 (0.1104) loss_constraint 0.0900 (0.0900) lr 6.5451e-02 eta 0:02:40
+epoch [122/300] batch [1/1] time 0.870 (0.870) data 0.798 (0.798) loss 0.2063 (0.2063) acc 99.5050 (99.5050) loss_ce 0.1163 (0.1163) loss_constraint 0.0900 (0.0900) lr 6.4952e-02 eta 0:02:34
+epoch [123/300] batch [1/1] time 0.949 (0.949) data 0.877 (0.877) loss 0.1876 (0.1876) acc 100.0000 (100.0000) loss_ce 0.0976 (0.0976) loss_constraint 0.0900 (0.0900) lr 6.4452e-02 eta 0:02:47
+epoch [124/300] batch [1/1] time 0.899 (0.899) data 0.827 (0.827) loss 0.1924 (0.1924) acc 99.0099 (99.0099) loss_ce 0.1024 (0.1024) loss_constraint 0.0900 (0.0900) lr 6.3950e-02 eta 0:02:38
+epoch [125/300] batch [1/1] time 0.905 (0.905) data 0.833 (0.833) loss 0.1975 (0.1975) acc 99.5050 (99.5050) loss_ce 0.1075 (0.1075) loss_constraint 0.0900 (0.0900) lr 6.3446e-02 eta 0:02:38
+epoch [126/300] batch [1/1] time 0.909 (0.909) data 0.837 (0.837) loss 0.1998 (0.1998) acc 100.0000 (100.0000) loss_ce 0.1098 (0.1098) loss_constraint 0.0900 (0.0900) lr 6.2941e-02 eta 0:02:38
+epoch [127/300] batch [1/1] time 0.904 (0.904) data 0.832 (0.832) loss 0.2014 (0.2014) acc 99.5050 (99.5050) loss_ce 0.1114 (0.1114) loss_constraint 0.0900 (0.0900) lr 6.2434e-02 eta 0:02:36
+epoch [128/300] batch [1/1] time 0.968 (0.968) data 0.822 (0.822) loss 0.1836 (0.1836) acc 100.0000 (100.0000) loss_ce 0.0935 (0.0935) loss_constraint 0.0901 (0.0901) lr 6.1927e-02 eta 0:02:46
+epoch [129/300] batch [1/1] time 0.902 (0.902) data 0.830 (0.830) loss 0.1916 (0.1916) acc 99.5050 (99.5050) loss_ce 0.1015 (0.1015) loss_constraint 0.0901 (0.0901) lr 6.1418e-02 eta 0:02:34
+epoch [130/300] batch [1/1] time 0.996 (0.996) data 0.845 (0.845) loss 0.1985 (0.1985) acc 99.5050 (99.5050) loss_ce 0.1084 (0.1084) loss_constraint 0.0901 (0.0901) lr 6.0907e-02 eta 0:02:49
+epoch [131/300] batch [1/1] time 0.893 (0.893) data 0.821 (0.821) loss 0.1914 (0.1914) acc 99.0099 (99.0099) loss_ce 0.1013 (0.1013) loss_constraint 0.0901 (0.0901) lr 6.0396e-02 eta 0:02:30
+epoch [132/300] batch [1/1] time 0.907 (0.907) data 0.835 (0.835) loss 0.1911 (0.1911) acc 99.5050 (99.5050) loss_ce 0.1010 (0.1010) loss_constraint 0.0901 (0.0901) lr 5.9883e-02 eta 0:02:32
+epoch [133/300] batch [1/1] time 0.887 (0.887) data 0.815 (0.815) loss 0.2017 (0.2017) acc 99.5050 (99.5050) loss_ce 0.1117 (0.1117) loss_constraint 0.0900 (0.0900) lr 5.9369e-02 eta 0:02:28
+epoch [134/300] batch [1/1] time 0.834 (0.834) data 0.762 (0.762) loss 0.2031 (0.2031) acc 99.0099 (99.0099) loss_ce 0.1130 (0.1130) loss_constraint 0.0900 (0.0900) lr 5.8854e-02 eta 0:02:18
+epoch [135/300] batch [1/1] time 0.885 (0.885) data 0.814 (0.814) loss 0.1842 (0.1842) acc 99.5050 (99.5050) loss_ce 0.0941 (0.0941) loss_constraint 0.0900 (0.0900) lr 5.8338e-02 eta 0:02:26
+epoch [136/300] batch [1/1] time 0.863 (0.863) data 0.790 (0.790) loss 0.2011 (0.2011) acc 99.5050 (99.5050) loss_ce 0.1110 (0.1110) loss_constraint 0.0900 (0.0900) lr 5.7822e-02 eta 0:02:21
+epoch [137/300] batch [1/1] time 0.882 (0.882) data 0.810 (0.810) loss 0.2061 (0.2061) acc 99.0099 (99.0099) loss_ce 0.1161 (0.1161) loss_constraint 0.0900 (0.0900) lr 5.7304e-02 eta 0:02:23
+epoch [138/300] batch [1/1] time 0.886 (0.886) data 0.814 (0.814) loss 0.1923 (0.1923) acc 99.5050 (99.5050) loss_ce 0.1023 (0.1023) loss_constraint 0.0900 (0.0900) lr 5.6786e-02 eta 0:02:23
+epoch [139/300] batch [1/1] time 0.882 (0.882) data 0.810 (0.810) loss 0.1829 (0.1829) acc 100.0000 (100.0000) loss_ce 0.0929 (0.0929) loss_constraint 0.0900 (0.0900) lr 5.6267e-02 eta 0:02:22
+epoch [140/300] batch [1/1] time 0.844 (0.844) data 0.772 (0.772) loss 0.1830 (0.1830) acc 100.0000 (100.0000) loss_ce 0.0931 (0.0931) loss_constraint 0.0900 (0.0900) lr 5.5747e-02 eta 0:02:15
+epoch [141/300] batch [1/1] time 0.891 (0.891) data 0.819 (0.819) loss 0.2038 (0.2038) acc 99.5050 (99.5050) loss_ce 0.1139 (0.1139) loss_constraint 0.0900 (0.0900) lr 5.5226e-02 eta 0:02:21
+epoch [142/300] batch [1/1] time 0.914 (0.914) data 0.825 (0.825) loss 0.1865 (0.1865) acc 100.0000 (100.0000) loss_ce 0.0966 (0.0966) loss_constraint 0.0899 (0.0899) lr 5.4705e-02 eta 0:02:24
+epoch [143/300] batch [1/1] time 0.920 (0.920) data 0.846 (0.846) loss 0.2103 (0.2103) acc 99.5050 (99.5050) loss_ce 0.1204 (0.1204) loss_constraint 0.0899 (0.0899) lr 5.4184e-02 eta 0:02:24
+epoch [144/300] batch [1/1] time 0.955 (0.955) data 0.810 (0.810) loss 0.1989 (0.1989) acc 99.5050 (99.5050) loss_ce 0.1090 (0.1090) loss_constraint 0.0899 (0.0899) lr 5.3662e-02 eta 0:02:28
+epoch [145/300] batch [1/1] time 0.861 (0.861) data 0.789 (0.789) loss 0.2028 (0.2028) acc 100.0000 (100.0000) loss_ce 0.1129 (0.1129) loss_constraint 0.0899 (0.0899) lr 5.3140e-02 eta 0:02:13
+epoch [146/300] batch [1/1] time 0.954 (0.954) data 0.811 (0.811) loss 0.2064 (0.2064) acc 99.0099 (99.0099) loss_ce 0.1165 (0.1165) loss_constraint 0.0899 (0.0899) lr 5.2617e-02 eta 0:02:26
+epoch [147/300] batch [1/1] time 0.881 (0.881) data 0.809 (0.809) loss 0.2009 (0.2009) acc 99.5050 (99.5050) loss_ce 0.1109 (0.1109) loss_constraint 0.0900 (0.0900) lr 5.2094e-02 eta 0:02:14
+epoch [148/300] batch [1/1] time 0.961 (0.961) data 0.813 (0.813) loss 0.1838 (0.1838) acc 100.0000 (100.0000) loss_ce 0.0938 (0.0938) loss_constraint 0.0900 (0.0900) lr 5.1571e-02 eta 0:02:26
+epoch [149/300] batch [1/1] time 0.900 (0.900) data 0.824 (0.824) loss 0.2007 (0.2007) acc 99.5050 (99.5050) loss_ce 0.1107 (0.1107) loss_constraint 0.0900 (0.0900) lr 5.1047e-02 eta 0:02:15
+epoch [150/300] batch [1/1] time 0.877 (0.877) data 0.805 (0.805) loss 0.2070 (0.2070) acc 99.0099 (99.0099) loss_ce 0.1170 (0.1170) loss_constraint 0.0900 (0.0900) lr 5.0524e-02 eta 0:02:11
+epoch [151/300] batch [1/1] time 0.969 (0.969) data 0.824 (0.824) loss 0.1935 (0.1935) acc 98.5149 (98.5149) loss_ce 0.1035 (0.1035) loss_constraint 0.0901 (0.0901) lr 5.0000e-02 eta 0:02:24
+epoch [152/300] batch [1/1] time 0.887 (0.887) data 0.815 (0.815) loss 0.1879 (0.1879) acc 100.0000 (100.0000) loss_ce 0.0978 (0.0978) loss_constraint 0.0901 (0.0901) lr 4.9476e-02 eta 0:02:11
+epoch [153/300] batch [1/1] time 0.964 (0.964) data 0.819 (0.819) loss 0.1954 (0.1954) acc 100.0000 (100.0000) loss_ce 0.1053 (0.1053) loss_constraint 0.0901 (0.0901) lr 4.8953e-02 eta 0:02:21
+epoch [154/300] batch [1/1] time 0.877 (0.877) data 0.805 (0.805) loss 0.1937 (0.1937) acc 99.5050 (99.5050) loss_ce 0.1036 (0.1036) loss_constraint 0.0901 (0.0901) lr 4.8429e-02 eta 0:02:08
+epoch [155/300] batch [1/1] time 0.891 (0.891) data 0.819 (0.819) loss 0.1808 (0.1808) acc 100.0000 (100.0000) loss_ce 0.0907 (0.0907) loss_constraint 0.0901 (0.0901) lr 4.7906e-02 eta 0:02:09
+epoch [156/300] batch [1/1] time 0.852 (0.852) data 0.780 (0.780) loss 0.1982 (0.1982) acc 100.0000 (100.0000) loss_ce 0.1081 (0.1081) loss_constraint 0.0901 (0.0901) lr 4.7383e-02 eta 0:02:02
+epoch [157/300] batch [1/1] time 0.845 (0.845) data 0.773 (0.773) loss 0.1877 (0.1877) acc 99.5050 (99.5050) loss_ce 0.0976 (0.0976) loss_constraint 0.0901 (0.0901) lr 4.6860e-02 eta 0:02:00
+epoch [158/300] batch [1/1] time 0.854 (0.854) data 0.777 (0.777) loss 0.1768 (0.1768) acc 100.0000 (100.0000) loss_ce 0.0867 (0.0867) loss_constraint 0.0901 (0.0901) lr 4.6338e-02 eta 0:02:01
+epoch [159/300] batch [1/1] time 0.851 (0.851) data 0.779 (0.779) loss 0.1966 (0.1966) acc 100.0000 (100.0000) loss_ce 0.1065 (0.1065) loss_constraint 0.0901 (0.0901) lr 4.5816e-02 eta 0:01:59
+epoch [160/300] batch [1/1] time 0.878 (0.878) data 0.807 (0.807) loss 0.1759 (0.1759) acc 100.0000 (100.0000) loss_ce 0.0858 (0.0858) loss_constraint 0.0901 (0.0901) lr 4.5295e-02 eta 0:02:02
+epoch [161/300] batch [1/1] time 0.880 (0.880) data 0.808 (0.808) loss 0.1873 (0.1873) acc 99.5050 (99.5050) loss_ce 0.0973 (0.0973) loss_constraint 0.0901 (0.0901) lr 4.4774e-02 eta 0:02:02
+epoch [162/300] batch [1/1] time 0.890 (0.890) data 0.817 (0.817) loss 0.2022 (0.2022) acc 99.5050 (99.5050) loss_ce 0.1122 (0.1122) loss_constraint 0.0900 (0.0900) lr 4.4253e-02 eta 0:02:02
+epoch [163/300] batch [1/1] time 0.964 (0.964) data 0.835 (0.835) loss 0.2002 (0.2002) acc 99.5050 (99.5050) loss_ce 0.1102 (0.1102) loss_constraint 0.0900 (0.0900) lr 4.3733e-02 eta 0:02:12
+epoch [164/300] batch [1/1] time 0.885 (0.885) data 0.813 (0.813) loss 0.1802 (0.1802) acc 100.0000 (100.0000) loss_ce 0.0902 (0.0902) loss_constraint 0.0900 (0.0900) lr 4.3214e-02 eta 0:02:00
+epoch [165/300] batch [1/1] time 0.917 (0.917) data 0.817 (0.817) loss 0.1923 (0.1923) acc 99.5050 (99.5050) loss_ce 0.1023 (0.1023) loss_constraint 0.0900 (0.0900) lr 4.2696e-02 eta 0:02:03
+epoch [166/300] batch [1/1] time 0.864 (0.864) data 0.792 (0.792) loss 0.1858 (0.1858) acc 100.0000 (100.0000) loss_ce 0.0957 (0.0957) loss_constraint 0.0900 (0.0900) lr 4.2178e-02 eta 0:01:55
+epoch [167/300] batch [1/1] time 0.961 (0.961) data 0.835 (0.835) loss 0.1923 (0.1923) acc 99.5050 (99.5050) loss_ce 0.1023 (0.1023) loss_constraint 0.0900 (0.0900) lr 4.1662e-02 eta 0:02:07
+epoch [168/300] batch [1/1] time 0.869 (0.869) data 0.798 (0.798) loss 0.1904 (0.1904) acc 100.0000 (100.0000) loss_ce 0.1004 (0.1004) loss_constraint 0.0900 (0.0900) lr 4.1146e-02 eta 0:01:54
+epoch [169/300] batch [1/1] time 0.947 (0.947) data 0.801 (0.801) loss 0.1858 (0.1858) acc 100.0000 (100.0000) loss_ce 0.0958 (0.0958) loss_constraint 0.0900 (0.0900) lr 4.0631e-02 eta 0:02:04
+epoch [170/300] batch [1/1] time 0.843 (0.843) data 0.772 (0.772) loss 0.1899 (0.1899) acc 99.5050 (99.5050) loss_ce 0.0999 (0.0999) loss_constraint 0.0900 (0.0900) lr 4.0117e-02 eta 0:01:49
+epoch [171/300] batch [1/1] time 0.959 (0.959) data 0.813 (0.813) loss 0.1840 (0.1840) acc 100.0000 (100.0000) loss_ce 0.0940 (0.0940) loss_constraint 0.0900 (0.0900) lr 3.9604e-02 eta 0:02:03
+epoch [172/300] batch [1/1] time 0.865 (0.865) data 0.793 (0.793) loss 0.1750 (0.1750) acc 100.0000 (100.0000) loss_ce 0.0850 (0.0850) loss_constraint 0.0900 (0.0900) lr 3.9093e-02 eta 0:01:50
+epoch [173/300] batch [1/1] time 0.933 (0.933) data 0.862 (0.862) loss 0.1809 (0.1809) acc 100.0000 (100.0000) loss_ce 0.0909 (0.0909) loss_constraint 0.0900 (0.0900) lr 3.8582e-02 eta 0:01:58
+epoch [174/300] batch [1/1] time 0.877 (0.877) data 0.805 (0.805) loss 0.1851 (0.1851) acc 100.0000 (100.0000) loss_ce 0.0951 (0.0951) loss_constraint 0.0900 (0.0900) lr 3.8073e-02 eta 0:01:50
+epoch [175/300] batch [1/1] time 0.872 (0.872) data 0.801 (0.801) loss 0.2001 (0.2001) acc 99.5050 (99.5050) loss_ce 0.1102 (0.1102) loss_constraint 0.0900 (0.0900) lr 3.7566e-02 eta 0:01:49
+epoch [176/300] batch [1/1] time 0.890 (0.890) data 0.818 (0.818) loss 0.1921 (0.1921) acc 99.5050 (99.5050) loss_ce 0.1021 (0.1021) loss_constraint 0.0899 (0.0899) lr 3.7059e-02 eta 0:01:50
+epoch [177/300] batch [1/1] time 0.854 (0.854) data 0.782 (0.782) loss 0.1842 (0.1842) acc 99.0099 (99.0099) loss_ce 0.0942 (0.0942) loss_constraint 0.0899 (0.0899) lr 3.6554e-02 eta 0:01:45
+epoch [178/300] batch [1/1] time 0.890 (0.890) data 0.818 (0.818) loss 0.1779 (0.1779) acc 100.0000 (100.0000) loss_ce 0.0880 (0.0880) loss_constraint 0.0899 (0.0899) lr 3.6050e-02 eta 0:01:48
+epoch [179/300] batch [1/1] time 0.872 (0.872) data 0.796 (0.796) loss 0.2042 (0.2042) acc 99.5050 (99.5050) loss_ce 0.1143 (0.1143) loss_constraint 0.0899 (0.0899) lr 3.5548e-02 eta 0:01:45
+epoch [180/300] batch [1/1] time 0.852 (0.852) data 0.781 (0.781) loss 0.1924 (0.1924) acc 100.0000 (100.0000) loss_ce 0.1025 (0.1025) loss_constraint 0.0899 (0.0899) lr 3.5048e-02 eta 0:01:42
+epoch [181/300] batch [1/1] time 0.916 (0.916) data 0.786 (0.786) loss 0.1972 (0.1972) acc 100.0000 (100.0000) loss_ce 0.1073 (0.1073) loss_constraint 0.0899 (0.0899) lr 3.4549e-02 eta 0:01:49
+epoch [182/300] batch [1/1] time 0.841 (0.841) data 0.768 (0.768) loss 0.1802 (0.1802) acc 100.0000 (100.0000) loss_ce 0.0902 (0.0902) loss_constraint 0.0899 (0.0899) lr 3.4052e-02 eta 0:01:39
+epoch [183/300] batch [1/1] time 0.955 (0.955) data 0.801 (0.801) loss 0.1842 (0.1842) acc 100.0000 (100.0000) loss_ce 0.0943 (0.0943) loss_constraint 0.0899 (0.0899) lr 3.3557e-02 eta 0:01:51
+epoch [184/300] batch [1/1] time 0.852 (0.852) data 0.780 (0.780) loss 0.1883 (0.1883) acc 100.0000 (100.0000) loss_ce 0.0984 (0.0984) loss_constraint 0.0899 (0.0899) lr 3.3063e-02 eta 0:01:38
+epoch [185/300] batch [1/1] time 0.890 (0.890) data 0.818 (0.818) loss 0.1802 (0.1802) acc 100.0000 (100.0000) loss_ce 0.0903 (0.0903) loss_constraint 0.0899 (0.0899) lr 3.2571e-02 eta 0:01:42
+epoch [186/300] batch [1/1] time 0.863 (0.863) data 0.791 (0.791) loss 0.1851 (0.1851) acc 100.0000 (100.0000) loss_ce 0.0952 (0.0952) loss_constraint 0.0899 (0.0899) lr 3.2082e-02 eta 0:01:38
+epoch [187/300] batch [1/1] time 0.866 (0.866) data 0.795 (0.795) loss 0.1700 (0.1700) acc 100.0000 (100.0000) loss_ce 0.0801 (0.0801) loss_constraint 0.0899 (0.0899) lr 3.1594e-02 eta 0:01:37
+epoch [188/300] batch [1/1] time 0.953 (0.953) data 0.808 (0.808) loss 0.1961 (0.1961) acc 100.0000 (100.0000) loss_ce 0.1062 (0.1062) loss_constraint 0.0899 (0.0899) lr 3.1108e-02 eta 0:01:46
+epoch [189/300] batch [1/1] time 0.874 (0.874) data 0.802 (0.802) loss 0.1815 (0.1815) acc 100.0000 (100.0000) loss_ce 0.0916 (0.0916) loss_constraint 0.0899 (0.0899) lr 3.0624e-02 eta 0:01:36
+epoch [190/300] batch [1/1] time 0.875 (0.875) data 0.803 (0.803) loss 0.1897 (0.1897) acc 100.0000 (100.0000) loss_ce 0.0998 (0.0998) loss_constraint 0.0899 (0.0899) lr 3.0143e-02 eta 0:01:36
+epoch [191/300] batch [1/1] time 0.867 (0.867) data 0.795 (0.795) loss 0.2033 (0.2033) acc 99.0099 (99.0099) loss_ce 0.1135 (0.1135) loss_constraint 0.0899 (0.0899) lr 2.9663e-02 eta 0:01:34
+epoch [192/300] batch [1/1] time 0.913 (0.913) data 0.798 (0.798) loss 0.1997 (0.1997) acc 99.0099 (99.0099) loss_ce 0.1098 (0.1098) loss_constraint 0.0899 (0.0899) lr 2.9186e-02 eta 0:01:38
+epoch [193/300] batch [1/1] time 0.844 (0.844) data 0.773 (0.773) loss 0.2041 (0.2041) acc 98.5149 (98.5149) loss_ce 0.1142 (0.1142) loss_constraint 0.0899 (0.0899) lr 2.8711e-02 eta 0:01:30
+epoch [194/300] batch [1/1] time 0.794 (0.794) data 0.723 (0.723) loss 0.1887 (0.1887) acc 99.5050 (99.5050) loss_ce 0.0989 (0.0989) loss_constraint 0.0899 (0.0899) lr 2.8238e-02 eta 0:01:24
+epoch [195/300] batch [1/1] time 0.805 (0.805) data 0.734 (0.734) loss 0.1817 (0.1817) acc 100.0000 (100.0000) loss_ce 0.0919 (0.0919) loss_constraint 0.0899 (0.0899) lr 2.7768e-02 eta 0:01:24
+epoch [196/300] batch [1/1] time 0.897 (0.897) data 0.825 (0.825) loss 0.1748 (0.1748) acc 100.0000 (100.0000) loss_ce 0.0849 (0.0849) loss_constraint 0.0899 (0.0899) lr 2.7300e-02 eta 0:01:33
+epoch [197/300] batch [1/1] time 0.879 (0.879) data 0.807 (0.807) loss 0.1708 (0.1708) acc 100.0000 (100.0000) loss_ce 0.0810 (0.0810) loss_constraint 0.0899 (0.0899) lr 2.6835e-02 eta 0:01:30
+epoch [198/300] batch [1/1] time 0.883 (0.883) data 0.811 (0.811) loss 0.1870 (0.1870) acc 99.5050 (99.5050) loss_ce 0.0971 (0.0971) loss_constraint 0.0899 (0.0899) lr 2.6372e-02 eta 0:01:30
+epoch [199/300] batch [1/1] time 0.930 (0.930) data 0.858 (0.858) loss 0.1826 (0.1826) acc 100.0000 (100.0000) loss_ce 0.0927 (0.0927) loss_constraint 0.0899 (0.0899) lr 2.5912e-02 eta 0:01:33
+epoch [200/300] batch [1/1] time 0.939 (0.939) data 0.784 (0.784) loss 0.1713 (0.1713) acc 100.0000 (100.0000) loss_ce 0.0815 (0.0815) loss_constraint 0.0899 (0.0899) lr 2.5455e-02 eta 0:01:33
+epoch [201/300] batch [1/1] time 0.886 (0.886) data 0.814 (0.814) loss 0.1873 (0.1873) acc 100.0000 (100.0000) loss_ce 0.0975 (0.0975) loss_constraint 0.0899 (0.0899) lr 2.5000e-02 eta 0:01:27
+epoch [202/300] batch [1/1] time 0.964 (0.964) data 0.810 (0.810) loss 0.1952 (0.1952) acc 99.5050 (99.5050) loss_ce 0.1053 (0.1053) loss_constraint 0.0899 (0.0899) lr 2.4548e-02 eta 0:01:34
+epoch [203/300] batch [1/1] time 0.888 (0.888) data 0.816 (0.816) loss 0.1914 (0.1914) acc 99.0099 (99.0099) loss_ce 0.1015 (0.1015) loss_constraint 0.0898 (0.0898) lr 2.4099e-02 eta 0:01:26
+epoch [204/300] batch [1/1] time 0.951 (0.951) data 0.797 (0.797) loss 0.1737 (0.1737) acc 100.0000 (100.0000) loss_ce 0.0839 (0.0839) loss_constraint 0.0898 (0.0898) lr 2.3652e-02 eta 0:01:31
+epoch [205/300] batch [1/1] time 0.849 (0.849) data 0.777 (0.777) loss 0.2091 (0.2091) acc 99.5050 (99.5050) loss_ce 0.1193 (0.1193) loss_constraint 0.0898 (0.0898) lr 2.3209e-02 eta 0:01:20
+epoch [206/300] batch [1/1] time 0.927 (0.927) data 0.781 (0.781) loss 0.1941 (0.1941) acc 99.5050 (99.5050) loss_ce 0.1043 (0.1043) loss_constraint 0.0898 (0.0898) lr 2.2768e-02 eta 0:01:27
+epoch [207/300] batch [1/1] time 0.819 (0.819) data 0.747 (0.747) loss 0.1913 (0.1913) acc 99.5050 (99.5050) loss_ce 0.1015 (0.1015) loss_constraint 0.0898 (0.0898) lr 2.2330e-02 eta 0:01:16
+epoch [208/300] batch [1/1] time 1.002 (1.002) data 0.856 (0.856) loss 0.1886 (0.1886) acc 99.5050 (99.5050) loss_ce 0.0988 (0.0988) loss_constraint 0.0898 (0.0898) lr 2.1896e-02 eta 0:01:32
+epoch [209/300] batch [1/1] time 0.875 (0.875) data 0.803 (0.803) loss 0.1796 (0.1796) acc 100.0000 (100.0000) loss_ce 0.0898 (0.0898) loss_constraint 0.0898 (0.0898) lr 2.1464e-02 eta 0:01:19
+epoch [210/300] batch [1/1] time 0.858 (0.858) data 0.786 (0.786) loss 0.1861 (0.1861) acc 99.5050 (99.5050) loss_ce 0.0963 (0.0963) loss_constraint 0.0898 (0.0898) lr 2.1036e-02 eta 0:01:17
+epoch [211/300] batch [1/1] time 0.894 (0.894) data 0.822 (0.822) loss 0.1693 (0.1693) acc 100.0000 (100.0000) loss_ce 0.0795 (0.0795) loss_constraint 0.0898 (0.0898) lr 2.0611e-02 eta 0:01:19
+epoch [212/300] batch [1/1] time 0.928 (0.928) data 0.818 (0.818) loss 0.1787 (0.1787) acc 100.0000 (100.0000) loss_ce 0.0889 (0.0889) loss_constraint 0.0898 (0.0898) lr 2.0189e-02 eta 0:01:21
+epoch [213/300] batch [1/1] time 0.883 (0.883) data 0.811 (0.811) loss 0.1961 (0.1961) acc 99.5050 (99.5050) loss_ce 0.1063 (0.1063) loss_constraint 0.0898 (0.0898) lr 1.9770e-02 eta 0:01:16
+epoch [214/300] batch [1/1] time 0.923 (0.923) data 0.809 (0.809) loss 0.1779 (0.1779) acc 100.0000 (100.0000) loss_ce 0.0881 (0.0881) loss_constraint 0.0898 (0.0898) lr 1.9355e-02 eta 0:01:19
+epoch [215/300] batch [1/1] time 0.901 (0.901) data 0.830 (0.830) loss 0.2225 (0.2225) acc 98.5149 (98.5149) loss_ce 0.1327 (0.1327) loss_constraint 0.0898 (0.0898) lr 1.8943e-02 eta 0:01:16
+epoch [216/300] batch [1/1] time 0.966 (0.966) data 0.816 (0.816) loss 0.2093 (0.2093) acc 99.0099 (99.0099) loss_ce 0.1195 (0.1195) loss_constraint 0.0898 (0.0898) lr 1.8534e-02 eta 0:01:21
+epoch [217/300] batch [1/1] time 0.860 (0.860) data 0.788 (0.788) loss 0.1956 (0.1956) acc 99.5050 (99.5050) loss_ce 0.1058 (0.1058) loss_constraint 0.0898 (0.0898) lr 1.8129e-02 eta 0:01:11
+epoch [218/300] batch [1/1] time 0.944 (0.944) data 0.796 (0.796) loss 0.1948 (0.1948) acc 99.5050 (99.5050) loss_ce 0.1050 (0.1050) loss_constraint 0.0898 (0.0898) lr 1.7727e-02 eta 0:01:17
+epoch [219/300] batch [1/1] time 0.866 (0.866) data 0.794 (0.794) loss 0.1874 (0.1874) acc 100.0000 (100.0000) loss_ce 0.0976 (0.0976) loss_constraint 0.0898 (0.0898) lr 1.7329e-02 eta 0:01:10
+epoch [220/300] batch [1/1] time 0.895 (0.895) data 0.823 (0.823) loss 0.1928 (0.1928) acc 99.5050 (99.5050) loss_ce 0.1030 (0.1030) loss_constraint 0.0898 (0.0898) lr 1.6934e-02 eta 0:01:11
+epoch [221/300] batch [1/1] time 0.882 (0.882) data 0.810 (0.810) loss 0.1883 (0.1883) acc 99.0099 (99.0099) loss_ce 0.0985 (0.0985) loss_constraint 0.0898 (0.0898) lr 1.6543e-02 eta 0:01:09
+epoch [222/300] batch [1/1] time 0.902 (0.902) data 0.786 (0.786) loss 0.2103 (0.2103) acc 99.0099 (99.0099) loss_ce 0.1205 (0.1205) loss_constraint 0.0898 (0.0898) lr 1.6156e-02 eta 0:01:10
+epoch [223/300] batch [1/1] time 0.923 (0.923) data 0.851 (0.851) loss 0.1791 (0.1791) acc 100.0000 (100.0000) loss_ce 0.0893 (0.0893) loss_constraint 0.0898 (0.0898) lr 1.5773e-02 eta 0:01:11
+epoch [224/300] batch [1/1] time 0.892 (0.892) data 0.820 (0.820) loss 0.1951 (0.1951) acc 100.0000 (100.0000) loss_ce 0.1053 (0.1053) loss_constraint 0.0898 (0.0898) lr 1.5393e-02 eta 0:01:07
+epoch [225/300] batch [1/1] time 0.858 (0.858) data 0.784 (0.784) loss 0.1856 (0.1856) acc 99.5050 (99.5050) loss_ce 0.0957 (0.0957) loss_constraint 0.0898 (0.0898) lr 1.5017e-02 eta 0:01:04
+epoch [226/300] batch [1/1] time 0.906 (0.906) data 0.834 (0.834) loss 0.1962 (0.1962) acc 100.0000 (100.0000) loss_ce 0.1064 (0.1064) loss_constraint 0.0898 (0.0898) lr 1.4645e-02 eta 0:01:07
+epoch [227/300] batch [1/1] time 0.882 (0.882) data 0.810 (0.810) loss 0.1898 (0.1898) acc 100.0000 (100.0000) loss_ce 0.0999 (0.0999) loss_constraint 0.0898 (0.0898) lr 1.4276e-02 eta 0:01:04
+epoch [228/300] batch [1/1] time 0.876 (0.876) data 0.805 (0.805) loss 0.2178 (0.2178) acc 99.0099 (99.0099) loss_ce 0.1280 (0.1280) loss_constraint 0.0898 (0.0898) lr 1.3912e-02 eta 0:01:03
+epoch [229/300] batch [1/1] time 0.879 (0.879) data 0.807 (0.807) loss 0.1894 (0.1894) acc 100.0000 (100.0000) loss_ce 0.0995 (0.0995) loss_constraint 0.0899 (0.0899) lr 1.3552e-02 eta 0:01:02
+epoch [230/300] batch [1/1] time 0.873 (0.873) data 0.801 (0.801) loss 0.1918 (0.1918) acc 99.0099 (99.0099) loss_ce 0.1019 (0.1019) loss_constraint 0.0899 (0.0899) lr 1.3195e-02 eta 0:01:01
+epoch [231/300] batch [1/1] time 0.835 (0.835) data 0.763 (0.763) loss 0.1837 (0.1837) acc 100.0000 (100.0000) loss_ce 0.0938 (0.0938) loss_constraint 0.0899 (0.0899) lr 1.2843e-02 eta 0:00:57
+epoch [232/300] batch [1/1] time 0.869 (0.869) data 0.797 (0.797) loss 0.1878 (0.1878) acc 100.0000 (100.0000) loss_ce 0.0980 (0.0980) loss_constraint 0.0899 (0.0899) lr 1.2494e-02 eta 0:00:59
+epoch [233/300] batch [1/1] time 0.951 (0.951) data 0.797 (0.797) loss 0.1838 (0.1838) acc 100.0000 (100.0000) loss_ce 0.0939 (0.0939) loss_constraint 0.0899 (0.0899) lr 1.2150e-02 eta 0:01:03
+epoch [234/300] batch [1/1] time 0.876 (0.876) data 0.804 (0.804) loss 0.1797 (0.1797) acc 100.0000 (100.0000) loss_ce 0.0898 (0.0898) loss_constraint 0.0899 (0.0899) lr 1.1810e-02 eta 0:00:57
+epoch [235/300] batch [1/1] time 0.989 (0.989) data 0.833 (0.833) loss 0.1913 (0.1913) acc 99.5050 (99.5050) loss_ce 0.1014 (0.1014) loss_constraint 0.0899 (0.0899) lr 1.1474e-02 eta 0:01:04
+epoch [236/300] batch [1/1] time 0.940 (0.940) data 0.868 (0.868) loss 0.1824 (0.1824) acc 100.0000 (100.0000) loss_ce 0.0925 (0.0925) loss_constraint 0.0899 (0.0899) lr 1.1143e-02 eta 0:01:00
+epoch [237/300] batch [1/1] time 0.902 (0.902) data 0.830 (0.830) loss 0.2044 (0.2044) acc 99.5050 (99.5050) loss_ce 0.1145 (0.1145) loss_constraint 0.0899 (0.0899) lr 1.0815e-02 eta 0:00:56
+epoch [238/300] batch [1/1] time 0.975 (0.975) data 0.830 (0.830) loss 0.1832 (0.1832) acc 100.0000 (100.0000) loss_ce 0.0933 (0.0933) loss_constraint 0.0899 (0.0899) lr 1.0492e-02 eta 0:01:00
+epoch [239/300] batch [1/1] time 0.878 (0.878) data 0.805 (0.805) loss 0.1779 (0.1779) acc 100.0000 (100.0000) loss_ce 0.0880 (0.0880) loss_constraint 0.0899 (0.0899) lr 1.0174e-02 eta 0:00:53
+epoch [240/300] batch [1/1] time 0.865 (0.865) data 0.793 (0.793) loss 0.1786 (0.1786) acc 100.0000 (100.0000) loss_ce 0.0887 (0.0887) loss_constraint 0.0899 (0.0899) lr 9.8591e-03 eta 0:00:51
+epoch [241/300] batch [1/1] time 0.875 (0.875) data 0.803 (0.803) loss 0.1895 (0.1895) acc 99.0099 (99.0099) loss_ce 0.0996 (0.0996) loss_constraint 0.0899 (0.0899) lr 9.5492e-03 eta 0:00:51
+epoch [242/300] batch [1/1] time 0.864 (0.864) data 0.793 (0.793) loss 0.1851 (0.1851) acc 100.0000 (100.0000) loss_ce 0.0952 (0.0952) loss_constraint 0.0899 (0.0899) lr 9.2436e-03 eta 0:00:50
+epoch [243/300] batch [1/1] time 0.888 (0.888) data 0.816 (0.816) loss 0.2015 (0.2015) acc 99.5050 (99.5050) loss_ce 0.1116 (0.1116) loss_constraint 0.0899 (0.0899) lr 8.9425e-03 eta 0:00:50
+epoch [244/300] batch [1/1] time 0.880 (0.880) data 0.808 (0.808) loss 0.2129 (0.2129) acc 98.0198 (98.0198) loss_ce 0.1230 (0.1230) loss_constraint 0.0899 (0.0899) lr 8.6460e-03 eta 0:00:49
+epoch [245/300] batch [1/1] time 0.828 (0.828) data 0.756 (0.756) loss 0.1992 (0.1992) acc 99.0099 (99.0099) loss_ce 0.1093 (0.1093) loss_constraint 0.0899 (0.0899) lr 8.3539e-03 eta 0:00:45
+epoch [246/300] batch [1/1] time 0.962 (0.962) data 0.817 (0.817) loss 0.1909 (0.1909) acc 99.5050 (99.5050) loss_ce 0.1010 (0.1010) loss_constraint 0.0899 (0.0899) lr 8.0665e-03 eta 0:00:51
+epoch [247/300] batch [1/1] time 0.861 (0.861) data 0.789 (0.789) loss 0.1753 (0.1753) acc 100.0000 (100.0000) loss_ce 0.0854 (0.0854) loss_constraint 0.0899 (0.0899) lr 7.7836e-03 eta 0:00:45
+epoch [248/300] batch [1/1] time 0.891 (0.891) data 0.819 (0.819) loss 0.1967 (0.1967) acc 100.0000 (100.0000) loss_ce 0.1068 (0.1068) loss_constraint 0.0899 (0.0899) lr 7.5054e-03 eta 0:00:46
+epoch [249/300] batch [1/1] time 0.887 (0.887) data 0.815 (0.815) loss 0.2135 (0.2135) acc 99.5050 (99.5050) loss_ce 0.1236 (0.1236) loss_constraint 0.0899 (0.0899) lr 7.2318e-03 eta 0:00:45
+epoch [250/300] batch [1/1] time 0.948 (0.948) data 0.794 (0.794) loss 0.1891 (0.1891) acc 100.0000 (100.0000) loss_ce 0.0992 (0.0992) loss_constraint 0.0899 (0.0899) lr 6.9629e-03 eta 0:00:47
+epoch [251/300] batch [1/1] time 0.884 (0.884) data 0.813 (0.813) loss 0.1754 (0.1754) acc 100.0000 (100.0000) loss_ce 0.0855 (0.0855) loss_constraint 0.0899 (0.0899) lr 6.6987e-03 eta 0:00:43
+epoch [252/300] batch [1/1] time 0.952 (0.952) data 0.808 (0.808) loss 0.1841 (0.1841) acc 100.0000 (100.0000) loss_ce 0.0941 (0.0941) loss_constraint 0.0899 (0.0899) lr 6.4393e-03 eta 0:00:45
+epoch [253/300] batch [1/1] time 0.887 (0.887) data 0.816 (0.816) loss 0.1899 (0.1899) acc 99.5050 (99.5050) loss_ce 0.1000 (0.1000) loss_constraint 0.0899 (0.0899) lr 6.1847e-03 eta 0:00:41
+epoch [254/300] batch [1/1] time 0.937 (0.937) data 0.818 (0.818) loss 0.1729 (0.1729) acc 100.0000 (100.0000) loss_ce 0.0830 (0.0830) loss_constraint 0.0899 (0.0899) lr 5.9348e-03 eta 0:00:43
+epoch [255/300] batch [1/1] time 0.843 (0.843) data 0.772 (0.772) loss 0.1944 (0.1944) acc 99.5050 (99.5050) loss_ce 0.1045 (0.1045) loss_constraint 0.0899 (0.0899) lr 5.6898e-03 eta 0:00:37
+epoch [256/300] batch [1/1] time 0.971 (0.971) data 0.840 (0.840) loss 0.1870 (0.1870) acc 100.0000 (100.0000) loss_ce 0.0971 (0.0971) loss_constraint 0.0899 (0.0899) lr 5.4497e-03 eta 0:00:42
+epoch [257/300] batch [1/1] time 0.884 (0.884) data 0.812 (0.812) loss 0.1737 (0.1737) acc 100.0000 (100.0000) loss_ce 0.0838 (0.0838) loss_constraint 0.0899 (0.0899) lr 5.2144e-03 eta 0:00:37
+epoch [258/300] batch [1/1] time 0.911 (0.911) data 0.808 (0.808) loss 0.1890 (0.1890) acc 99.5050 (99.5050) loss_ce 0.0991 (0.0991) loss_constraint 0.0899 (0.0899) lr 4.9841e-03 eta 0:00:38
+epoch [259/300] batch [1/1] time 0.961 (0.961) data 0.812 (0.812) loss 0.1903 (0.1903) acc 100.0000 (100.0000) loss_ce 0.1004 (0.1004) loss_constraint 0.0899 (0.0899) lr 4.7586e-03 eta 0:00:39
+epoch [260/300] batch [1/1] time 0.867 (0.867) data 0.795 (0.795) loss 0.1916 (0.1916) acc 100.0000 (100.0000) loss_ce 0.1017 (0.1017) loss_constraint 0.0899 (0.0899) lr 4.5382e-03 eta 0:00:34
+epoch [261/300] batch [1/1] time 0.891 (0.891) data 0.819 (0.819) loss 0.1812 (0.1812) acc 100.0000 (100.0000) loss_ce 0.0912 (0.0912) loss_constraint 0.0899 (0.0899) lr 4.3227e-03 eta 0:00:34
+epoch [262/300] batch [1/1] time 0.857 (0.857) data 0.786 (0.786) loss 0.1871 (0.1871) acc 100.0000 (100.0000) loss_ce 0.0972 (0.0972) loss_constraint 0.0899 (0.0899) lr 4.1123e-03 eta 0:00:32
+epoch [263/300] batch [1/1] time 0.874 (0.874) data 0.802 (0.802) loss 0.1904 (0.1904) acc 99.5050 (99.5050) loss_ce 0.1005 (0.1005) loss_constraint 0.0899 (0.0899) lr 3.9068e-03 eta 0:00:32
+epoch [264/300] batch [1/1] time 0.916 (0.916) data 0.844 (0.844) loss 0.1881 (0.1881) acc 99.0099 (99.0099) loss_ce 0.0982 (0.0982) loss_constraint 0.0899 (0.0899) lr 3.7065e-03 eta 0:00:32
+epoch [265/300] batch [1/1] time 0.891 (0.891) data 0.819 (0.819) loss 0.1828 (0.1828) acc 100.0000 (100.0000) loss_ce 0.0929 (0.0929) loss_constraint 0.0899 (0.0899) lr 3.5112e-03 eta 0:00:31
+epoch [266/300] batch [1/1] time 0.862 (0.862) data 0.790 (0.790) loss 0.1736 (0.1736) acc 100.0000 (100.0000) loss_ce 0.0837 (0.0837) loss_constraint 0.0899 (0.0899) lr 3.3210e-03 eta 0:00:29
+epoch [267/300] batch [1/1] time 0.863 (0.863) data 0.791 (0.791) loss 0.1782 (0.1782) acc 100.0000 (100.0000) loss_ce 0.0883 (0.0883) loss_constraint 0.0899 (0.0899) lr 3.1359e-03 eta 0:00:28
+epoch [268/300] batch [1/1] time 0.876 (0.876) data 0.804 (0.804) loss 0.1829 (0.1829) acc 100.0000 (100.0000) loss_ce 0.0930 (0.0930) loss_constraint 0.0899 (0.0899) lr 2.9560e-03 eta 0:00:28
+epoch [269/300] batch [1/1] time 0.849 (0.849) data 0.778 (0.778) loss 0.1916 (0.1916) acc 100.0000 (100.0000) loss_ce 0.1017 (0.1017) loss_constraint 0.0899 (0.0899) lr 2.7812e-03 eta 0:00:26
+epoch [270/300] batch [1/1] time 0.974 (0.974) data 0.820 (0.820) loss 0.1756 (0.1756) acc 100.0000 (100.0000) loss_ce 0.0857 (0.0857) loss_constraint 0.0899 (0.0899) lr 2.6116e-03 eta 0:00:29
+epoch [271/300] batch [1/1] time 0.902 (0.902) data 0.830 (0.830) loss 0.1873 (0.1873) acc 99.5050 (99.5050) loss_ce 0.0973 (0.0973) loss_constraint 0.0899 (0.0899) lr 2.4472e-03 eta 0:00:26
+epoch [272/300] batch [1/1] time 0.894 (0.894) data 0.822 (0.822) loss 0.1841 (0.1841) acc 99.5050 (99.5050) loss_ce 0.0942 (0.0942) loss_constraint 0.0899 (0.0899) lr 2.2880e-03 eta 0:00:25
+epoch [273/300] batch [1/1] time 0.872 (0.872) data 0.801 (0.801) loss 0.1860 (0.1860) acc 100.0000 (100.0000) loss_ce 0.0961 (0.0961) loss_constraint 0.0899 (0.0899) lr 2.1340e-03 eta 0:00:23
+epoch [274/300] batch [1/1] time 0.905 (0.905) data 0.807 (0.807) loss 0.1774 (0.1774) acc 100.0000 (100.0000) loss_ce 0.0875 (0.0875) loss_constraint 0.0899 (0.0899) lr 1.9853e-03 eta 0:00:23
+epoch [275/300] batch [1/1] time 0.869 (0.869) data 0.797 (0.797) loss 0.1902 (0.1902) acc 99.5050 (99.5050) loss_ce 0.1003 (0.1003) loss_constraint 0.0899 (0.0899) lr 1.8419e-03 eta 0:00:21
+epoch [276/300] batch [1/1] time 0.870 (0.870) data 0.797 (0.797) loss 0.1793 (0.1793) acc 99.5050 (99.5050) loss_ce 0.0894 (0.0894) loss_constraint 0.0899 (0.0899) lr 1.7037e-03 eta 0:00:20
+epoch [277/300] batch [1/1] time 0.891 (0.891) data 0.819 (0.819) loss 0.1736 (0.1736) acc 100.0000 (100.0000) loss_ce 0.0837 (0.0837) loss_constraint 0.0899 (0.0899) lr 1.5708e-03 eta 0:00:20
+epoch [278/300] batch [1/1] time 0.837 (0.837) data 0.765 (0.765) loss 0.1828 (0.1828) acc 100.0000 (100.0000) loss_ce 0.0929 (0.0929) loss_constraint 0.0899 (0.0899) lr 1.4433e-03 eta 0:00:18
+epoch [279/300] batch [1/1] time 0.862 (0.862) data 0.790 (0.790) loss 0.1880 (0.1880) acc 99.0099 (99.0099) loss_ce 0.0981 (0.0981) loss_constraint 0.0899 (0.0899) lr 1.3211e-03 eta 0:00:18
+epoch [280/300] batch [1/1] time 0.880 (0.880) data 0.808 (0.808) loss 0.1892 (0.1892) acc 99.5050 (99.5050) loss_ce 0.0993 (0.0993) loss_constraint 0.0899 (0.0899) lr 1.2042e-03 eta 0:00:17
+epoch [281/300] batch [1/1] time 0.830 (0.830) data 0.759 (0.759) loss 0.1871 (0.1871) acc 99.5050 (99.5050) loss_ce 0.0972 (0.0972) loss_constraint 0.0899 (0.0899) lr 1.0926e-03 eta 0:00:15
+epoch [282/300] batch [1/1] time 0.884 (0.884) data 0.812 (0.812) loss 0.1817 (0.1817) acc 100.0000 (100.0000) loss_ce 0.0918 (0.0918) loss_constraint 0.0899 (0.0899) lr 9.8644e-04 eta 0:00:15
+epoch [283/300] batch [1/1] time 0.883 (0.883) data 0.811 (0.811) loss 0.1871 (0.1871) acc 99.5050 (99.5050) loss_ce 0.0972 (0.0972) loss_constraint 0.0899 (0.0899) lr 8.8564e-04 eta 0:00:15
+epoch [284/300] batch [1/1] time 0.912 (0.912) data 0.840 (0.840) loss 0.1754 (0.1754) acc 100.0000 (100.0000) loss_ce 0.0855 (0.0855) loss_constraint 0.0899 (0.0899) lr 7.9022e-04 eta 0:00:14
+epoch [285/300] batch [1/1] time 0.862 (0.862) data 0.790 (0.790) loss 0.1949 (0.1949) acc 99.5050 (99.5050) loss_ce 0.1050 (0.1050) loss_constraint 0.0899 (0.0899) lr 7.0020e-04 eta 0:00:12
+epoch [286/300] batch [1/1] time 0.846 (0.846) data 0.775 (0.775) loss 0.1823 (0.1823) acc 100.0000 (100.0000) loss_ce 0.0924 (0.0924) loss_constraint 0.0899 (0.0899) lr 6.1558e-04 eta 0:00:11
+epoch [287/300] batch [1/1] time 0.872 (0.872) data 0.800 (0.800) loss 0.1899 (0.1899) acc 100.0000 (100.0000) loss_ce 0.1000 (0.1000) loss_constraint 0.0899 (0.0899) lr 5.3638e-04 eta 0:00:11
+epoch [288/300] batch [1/1] time 0.873 (0.873) data 0.801 (0.801) loss 0.2024 (0.2024) acc 100.0000 (100.0000) loss_ce 0.1125 (0.1125) loss_constraint 0.0899 (0.0899) lr 4.6261e-04 eta 0:00:10
+epoch [289/300] batch [1/1] time 0.905 (0.905) data 0.828 (0.828) loss 0.1814 (0.1814) acc 100.0000 (100.0000) loss_ce 0.0915 (0.0915) loss_constraint 0.0899 (0.0899) lr 3.9426e-04 eta 0:00:09
+epoch [290/300] batch [1/1] time 0.861 (0.861) data 0.790 (0.790) loss 0.1886 (0.1886) acc 100.0000 (100.0000) loss_ce 0.0988 (0.0988) loss_constraint 0.0899 (0.0899) lr 3.3136e-04 eta 0:00:08
+epoch [291/300] batch [1/1] time 0.855 (0.855) data 0.784 (0.784) loss 0.2280 (0.2280) acc 98.5149 (98.5149) loss_ce 0.1381 (0.1381) loss_constraint 0.0899 (0.0899) lr 2.7391e-04 eta 0:00:07
+epoch [292/300] batch [1/1] time 0.836 (0.836) data 0.764 (0.764) loss 0.1955 (0.1955) acc 99.5050 (99.5050) loss_ce 0.1056 (0.1056) loss_constraint 0.0899 (0.0899) lr 2.2190e-04 eta 0:00:06
+epoch [293/300] batch [1/1] time 0.951 (0.951) data 0.806 (0.806) loss 0.1980 (0.1980) acc 98.5149 (98.5149) loss_ce 0.1081 (0.1081) loss_constraint 0.0899 (0.0899) lr 1.7536e-04 eta 0:00:06
+epoch [294/300] batch [1/1] time 0.867 (0.867) data 0.795 (0.795) loss 0.1910 (0.1910) acc 100.0000 (100.0000) loss_ce 0.1011 (0.1011) loss_constraint 0.0899 (0.0899) lr 1.3428e-04 eta 0:00:05
+epoch [295/300] batch [1/1] time 0.954 (0.954) data 0.827 (0.827) loss 0.1966 (0.1966) acc 99.5050 (99.5050) loss_ce 0.1067 (0.1067) loss_constraint 0.0899 (0.0899) lr 9.8664e-05 eta 0:00:04
+epoch [296/300] batch [1/1] time 0.867 (0.867) data 0.795 (0.795) loss 0.1897 (0.1897) acc 100.0000 (100.0000) loss_ce 0.0998 (0.0998) loss_constraint 0.0899 (0.0899) lr 6.8523e-05 eta 0:00:03
+epoch [297/300] batch [1/1] time 0.867 (0.867) data 0.795 (0.795) loss 0.1860 (0.1860) acc 100.0000 (100.0000) loss_ce 0.0961 (0.0961) loss_constraint 0.0899 (0.0899) lr 4.3858e-05 eta 0:00:02
+epoch [298/300] batch [1/1] time 0.873 (0.873) data 0.801 (0.801) loss 0.1802 (0.1802) acc 100.0000 (100.0000) loss_ce 0.0903 (0.0903) loss_constraint 0.0899 (0.0899) lr 2.4672e-05 eta 0:00:01
+epoch [299/300] batch [1/1] time 0.875 (0.875) data 0.803 (0.803) loss 0.1804 (0.1804) acc 100.0000 (100.0000) loss_ce 0.0905 (0.0905) loss_constraint 0.0899 (0.0899) lr 1.0966e-05 eta 0:00:00
+epoch [300/300] batch [1/1] time 0.887 (0.887) data 0.815 (0.815) loss 0.1911 (0.1911) acc 100.0000 (100.0000) loss_ce 0.1013 (0.1013) loss_constraint 0.0899 (0.0899) lr 2.7415e-06 eta 0:00:00
+[LightweightCheckpoint] filtered state_dict: 5/158 tensors, 0.40 MB / 329.19 MB
+[LightweightCheckpoint] saved to output_refactor/ClipAdapters/CLAP/FS/fewshot_train/ucf101/shots_2/ViT-B-16/seed3/refactor_model/model.pth.tar-300
 Finish training
 Deploy the last-epoch model
 Evaluate on the *test* set
 => result
 * total: 3,783
-* correct: 2,853
-* accuracy: 75.4%
-* error: 24.6%
-* macro_f1: 73.7%
+* correct: 2,861
+* accuracy: 75.6%
+* error: 24.4%
+* macro_f1: 73.8%
 => structured result
-* accuracy: 75.4163
-* error: 24.5837
-* macro_f1: 73.6990
-* nll: 0.8462
-* brier: 0.3309
-* ece: 3.0656
-=> temperature scaling: T = 0.999996
-* accuracy_calibrated: 75.4163
-* error_calibrated: 24.5837
-* macro_f1_calibrated: 73.6990
-* nll_calibrated: 0.8462
-* brier_calibrated: 0.3309
-* ece_calibrated: 3.0655
+* accuracy: 75.6278
+* error: 24.3722
+* macro_f1: 73.8197
+* nll: 0.8463
+* brier: 0.3312
+* ece: 3.0651
+=> temperature scaling: T = 0.995668
+* accuracy_calibrated: 75.6278
+* error_calibrated: 24.3722
+* macro_f1_calibrated: 73.8197
+* nll_calibrated: 0.8458
+* brier_calibrated: 0.3311
+* ece_calibrated: 3.2464
 Saved metrics JSON to output_refactor/ClipAdapters/CLAP/FS/fewshot_train/ucf101/shots_2/ViT-B-16/seed3/test_metrics.json
 Saved metrics CSV to output_refactor/ClipAdapters/CLAP/FS/fewshot_train/ucf101/shots_2/ViT-B-16/seed3/test_metrics.csv
 Saved calibration bins CSV to output_refactor/ClipAdapters/CLAP/FS/fewshot_train/ucf101/shots_2/ViT-B-16/seed3/test_calibration_bins.csv
 Saved calibrated metrics CSV to output_refactor/ClipAdapters/CLAP/FS/fewshot_train/ucf101/shots_2/ViT-B-16/seed3/test_metrics_calibrated.csv
 Saved calibrated calibration bins CSV to output_refactor/ClipAdapters/CLAP/FS/fewshot_train/ucf101/shots_2/ViT-B-16/seed3/test_calibration_bins_calibrated.csv
-Elapsed: 0:00:09
+Elapsed: 0:04:52
 
 ============================================================
-END: 2026-04-28 18:51:00
+END: 2026-04-29 05:32:08
 STATUS: SUCCESS
 ============================================================
