@@ -11,24 +11,29 @@ from .bayes_adapter import BayesAdapter
 
 class DreamBayesAdapter(BayesAdapter):
     """
-    DREAM-BayesAdapter v3, implemented in the existing ClipAdapters adapter tree.
+    DREAM-BayesAdapter v4.1.
 
-    Strict v3 semantics:
-      - BayesAdapter is the classifier-parameter uncertainty base.
-      - DREAM adds only a bounded, adaptive density-ratio log-prob residual.
-      - ID evidence R(z) and gate g(z) are returned for selective/OOD use only.
-      - No probability-space mixture g*p + (1-g)/K is applied.
+    Strict v4.1 semantics:
+      - BayesAdapter remains the classifier-parameter uncertainty base.
+      - The base classification logits at eval are posterior predictive
+        log-probabilities: b_k(z) = log E_W[softmax_k(logits(W))].
+      - DREAM fits a text-anchored hyperspherical tangent density-ratio module.
+      - Classification receives only a top-M bounded residual with one constant
+        lambda0 selected from support or fixed by config.
+      - ID evidence R(z) is decoupled and used only for selective ranking / OOD.
+      - No adaptive lambda(z) and no probability-space gate mixture are used.
 
-    Required model.py integration for exact fallback:
+    Required model.py integration:
       In the stochastic BayesAdapter branch, call bayes_base_logits_from_mc(logits_all)
-      when present. That makes the base logits equal to
-          log E_W[softmax(logits(W))]
-      at eval time, rather than E_W[logits(W)].
+      when present, and pass the resulting base logits into cache_logits(...,
+      base_logits=logits). This guarantees that top-M candidates are selected
+      from the same BayesAdapter posterior predictive base used by the final logits.
     """
 
-    # Keep this for the existing BayesAdapter KL/loss checks.
+    # Keep this value so ClipAdaptersModel._is_bayes_adapter() treats DREAM as a
+    # stochastic BayesAdapter branch and exposes Bayes KL / MC behavior.
     initialization_name = "BAYES_ADAPTER"
-    dream_initialization_name = "DREAM_BAYES_ADAPTER"
+    dream_initialization_name = "DREAM_BAYES_ADAPTER_V41"
     needs_support_features = True
 
     def __init__(self, cfg, clip_model, base_text_features: torch.Tensor):
@@ -37,48 +42,67 @@ class DreamBayesAdapter(BayesAdapter):
         cad = cfg.CLIP_ADAPTERS
         c, d = base_text_features.shape
 
-        self.dream_enabled = bool(getattr(cad, "DREAM_V3_ENABLED", getattr(cad, "DREAM_ENABLED", True)))
-        self.dream_rank = int(getattr(cad, "DREAM_V3_RANK", getattr(cad, "DREAM_RANK", 32)))
-        self.dream_chunk_classes = int(getattr(cad, "DREAM_V3_CHUNK_CLASSES", getattr(cad, "DREAM_CHUNK_CLASSES", 64)))
+        self.dream_enabled = bool(
+            getattr(cad, "DREAM_V41_ENABLED", getattr(cad, "DREAM_ENABLED", True))
+        )
+        self.dream_rank = int(getattr(cad, "DREAM_V41_RANK", getattr(cad, "DREAM_RANK", 32)))
+        self.dream_chunk_classes = int(
+            getattr(cad, "DREAM_V41_CHUNK_CLASSES", getattr(cad, "DREAM_CHUNK_CLASSES", 64))
+        )
 
-        self.eps_theta = float(getattr(cad, "DREAM_V3_EPS_THETA", 1.0e-6))
-        self.eps_p = float(getattr(cad, "DREAM_V3_EPS_P", 1.0e-12))
-        self.eps_sigma = float(getattr(cad, "DREAM_V3_EPS_SIGMA", 1.0e-5))
-        self.eps_d = float(getattr(cad, "DREAM_V3_EPS_D", 1.0e-6))
-        self.eps_r = float(getattr(cad, "DREAM_V3_EPS_R", 1.0e-6))
-        self.delta = float(getattr(cad, "DREAM_V3_DELTA", 1.0e-5))
+        self.eps_theta = float(getattr(cad, "DREAM_V41_EPS_THETA", 1.0e-6))
+        self.eps_p = float(getattr(cad, "DREAM_V41_EPS_P", 1.0e-12))
+        self.eps_sigma = float(getattr(cad, "DREAM_V41_EPS_SIGMA", 1.0e-5))
+        self.eps_d = float(getattr(cad, "DREAM_V41_EPS_D", 1.0e-6))
+        self.delta = float(getattr(cad, "DREAM_V41_DELTA", 1.0e-5))
 
-        self.nu_c = float(getattr(cad, "DREAM_V3_NU_C", getattr(cad, "DREAM_TEXT_PRIOR_STRENGTH", 4.0)))
-        self.nu_mu = float(getattr(cad, "DREAM_V3_NU_MU", getattr(cad, "DREAM_MEAN_PRIOR_STRENGTH", 4.0)))
-        self.nu_sigma = float(getattr(cad, "DREAM_V3_NU_SIGMA", getattr(cad, "DREAM_COV_PRIOR_STRENGTH", 16.0)))
+        self.nu_c = float(
+            getattr(cad, "DREAM_V41_NU_C", getattr(cad, "DREAM_TEXT_PRIOR_STRENGTH", 4.0))
+        )
+        self.nu_mu = float(
+            getattr(cad, "DREAM_V41_NU_MU", getattr(cad, "DREAM_MEAN_PRIOR_STRENGTH", 4.0))
+        )
+        self.nu_sigma = float(
+            getattr(cad, "DREAM_V41_NU_SIGMA", getattr(cad, "DREAM_COV_PRIOR_STRENGTH", 16.0))
+        )
 
-        self.alpha_v = float(getattr(cad, "DREAM_V3_ALPHA_V", 1.0))
-        self.alpha_t = float(getattr(cad, "DREAM_V3_ALPHA_T", 0.5))
+        self.alpha_t = float(getattr(cad, "DREAM_V41_ALPHA_T", 0.5))
 
-        self.rho0 = float(getattr(cad, "DREAM_V3_RHO0", 0.05))
-        self.rho_min = float(getattr(cad, "DREAM_V3_RHO_MIN", 0.05))
-        self.gamma_c = float(getattr(cad, "DREAM_V3_GAMMA_C", 2.0))
-        self.gamma_q = float(getattr(cad, "DREAM_V3_GAMMA_Q", 4.0))
+        self.rho0 = float(getattr(cad, "DREAM_V41_RHO0", 0.1))
+        self.rho_min = float(getattr(cad, "DREAM_V41_RHO_MIN", 0.1))
+        self.gamma_c = float(getattr(cad, "DREAM_V41_GAMMA_C", 2.0))
+        self.gamma_q = float(getattr(cad, "DREAM_V41_GAMMA_Q", 4.0))
         if not (self.gamma_q > self.gamma_c):
             raise ValueError(
-                f"DREAM v3 requires DREAM_V3_GAMMA_Q > DREAM_V3_GAMMA_C, "
+                f"DREAM v4.1 requires DREAM_V41_GAMMA_Q > DREAM_V41_GAMMA_C, "
                 f"got gamma_q={self.gamma_q}, gamma_c={self.gamma_c}"
             )
 
-        self.c_minus = float(getattr(cad, "DREAM_V3_C_MINUS", 1.5))
-        self.c_plus = float(getattr(cad, "DREAM_V3_C_PLUS", 2.0))
-        self.temperature = float(getattr(cad, "DREAM_V3_TEMPERATURE", 1.0))
+        self.top_m = int(getattr(cad, "DREAM_V41_TOP_M", -1))
+        self.residual_clip = float(getattr(cad, "DREAM_V41_RESIDUAL_CLIP", 1.5))
 
-        self.manual_lambda = float(getattr(cad, "DREAM_V3_LAMBDA", getattr(cad, "DREAM_LAMBDA", -1.0)))
-        self.lambda_beta = float(getattr(cad, "DREAM_V3_LAMBDA_BETA", getattr(cad, "DREAM_LAMBDA_BETA", 0.01)))
-        self.lambda_margin = float(getattr(cad, "DREAM_V3_LAMBDA_MARGIN", 0.0))
-        self.density_on_train = bool(getattr(cad, "DREAM_V3_DENSITY_ON_TRAIN", getattr(cad, "DREAM_DENSITY_ON_TRAIN", False)))
-        self.posterior_base_on_train = bool(getattr(cad, "DREAM_V3_POSTERIOR_BASE_ON_TRAIN", False))
-        self.temperature_on_train = bool(getattr(cad, "DREAM_V3_TEMPERATURE_ON_TRAIN", False))
+        self.manual_lambda = float(
+            getattr(cad, "DREAM_V41_LAMBDA", getattr(cad, "DREAM_LAMBDA", -1.0))
+        )
+        self.lambda_grid = self._parse_grid(
+            getattr(cad, "DREAM_V41_LAMBDA_GRID", getattr(cad, "DREAM_LAMBDA_GRID", [0.0, 0.25, 0.5]))
+        )
+        self.density_on_train = bool(
+            getattr(cad, "DREAM_V41_DENSITY_ON_TRAIN", getattr(cad, "DREAM_DENSITY_ON_TRAIN", False))
+        )
+        self.posterior_base_on_train = bool(getattr(cad, "DREAM_V41_POSTERIOR_BASE_ON_TRAIN", False))
+        self.temperature_on_train = bool(getattr(cad, "DREAM_V41_TEMPERATURE_ON_TRAIN", False))
+        self.temperature = float(getattr(cad, "DREAM_V41_TEMPERATURE", 1.0))
 
-        self.gate_a = float(getattr(cad, "DREAM_V3_GATE_A", getattr(cad, "DREAM_GATE_A", 5.0)))
-        self.max_all_pairs = int(getattr(cad, "DREAM_V3_MAX_ALL_PAIRS", 262144))
-        self.debug = bool(getattr(cad, "DREAM_V3_DEBUG", getattr(cad, "DREAM_DEBUG", True)))
+        self.gate_a = float(getattr(cad, "DREAM_V41_GATE_A", getattr(cad, "DREAM_GATE_A", 5.0)))
+        self.gate_quantile = float(getattr(cad, "DREAM_V41_GATE_QUANTILE", 0.1))
+        self.gate_min_support = int(getattr(cad, "DREAM_V41_GATE_MIN_SUPPORT", 20))
+
+        # Main v4.1 path uses shared x_k(z)=U^T Log_{m_k}(z).
+        # Set true only for A10 ablation: U_k=P_k U G_k^{-1/2}.
+        self.use_per_class_basis = bool(getattr(cad, "DREAM_V41_USE_PER_CLASS_BASIS", False))
+
+        self.debug = bool(getattr(cad, "DREAM_V41_DEBUG", getattr(cad, "DREAM_DEBUG", True)))
 
         self.register_buffer("dream_fitted", torch.tensor(False, dtype=torch.bool))
         self.register_buffer("dream_class_centers", torch.empty(c, d))
@@ -89,13 +113,13 @@ class DreamBayesAdapter(BayesAdapter):
         self.register_buffer("dream_var0", torch.empty(0))
 
         self.register_buffer("dream_lambda0", torch.tensor(0.0))
-        self.register_buffer("dream_q_alpha", torch.tensor(0.0))
-        self.register_buffer("dream_q_median", torch.tensor(1.0))
-        self.register_buffer("dream_s_r", torch.tensor(1.0))
-        self.register_buffer("dream_s_min", torch.tensor(1.0))
+        self.register_buffer("dream_s0", torch.tensor(1.0))
+        self.register_buffer("dream_gate_q", torch.tensor(0.0))
+        self.register_buffer("dream_gate_iqr", torch.tensor(1.0))
+        self.register_buffer("dream_support_n", torch.tensor(0, dtype=torch.long))
 
     @staticmethod
-    def _normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    def _normalize(x: torch.Tensor, eps: float = 1.0e-12) -> torch.Tensor:
         return x / x.norm(dim=-1, keepdim=True).clamp_min(eps)
 
     @staticmethod
@@ -109,24 +133,34 @@ class DreamBayesAdapter(BayesAdapter):
             return [float(x) for x in value]
         return [float(value)]
 
+    def _effective_top_m(self) -> int:
+        if self.top_m > 0:
+            return max(1, min(int(self.top_m), self.num_classes))
+        return self.num_classes if self.num_classes <= 50 else 50
+
     def bayes_base_logits_from_mc(self, logits_all: torch.Tensor, training: bool = False) -> torch.Tensor:
         """
-        Return BayesAdapter posterior predictive log-probabilities at eval time:
+        Return BayesAdapter posterior predictive log-probabilities:
             log mean_s softmax(logits_s).
 
-        This is the required base b_k(z) for strict DREAM v3 fallback.
-        During training the default keeps the original mean-logit path unchanged.
+        During training, keep the original mean-logit path unless explicitly enabled,
+        so BayesAdapter training/KL behavior remains unchanged.
         """
         if training and not self.posterior_base_on_train:
             return logits_all.mean(dim=0)
-        probs = torch.softmax(logits_all.float(), dim=-1).mean(dim=0).clamp_min(self.eps_p)
-        probs = probs / probs.sum(dim=-1, keepdim=True).clamp_min(self.eps_p)
-        return torch.log(probs).to(dtype=logits_all.dtype)
+        if logits_all.ndim != 3:
+            raise ValueError(
+                f"bayes_base_logits_from_mc expects logits_all [S, B, C], got {tuple(logits_all.shape)}"
+            )
+        x = logits_all.float()
+        log_probs = x - torch.logsumexp(x, dim=-1, keepdim=True)
+        out = torch.logsumexp(log_probs, dim=0) - math.log(float(logits_all.shape[0]))
+        return out.to(dtype=logits_all.dtype)
 
     @torch.no_grad()
     def _base_log_probs_mc(self, features: torch.Tensor, n_samples: Optional[int] = None) -> torch.Tensor:
         if n_samples is None:
-            n_samples = int(getattr(self.cfg.CLIP_ADAPTERS, "N_TEST_SAMPLES", 10))
+            n_samples = int(getattr(self.cfg.CLIP_ADAPTERS, "N_TEST_SAMPLES", 128))
         n_samples = max(1, int(n_samples))
 
         z = self._normalize(features.float())
@@ -137,7 +171,10 @@ class DreamBayesAdapter(BayesAdapter):
         return self.bayes_base_logits_from_mc(logits_all, training=False)
 
     def _log_map(self, z: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
-        dot = (z * m).sum(dim=-1, keepdim=True).clamp(-1.0 + self.eps_theta, 1.0 - self.eps_theta)
+        dot = (z * m).sum(dim=-1, keepdim=True).clamp(
+            -1.0 + self.eps_theta,
+            1.0 - self.eps_theta,
+        )
         theta = torch.acos(dot)
         sin_theta = torch.sqrt((1.0 - dot.pow(2)).clamp_min(1.0e-12))
         factor = theta / sin_theta.clamp_min(1.0e-6)
@@ -160,18 +197,22 @@ class DreamBayesAdapter(BayesAdapter):
 
         a_v = a_v / a_v.norm().clamp_min(1.0e-12)
         a_t = a_t / a_t.norm().clamp_min(1.0e-12)
-        a = torch.cat([self.alpha_v * a_v, self.alpha_t * a_t], dim=1).float()
+        a = torch.cat([a_v, self.alpha_t * a_t], dim=1).float()
 
-        max_rank = max(1, min(int(self.dream_rank), int(a.shape[0]), int(a.shape[1])))
+        d = int(a.shape[0])
+        n_cols = int(a.shape[1])
+        max_rank = max(1, min(int(self.dream_rank), n_cols, max(d - 1, 1)))
+
         try:
             u, s, _ = torch.linalg.svd(a, full_matrices=False)
-            rank = int((s > 1.0e-8).sum().item())
-            rank = max(1, min(max_rank, rank))
+            numerical_rank = int((s > 1.0e-8).sum().item())
+            rank = max(1, min(max_rank, numerical_rank))
             basis = u[:, :rank].contiguous()
         except RuntimeError:
             q, _ = torch.linalg.qr(a, mode="reduced")
             basis = q[:, :max_rank].contiguous()
-        return self._normalize(basis.transpose(0, 1)).transpose(0, 1).contiguous()
+
+        return basis.contiguous()
 
     def _project_basis_to_class_tangent(self, basis: torch.Tensor, centers: torch.Tensor) -> torch.Tensor:
         eye = torch.eye(basis.shape[1], device=basis.device, dtype=basis.dtype)
@@ -179,72 +220,95 @@ class DreamBayesAdapter(BayesAdapter):
         for k in range(self.num_classes):
             m = centers[k]
             pu = basis - m.unsqueeze(-1) * (m @ basis).unsqueeze(0)
-            g = basis.transpose(0, 1) @ pu + self.delta * eye
+            g = pu.transpose(0, 1) @ pu + self.delta * eye
             evals, evecs = torch.linalg.eigh(g.float())
             invsqrt = evecs @ torch.diag(torch.rsqrt(evals.clamp_min(self.delta))) @ evecs.transpose(0, 1)
             uk = pu.float() @ invsqrt
             out.append(uk.to(dtype=basis.dtype))
         return torch.stack(out, dim=0).contiguous()
 
+    def _coords_shared_all(self, z: torch.Tensor, centers: torch.Tensor, basis: torch.Tensor) -> torch.Tensor:
+        dots = (z @ centers.t()).clamp(-1.0 + self.eps_theta, 1.0 - self.eps_theta)
+        theta = torch.acos(dots)
+        sin_theta = torch.sqrt((1.0 - dots.pow(2)).clamp_min(1.0e-12))
+        factor = theta / sin_theta.clamp_min(1.0e-6)
+
+        a = z @ basis          # [B, R]
+        h = centers @ basis    # [C, R]
+        return factor.unsqueeze(-1) * (a.unsqueeze(1) - dots.unsqueeze(-1) * h.unsqueeze(0))
+
+    def _coords_shared_labels(self, z: torch.Tensor, y: torch.Tensor, centers: torch.Tensor, basis: torch.Tensor) -> torch.Tensor:
+        m = centers.index_select(0, y)
+        dots = (z * m).sum(dim=-1, keepdim=True).clamp(-1.0 + self.eps_theta, 1.0 - self.eps_theta)
+        theta = torch.acos(dots)
+        sin_theta = torch.sqrt((1.0 - dots.pow(2)).clamp_min(1.0e-12))
+        factor = theta / sin_theta.clamp_min(1.0e-6)
+
+        a = z @ basis
+        h = m @ basis
+        return factor * (a - dots * h)
+
     def _coords_for_all_classes(self, z: torch.Tensor, class_start: int = 0, class_end: Optional[int] = None) -> torch.Tensor:
         if class_end is None:
             class_end = self.num_classes
+
         centers = self.dream_class_centers[class_start:class_end].to(device=z.device, dtype=z.dtype)
-        bases = self.dream_class_basis[class_start:class_end].to(device=z.device, dtype=z.dtype)
-        u = self._log_map(z[:, None, :], centers[None, :, :])
-        return torch.einsum("bcd,cdr->bcr", u, bases)
 
-    def _coords_for_labels(self, z: torch.Tensor, y: torch.Tensor, centers: torch.Tensor, class_basis: torch.Tensor) -> torch.Tensor:
-        xs = []
-        for i in range(int(z.shape[0])):
-            k = int(y[i].item())
-            u = self._log_map(z[i : i + 1], centers[k : k + 1])
-            xs.append((u @ class_basis[k]).squeeze(0))
-        return torch.stack(xs, dim=0) if xs else z.new_empty(0, class_basis.shape[-1])
+        if self.use_per_class_basis:
+            bases = self.dream_class_basis[class_start:class_end].to(device=z.device, dtype=z.dtype)
+            u = self._log_map(z[:, None, :], centers[None, :, :])
+            return torch.einsum("bcd,cdr->bcr", u, bases)
 
-    def _robust_var(self, x: torch.Tensor) -> torch.Tensor:
-        if int(x.shape[0]) <= 1:
-            return x.new_ones(x.shape[-1]) * self.eps_sigma
-        med = torch.median(x, dim=0).values
-        mad = torch.median((x - med.unsqueeze(0)).abs(), dim=0).values
-        var = (1.4826 * mad).pow(2)
-        fallback = x.var(dim=0, unbiased=False)
-        return torch.where(var > self.eps_sigma, var, fallback).clamp_min(self.eps_sigma)
+        basis = self.dream_shared_basis.to(device=z.device, dtype=z.dtype)
+        return self._coords_shared_all(z, centers, basis)
 
-    def _estimate_all_class_var(self, z: torch.Tensor) -> torch.Tensor:
-        n, c = int(z.shape[0]), self.num_classes
-        total_pairs = n * c
-        values = []
+    def _coords_for_labels(
+        self,
+        z: torch.Tensor,
+        y: torch.Tensor,
+        centers: torch.Tensor,
+        basis: torch.Tensor,
+        class_basis: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if self.use_per_class_basis and class_basis is not None:
+            xs = []
+            for i in range(int(z.shape[0])):
+                k = int(y[i].item())
+                u = self._log_map(z[i : i + 1], centers[k : k + 1])
+                xs.append((u @ class_basis[k]).squeeze(0))
+            return torch.stack(xs, dim=0) if xs else z.new_empty(0, class_basis.shape[-1])
 
-        if total_pairs <= self.max_all_pairs:
-            for start in range(0, c, max(1, self.dream_chunk_classes)):
-                end = min(c, start + max(1, self.dream_chunk_classes))
-                values.append(self._coords_for_all_classes(z, start, end).reshape(-1, self.dream_class_basis.shape[-1]))
+        return self._coords_shared_labels(z, y, centers, basis)
+
+    def _fit_shrinkage_gaussians(self, x_true: torch.Tensor, y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        n, r = int(x_true.shape[0]), int(x_true.shape[-1])
+
+        if n <= 1:
+            global_var = x_true.new_ones(r) * self.eps_sigma
         else:
-            # Deterministic support-only approximation for very large ImageNet-style K*N.
-            # The exact all-class MAD can be memory-prohibitive; this preserves the intended
-            # background floor without changing inference formulas.
-            g = torch.Generator(device=z.device)
-            g.manual_seed(0)
-            m = min(self.max_all_pairs, total_pairs)
-            flat = torch.randperm(total_pairs, generator=g, device=z.device)[:m]
-            sample_i = torch.div(flat, c, rounding_mode="floor")
-            sample_k = flat % c
-            z_s = z.index_select(0, sample_i)
-            centers = self.dream_class_centers.to(device=z.device, dtype=z.dtype).index_select(0, sample_k)
-            bases = self.dream_class_basis.to(device=z.device, dtype=z.dtype).index_select(0, sample_k)
-            u = self._log_map(z_s, centers)
-            x = torch.einsum("bd,bdr->br", u, bases)
-            values.append(x)
+            global_var = x_true.var(dim=0, unbiased=False).clamp_min(0.0)
 
-        return self._robust_var(torch.cat(values, dim=0))
+        class_means = x_true.new_zeros(self.num_classes, r)
+        within_ss = x_true.new_zeros(r)
 
-    def _fit_gaussians(self, x_true: torch.Tensor, y: torch.Tensor, var0: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        r = int(x_true.shape[-1])
+        for k in range(self.num_classes):
+            idx = (y == k).nonzero(as_tuple=False).flatten()
+            if int(idx.numel()) == 0:
+                continue
+            xk = x_true.index_select(0, idx)
+            bar = xk.mean(dim=0)
+            class_means[k] = bar
+            within_ss = within_ss + (xk - bar.unsqueeze(0)).pow(2).sum(dim=0)
+
+        within_var = within_ss / float(max(n - self.num_classes, 1))
+        eps_vec = x_true.new_full((r,), self.eps_sigma)
+        var0 = torch.maximum(torch.maximum(within_var, self.rho0 * global_var), eps_vec).clamp_min(self.eps_sigma)
+
         mu = x_true.new_zeros(self.num_classes, r)
         var = x_true.new_zeros(self.num_classes, r)
         lo = self.rho_min * var0
         hi = self.gamma_c * var0
+
         for k in range(self.num_classes):
             idx = (y == k).nonzero(as_tuple=False).flatten()
             n_k = int(idx.numel())
@@ -252,17 +316,20 @@ class DreamBayesAdapter(BayesAdapter):
                 mu[k] = 0.0
                 var[k] = var0
                 continue
+
             xk = x_true.index_select(0, idx)
             bar = xk.mean(dim=0)
             mu_k = (float(n_k) / (float(n_k) + self.nu_mu)) * bar
             ss = (xk - mu_k.unsqueeze(0)).pow(2).sum(dim=0)
             raw = (self.nu_sigma * var0 + ss) / (self.nu_sigma + float(n_k)) + self.eps_sigma
+
             mu[k] = mu_k
             var[k] = torch.maximum(torch.minimum(raw, hi), lo).clamp_min(self.eps_sigma)
-        return mu, var
+
+        return mu, var, var0
 
     def _density_ratio_from_fitted(self, features: torch.Tensor) -> torch.Tensor:
-        if not bool(self.dream_fitted.item()) or self.dream_class_basis.numel() == 0:
+        if not bool(self.dream_fitted.item()) or self.dream_shared_basis.numel() == 0:
             return features.new_zeros(int(features.shape[0]), self.num_classes)
 
         z = self._normalize(features.float())
@@ -270,8 +337,9 @@ class DreamBayesAdapter(BayesAdapter):
         mu = self.dream_mu.to(device=z.device, dtype=z.dtype)
         var = self.dream_var.to(device=z.device, dtype=z.dtype).clamp_min(self.eps_sigma)
         r = int(var0.shape[0])
+
         out = z.new_empty(int(z.shape[0]), self.num_classes)
-        bg_var = (self.gamma_q * var0).view(1, 1, r)
+        bg_var = (self.gamma_q * var0).view(1, 1, r).clamp_min(self.eps_sigma)
         bg_logdet = torch.log(self.gamma_q * var0).sum()
 
         chunk = max(1, int(self.dream_chunk_classes))
@@ -279,56 +347,63 @@ class DreamBayesAdapter(BayesAdapter):
             end = min(self.num_classes, start + chunk)
             x = self._coords_for_all_classes(z, start, end)
             mu_k = mu[start:end].unsqueeze(0)
-            var_k = var[start:end].unsqueeze(0)
+            var_k = var[start:end].unsqueeze(0).clamp_min(self.eps_sigma)
+
             quad_p = ((x - mu_k).pow(2) / var_k).sum(dim=-1)
-            logdet_p = torch.log(var[start:end]).sum(dim=-1).unsqueeze(0)
+            logdet_p = torch.log(var[start:end].clamp_min(self.eps_sigma)).sum(dim=-1).unsqueeze(0)
             quad_q = (x.pow(2) / bg_var).sum(dim=-1)
+
+            # Constants -r/2 log(2pi) cancel in log p_k - log q_k.
             d = -0.5 * quad_p - 0.5 * logdet_p + 0.5 * quad_q + 0.5 * bg_logdet
             out[:, start:end] = d
+
         return out
 
     def _raw_id_evidence(self, d: torch.Tensor) -> torch.Tensor:
-        return torch.logsumexp(d - math.log(float(self.num_classes)), dim=-1)
+        return torch.logsumexp(d, dim=-1) - math.log(float(self.num_classes))
 
-    def _standardize_density(self, d: torch.Tensor) -> torch.Tensor:
-        mean = d.mean(dim=-1, keepdim=True)
-        std = d.std(dim=-1, unbiased=False, keepdim=True)
-        floor = self.dream_s_min.to(device=d.device, dtype=d.dtype).clamp_min(self.eps_d)
-        std = torch.maximum(std, floor.view(1, 1)).clamp_min(self.eps_d)
-        return ((d - mean) / std).clamp(-self.c_minus, self.c_plus)
+    def _candidate_density_std(self, d: torch.Tensor, base_logits: torch.Tensor) -> torch.Tensor:
+        m = self._effective_top_m()
+        idx = torch.topk(base_logits.float(), k=m, dim=-1).indices
+        cand = d.gather(dim=1, index=idx)
+        return cand.std(dim=-1, unbiased=False)
 
-    def _lambda_z(self, r_score: torch.Tensor, lambda0: Optional[float] = None) -> torch.Tensor:
-        if lambda0 is None:
-            lambda0 = float(self.dream_lambda0.detach().cpu().item())
-        q_a = self.dream_q_alpha.to(device=r_score.device, dtype=r_score.dtype)
-        q_m = self.dream_q_median.to(device=r_score.device, dtype=r_score.dtype)
-        return float(lambda0) * ((r_score - q_a) / (q_m - q_a + self.eps_r)).clamp(0.0, 1.0)
+    def _bounded_topm_residual(self, d: torch.Tensor, base_logits: torch.Tensor) -> torch.Tensor:
+        m = self._effective_top_m()
+        idx = torch.topk(base_logits.float(), k=m, dim=-1).indices
+        cand = d.gather(dim=1, index=idx)
 
-    def _select_lambda(self, features: torch.Tensor, labels: torch.Tensor, d: torch.Tensor) -> float:
+        mean = cand.mean(dim=-1, keepdim=True)
+        std = cand.std(dim=-1, unbiased=False, keepdim=True)
+        s0 = self.dream_s0.to(device=d.device, dtype=d.dtype).view(1, 1)
+        std = torch.maximum(std, s0).clamp_min(self.eps_d)
+
+        residual = ((cand - mean) / std).clamp(-float(self.residual_clip), float(self.residual_clip))
+        delta = torch.zeros_like(d)
+        delta.scatter_(dim=1, index=idx, src=residual)
+        return delta
+
+    def _select_lambda(self, labels: torch.Tensor, d: torch.Tensor, base_log_probs: torch.Tensor) -> float:
         if self.manual_lambda >= 0.0:
             return float(self.manual_lambda)
 
-        grid = self._parse_grid(getattr(self.cfg.CLIP_ADAPTERS, "DREAM_V3_LAMBDA_GRID", getattr(self.cfg.CLIP_ADAPTERS, "DREAM_LAMBDA_GRID", None)))
+        grid = list(self.lambda_grid)
         if 0.0 not in grid:
             grid = [0.0] + grid
 
-        base_log_probs = self._base_log_probs_mc(features)
-        r_score = self._raw_id_evidence(d)
-        d_tilde = self._standardize_density(d)
+        delta = self._bounded_topm_residual(d, base_log_probs)
+        best_lambda = 0.0
+        best_nll = None
 
-        results = []
         for lam in grid:
-            lam_z = self._lambda_z(r_score, float(lam)).unsqueeze(-1)
-            logits = base_log_probs + lam_z * d_tilde
+            logits = base_log_probs + float(lam) * delta
             nll = F.cross_entropy(logits, labels, reduction="mean")
-            obj = nll + self.lambda_beta * float(lam) * float(lam)
-            results.append((float(lam), float(obj.detach().cpu().item()), float(nll.detach().cpu().item())))
+            value = float(nll.detach().cpu().item())
+            if best_nll is None or value < best_nll:
+                best_nll = value
+                best_lambda = float(lam)
 
-        baseline = next((x for x in results if abs(x[0]) <= 1.0e-12), results[0])
-        best = min(results, key=lambda x: x[1])
-        if self.lambda_margin > 0.0 and baseline[1] - best[1] <= self.lambda_margin:
-            return 0.0
-        return float(best[0])
+        return best_lambda
 
     @torch.no_grad()
     def build_cache(self, features_train: torch.Tensor, labels_train: torch.Tensor) -> None:
@@ -341,6 +416,7 @@ class DreamBayesAdapter(BayesAdapter):
         valid = ((y >= 0) & (y < self.num_classes)).nonzero(as_tuple=False).flatten()
         z_raw = z_raw.index_select(0, valid)
         y = y.index_select(0, valid)
+
         if int(z_raw.shape[0]) == 0:
             self.dream_fitted.fill_(False)
             return None
@@ -350,79 +426,95 @@ class DreamBayesAdapter(BayesAdapter):
 
         centers = self._build_centers(z, y, text)
         basis = self._build_shared_basis(z, y, text, centers)
-        class_basis = self._project_basis_to_class_tangent(basis, centers)
+
+        if self.use_per_class_basis:
+            class_basis = self._project_basis_to_class_tangent(basis, centers)
+        else:
+            class_basis = torch.empty(
+                self.num_classes,
+                int(basis.shape[0]),
+                int(basis.shape[1]),
+                device=device,
+                dtype=basis.dtype,
+            )
+
+        x_true = self._coords_for_labels(
+            z=z,
+            y=y,
+            centers=centers,
+            basis=basis,
+            class_basis=class_basis if self.use_per_class_basis else None,
+        )
+        mu, var, var0 = self._fit_shrinkage_gaussians(x_true, y)
 
         self.dream_class_centers = centers.to(self.base_text_features.dtype)
         self.dream_shared_basis = basis.to(self.base_text_features.dtype)
         self.dream_class_basis = class_basis.to(self.base_text_features.dtype)
-        self.dream_fitted.fill_(True)
-
-        x_true = self._coords_for_labels(z, y, centers, class_basis)
-        s_true = self._robust_var(x_true)
-        s_all = self._estimate_all_class_var(z)
-        var0 = torch.maximum(s_true, self.rho0 * s_all).clamp_min(self.eps_sigma)
-        mu, var = self._fit_gaussians(x_true, y, var0)
-
         self.dream_mu = mu.to(self.base_text_features.dtype)
         self.dream_var = var.to(self.base_text_features.dtype)
         self.dream_var0 = var0.to(self.base_text_features.dtype)
+        self.dream_fitted.fill_(True)
+        self.dream_support_n = torch.tensor(int(z_raw.shape[0]), device=device, dtype=torch.long)
 
         d_support = self._density_ratio_from_fitted(z_raw)
+        base_support = self._base_log_probs_mc(z_raw)
+
+        s0 = self._candidate_density_std(d_support, base_support).median().clamp_min(self.eps_d)
+        self.dream_s0 = s0.to(device=device, dtype=self.base_text_features.dtype)
+
+        lam = self._select_lambda(y, d_support, base_support)
+        self.dream_lambda0 = torch.tensor(lam, device=device, dtype=self.base_text_features.dtype)
+
         r_support = self._raw_id_evidence(d_support)
-        n = int(z_raw.shape[0])
-        alpha = min(0.2, max(0.05, 3.0 / float(n + 1)))
-        q_alpha = torch.quantile(r_support.float(), alpha).to(device)
-        q_median = torch.quantile(r_support.float(), 0.5).to(device)
-        if float((q_median - q_alpha).detach().cpu().item()) <= self.eps_r:
-            q_median = q_alpha + self.eps_r
+        q = torch.quantile(r_support.float(), float(self.gate_quantile)).to(device)
         q25 = torch.quantile(r_support.float(), 0.25).to(device)
         q75 = torch.quantile(r_support.float(), 0.75).to(device)
-        s_r = (q75 - q25).abs().clamp_min(self.eps_r)
-        s_min = torch.median(d_support.std(dim=-1, unbiased=False).float()).to(device).clamp_min(self.eps_d)
-
-        self.dream_q_alpha = q_alpha.to(self.base_text_features.dtype)
-        self.dream_q_median = q_median.to(self.base_text_features.dtype)
-        self.dream_s_r = s_r.to(self.base_text_features.dtype)
-        self.dream_s_min = s_min.to(self.base_text_features.dtype)
-
-        lam = self._select_lambda(z_raw, y, d_support)
-        self.dream_lambda0 = torch.tensor(lam, device=device, dtype=self.base_text_features.dtype)
+        iqr = (q75 - q25).abs().clamp_min(self.eps_d)
+        self.dream_gate_q = q.to(self.base_text_features.dtype)
+        self.dream_gate_iqr = iqr.to(self.base_text_features.dtype)
 
         if self.debug:
             counts = torch.bincount(y, minlength=self.num_classes)
             nonempty = int((counts > 0).sum().item())
             print(
-                "[DREAM-BayesAdapter v3] fitted: "
-                f"support={n}, classes={nonempty}/{self.num_classes}, rank={int(basis.shape[1])}, "
-                f"lambda0={float(self.dream_lambda0):.4g}, q_alpha={float(self.dream_q_alpha):.4g}, "
-                f"q_median={float(self.dream_q_median):.4g}, s_min={float(self.dream_s_min):.4g}, "
-                f"gamma_q={self.gamma_q}, gamma_c={self.gamma_c}, clip=[-{self.c_minus},{self.c_plus}]"
+                "[DREAM-BayesAdapter v4.1] fitted: "
+                f"support={int(z.shape[0])}, classes={nonempty}/{self.num_classes}, "
+                f"rank={int(basis.shape[1])}, lambda0={float(self.dream_lambda0):.4g}, "
+                f"topM={self._effective_top_m()}, s0={float(self.dream_s0):.4g}, "
+                f"gate_q={float(self.dream_gate_q):.4g}, gate_iqr={float(self.dream_gate_iqr):.4g}, "
+                f"gamma_q={self.gamma_q}, gamma_c={self.gamma_c}, "
+                f"clip=[-{self.residual_clip},{self.residual_clip}], "
+                f"use_per_class_basis={self.use_per_class_basis}"
             )
         return None
 
     def density_ratio(self, features: torch.Tensor) -> torch.Tensor:
         return self._density_ratio_from_fitted(features)
 
-    def cache_logits(self, features: torch.Tensor) -> Optional[torch.Tensor]:
+    def cache_logits(self, features: torch.Tensor, base_logits: Optional[torch.Tensor] = None) -> Optional[torch.Tensor]:
         if not self.dream_enabled or not bool(self.dream_fitted.item()):
             return None
         if self.training and not self.density_on_train:
             return None
-        if abs(float(self.dream_lambda0.detach().cpu().item())) <= 0.0:
+
+        lam = float(self.dream_lambda0.detach().cpu().item())
+        if abs(lam) <= 0.0:
             return None
 
+        if base_logits is None:
+            base_logits = self._base_log_probs_mc(features)
+
         d = self.density_ratio(features)
-        r = self._raw_id_evidence(d)
-        lam_z = self._lambda_z(r).unsqueeze(-1)
-        return (lam_z * self._standardize_density(d)).to(dtype=features.dtype)
+        delta = self._bounded_topm_residual(d, base_logits.detach())
+        return (lam * delta).to(dtype=features.dtype)
 
     def postprocess_logits(self, logits: torch.Tensor, features: torch.Tensor, training: bool = False) -> torch.Tensor:
-        # v3 does NOT apply evidence mixture to probabilities.
-        # Optional temperature is a calibration variant only.
+        # v4.1 never applies a probability-space gate mixture.
+        # Temperature is a global calibration variant only.
         if training and not self.temperature_on_train:
             return logits
         if self.temperature <= 0:
-            raise ValueError(f"DREAM_V3_TEMPERATURE must be > 0, got {self.temperature}")
+            raise ValueError(f"DREAM_V41_TEMPERATURE must be > 0, got {self.temperature}")
         if abs(self.temperature - 1.0) <= 1.0e-12:
             return logits
         return logits / float(self.temperature)
@@ -430,24 +522,27 @@ class DreamBayesAdapter(BayesAdapter):
     @torch.no_grad()
     def dream_scores(self, features: torch.Tensor, logits: Optional[torch.Tensor] = None) -> dict:
         d = self.density_ratio(features)
-        d_tilde = self._standardize_density(d)
         r = self._raw_id_evidence(d)
-        lam_z = self._lambda_z(r)
-        gate = torch.sigmoid(
-            self.gate_a
-            * (r - self.dream_q_alpha.to(device=r.device, dtype=r.dtype))
-            / self.dream_s_r.to(device=r.device, dtype=r.dtype).clamp_min(self.eps_r)
-        )
+
+        support_n = int(self.dream_support_n.detach().cpu().item())
+        if support_n < self.gate_min_support:
+            gate = torch.ones_like(r)
+        else:
+            gate = torch.sigmoid(
+                float(self.gate_a)
+                * (r - self.dream_gate_q.to(device=r.device, dtype=r.dtype))
+                / self.dream_gate_iqr.to(device=r.device, dtype=r.dtype).clamp_min(self.eps_d)
+            )
+
         out = {
             "density_ratio": d,
-            "standardized_density_ratio": d_tilde,
             "id_evidence": r,
-            "lambda_z": lam_z,
             "gate": gate,
             "ood_score": -r,
         }
         if logits is not None:
             probs = torch.softmax(logits.float(), dim=-1)
-            out["max_probability"] = probs.max(dim=-1).values
-            out["selective_score"] = gate * out["max_probability"].to(gate.dtype)
+            max_prob = probs.max(dim=-1).values.to(gate.dtype)
+            out["max_probability"] = max_prob
+            out["selective_score"] = gate * max_prob
         return out

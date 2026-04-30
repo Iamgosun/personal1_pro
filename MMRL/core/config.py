@@ -22,10 +22,28 @@ def _copy_mmrl_family(src, sec):
 
 
 def _as_legacy_clipadapter(cfg):
+    """
+    Mirror cfg.CLIP_ADAPTERS into cfg.TRAINER.ClipADAPTER.
+
+    The refactored code reads cfg.CLIP_ADAPTERS directly, but some legacy Dassl
+    paths still look at cfg.TRAINER.ClipADAPTER. Historically every new adapter
+    option had to be copied here manually. That does not scale: each model change
+    forced a core/config.py edit.
+
+    This function now keeps the legacy node permissive and mirrors every key from
+    CLIP_ADAPTERS automatically. Explicit assignments are kept for readability and
+    backward compatibility, while the generic mirror at the end handles new model
+    fields such as DREAM_V41_* without further changes.
+    """
     if not hasattr(cfg.TRAINER, "ClipADAPTER"):
-        cfg.TRAINER.ClipADAPTER = CN()
+        cfg.TRAINER.ClipADAPTER = CN(new_allowed=True)
+    else:
+        cfg.TRAINER.ClipADAPTER.set_new_allowed(True)
+
     sec = cfg.TRAINER.ClipADAPTER
     cad = cfg.CLIP_ADAPTERS
+    cad.set_new_allowed(True)
+
     sec.PREC = cad.PREC
     sec.INIT = cad.INIT
     sec.CONSTRAINT = cad.CONSTRAINT
@@ -45,7 +63,6 @@ def _as_legacy_clipadapter(cfg):
     sec.CACHE_TRAIN_AUG = cad.CACHE_TRAIN_AUG
     sec.CACHE_AGGREGATION = cad.CACHE_AGGREGATION
     sec.CACHE_POOL_EPOCH_SUBSAMPLE = cad.CACHE_POOL_EPOCH_SUBSAMPLE
-
 
     if hasattr(cad, "CACHE_AGGREGATION"):
         sec.CACHE_AGGREGATION = cad.CACHE_AGGREGATION
@@ -80,6 +97,15 @@ def _as_legacy_clipadapter(cfg):
         sec.PP_PROKER_VARIANCE_JITTER = cad.PP_PROKER_VARIANCE_JITTER
         sec.PP_PROKER_MEAN_RESIDUAL_SCALE = cad.PP_PROKER_MEAN_RESIDUAL_SCALE
 
+    # Generic legacy mirror. This is the important part for maintainability:
+    # any new CLIP_ADAPTERS.* key defined by a method yaml is automatically
+    # available under TRAINER.ClipADAPTER.* as well.
+    for key, value in cad.items():
+        if isinstance(value, CN):
+            setattr(sec, key, value.clone())
+        else:
+            setattr(sec, key, value)
+
 
 def _as_legacy_mmrl(cfg):
     if not hasattr(cfg.TRAINER, "MMRL"):
@@ -111,7 +137,6 @@ def _as_legacy_mmrlpp(cfg):
     sec.RES_LORA_DIM = src.RES_LORA_DIM
 
 
-
 def _as_legacy_bayes_mmrl(cfg):
     if not hasattr(cfg.TRAINER, "BayesMMRL"):
         cfg.TRAINER.BayesMMRL = CN()
@@ -126,7 +151,6 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.REP_DIM = src.REP_DIM
 
     sec.KL_WARMUP_EPOCHS = src.KL_WARMUP_EPOCHS
-    
     sec.BAYES_TARGET = src.BAYES_TARGET
 
     sec.N_MC_TRAIN = src.N_MC_TRAIN
@@ -155,6 +179,7 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.PRIOR_STD = src.REP_PRIOR_STD
     sec.SIGMA_MODE = src.REP_SIGMA_MODE
 
+
 def _as_legacy_vcrm_mmrl(cfg):
     if not hasattr(cfg.TRAINER, "VCRMMMRL"):
         cfg.TRAINER.VCRMMMRL = CN()
@@ -174,7 +199,6 @@ def _as_legacy_vcrm_mmrl(cfg):
     sec.VCRM_ETA = src.VCRM_ETA
     sec.VCRM_DETACH_CONTEXT = src.VCRM_DETACH_CONTEXT
     sec.VCRM_MOD_WEIGHT = src.VCRM_MOD_WEIGHT
-
 
 
 def _sync_active_mmrl_family(cfg):
@@ -221,8 +245,6 @@ def get_refactor_defaults():
     cfg.VCRM_MMRL.VCRM_ETA = 0.1
     cfg.VCRM_MMRL.VCRM_DETACH_CONTEXT = True
     cfg.VCRM_MMRL.VCRM_MOD_WEIGHT = 0.0
-
-
 
     cfg.MMRL_MIX = CN()
     cfg.MMRL_MIX.PREC = "amp"
@@ -297,13 +319,18 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.PRIOR_STD = cfg.BAYES_MMRL.REP_PRIOR_STD
     cfg.BAYES_MMRL.SIGMA_MODE = cfg.BAYES_MMRL.REP_SIGMA_MODE
 
-    cfg.CLIP_ADAPTERS = CN()
+    # Open extension namespace for clip-adapter methods.
+    #
+    # YACS normally rejects unknown keys during yaml merge. Making only this
+    # namespace permissive lets each adapter introduce its own CLIP_ADAPTERS.*
+    # options in the method yaml without editing core/config.py every time.
+    # Adapters should validate important invariants locally.
+    cfg.CLIP_ADAPTERS = CN(new_allowed=True)
     cfg.CLIP_ADAPTERS.PREC = "fp32"
     cfg.CLIP_ADAPTERS.TYPE = "MP"
     cfg.CLIP_ADAPTERS.INIT = "ZS"
     cfg.CLIP_ADAPTERS.CONSTRAINT = "none"
     cfg.CLIP_ADAPTERS.ENHANCED_BASE = "none"
-
 
     cfg.CLIP_ADAPTERS.ALLOW_CACHE = True
 
@@ -343,8 +370,6 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.CROSS_MODAL_RESAMPLE_TEXT = True
     cfg.CLIP_ADAPTERS.CROSS_MODAL_EPOCH_SUBSAMPLE = True
 
-
-
     # train / eval MC sampling
     cfg.CLIP_ADAPTERS.N_SAMPLES = 3
     cfg.CLIP_ADAPTERS.N_TEST_SAMPLES = 10
@@ -356,9 +381,9 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.BAYES_PRIOR_STD = 0.01
     cfg.CLIP_ADAPTERS.BAYES_KL_SCALE = 1.0
 
-
-    # DREAM-BayesAdapter-specific defaults
-    # BayesAdapter + text-anchored tangent density-ratio evidence head.
+    # DREAM-BayesAdapter legacy defaults.
+    # New DREAM v4.1 configs can define DREAM_V41_* directly in their method yaml;
+    # this open CLIP_ADAPTERS namespace will accept them without more core edits.
     cfg.CLIP_ADAPTERS.DREAM_ENABLED = True
 
     # Tangent density geometry
@@ -378,13 +403,11 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.DREAM_LAMBDA_GRID = [0.0, 0.1, 0.25, 0.5, 1.0]
     cfg.CLIP_ADAPTERS.DREAM_LAMBDA_BETA = 0.01
 
-
     # LOO-style support calibration for lambda/gate.
     cfg.CLIP_ADAPTERS.DREAM_USE_LOO = True
 
     # Clip per-sample standardized density ratio to avoid exploding density logits.
     cfg.CLIP_ADAPTERS.DREAM_DENSITY_CLIP = 3.0
-
 
     # Penalize tangent-space orthogonal residuals for OOD robustness.
     # Set 0.0 to disable.
@@ -404,8 +427,6 @@ def get_refactor_defaults():
     # Logging
     cfg.CLIP_ADAPTERS.DREAM_DEBUG = True
 
-
-
     # CAPEL-specific defaults
     cfg.CLIP_ADAPTERS.CAPEL_PROMPT_BANK = "/root/autodl-tmp/MMRL/prompts/capel_prompt_bank_all.json"
     cfg.CLIP_ADAPTERS.CAPEL_PROMPTS_PER_CLASS = 50
@@ -419,7 +440,6 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.CAPEL_REBUILD_FEATURE_CACHE = False
     cfg.CLIP_ADAPTERS.CAPEL_FEATURE_CACHE_DIR = "/root/autodl-tmp/MMRL/prompts/capel_feature_cache"
     cfg.CLIP_ADAPTERS.VNC_CAPEL_VNC_LAMBDA = 0.2
-
 
     # ECKA-specific defaults
     cfg.CLIP_ADAPTERS.ECKA_KAPPA0 = 2.0
@@ -448,7 +468,6 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.ECKA_RANGE_DELTA = -1.0
     cfg.CLIP_ADAPTERS.ECKA_UNCERTAINTY_BETA = 0.0
 
-
     # PP-ProKeR-OneHot defaults
     #
     # Official ProKeR-compatible mean:
@@ -475,21 +494,12 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.PP_PROKER_VARIANCE_JITTER = 1.0e-6
     cfg.CLIP_ADAPTERS.PP_PROKER_MEAN_RESIDUAL_SCALE = 1.0
 
-
-
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"
 
     cfg.CALIBRATION = CN()
     cfg.CALIBRATION.USE_FULL_VAL = False
 
     cfg.TASK = "B2N"
-
-
-
-
-
-
-
 
     _sync_active_mmrl_family(cfg)
     _as_legacy_mmrl(cfg)

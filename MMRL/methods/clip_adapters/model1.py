@@ -59,17 +59,15 @@ class ClipAdaptersModel(nn.Module):
 
             log E_W[softmax(logits(W))]
 
+        This matches the DREAM theory better than softmax(E_W[logits]).
         Returns log-probabilities with shape [B, C].
         """
         if logits_all.ndim != 3:
             raise ValueError(
                 f"_mc_predictive_log_probs expects logits_all [S, B, C], got {tuple(logits_all.shape)}"
             )
-        x = logits_all.float()
-        log_probs = x - torch.logsumexp(x, dim=-1, keepdim=True)
-        return (torch.logsumexp(log_probs, dim=0) - torch.log(torch.tensor(float(logits_all.shape[0]), device=x.device))).to(
-            dtype=logits_all.dtype
-        )
+        probs = torch.softmax(logits_all.float(), dim=-1).mean(dim=0).clamp_min(1e-12)
+        return torch.log(probs).to(dtype=logits_all.dtype)
 
     def forward(self, image, return_features=False, n_samples=None):
         try:
@@ -116,20 +114,9 @@ class ClipAdaptersModel(nn.Module):
             if self._is_bayes_adapter():
                 logits_all = bayes_logits_all(self.logit_scale, features_for_logits, prototypes)
 
-                # DREAM v4.1 and BayesAdapter reliability evaluation should use
-                # posterior predictive log-probabilities at eval time:
-                #   log E_W[softmax(logits(W))]
-                # Adapters can override the training behavior to keep the original
-                # mean-logit BayesAdapter path during optimization.
-                if hasattr(self.adapter, "bayes_base_logits_from_mc"):
-                    logits = self.adapter.bayes_base_logits_from_mc(
-                        logits_all,
-                        training=bool(self.training),
-                    )
-                elif self.training:
-                    logits = logits_all.mean(dim=0)
-                else:
-                    logits = self._mc_predictive_log_probs(logits_all)
+                # Official BayesAdapter-style MC aggregation:
+                # average logits over sampled classifiers.
+                logits = logits_all.mean(dim=0)
             else:
                 logits = bayes_logits(self.logit_scale, features_for_logits, prototypes)
 
@@ -138,23 +125,15 @@ class ClipAdaptersModel(nn.Module):
             logits = lp_logits(self.logit_scale, features_for_logits, prototypes)
 
         # Optional additive evidence/cache logits.
-        # For DREAM v4.1 this implements:
-        #   ell_k(z) = b_k(z) + lambda0 * delta_k(z)
-        # where top-M candidates inside delta_k are selected from the same base
-        # logits b_k(z) computed above.
-        try:
-            cache_logits = self.adapter.cache_logits(
-                features_for_logits,
-                base_logits=logits,
-            )
-        except TypeError:
-            cache_logits = self.adapter.cache_logits(features_for_logits)
-
+        # For DREAM this implements:
+        #   log p_cls(k|z) = log p_B(k|z) + lambda * standardized_density_ratio_k(z)
+        cache_logits = self.adapter.cache_logits(features_for_logits)
         if cache_logits is not None:
             logits = logits + cache_logits
 
-        # Optional logit postprocess. For DREAM v4.1 this is only the global
-        # temperature calibration variant; no evidence gate mixture is applied.
+        # Optional probability-space postprocess.
+        # For DREAM this implements:
+        #   p_final = rho-gated mixture of p_cls and uniform.
         if hasattr(self.adapter, "postprocess_logits"):
             logits = self.adapter.postprocess_logits(
                 logits,
