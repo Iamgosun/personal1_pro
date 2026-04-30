@@ -74,15 +74,26 @@ class CacheExecutor(BaseExecutor):
 
     def _epoch_loader(self, trainer):
         """
-        CLAP-style feature-pool training.
+        Official BayesAdapter-style feature-view sampling.
 
-        If CACHE_REPS=20 and CACHE_AGGREGATION=pool, the cached train set has
-        roughly 20 * N features. Official CLAP does not consume all 20N features
-        every epoch; it uses the feature pool but keeps the epoch size tied to
-        the original training loader.
+        In pool cache mode, train features are laid out as:
 
-        Therefore, each epoch samples N items from the cached pool, where N is
-        len(train_x). This also handles CrossModal after text features are added.
+            [rep0 sample0..N-1,
+            rep1 sample0..N-1,
+            ...
+            repR sample0..N-1]
+
+        Official BayesAdapter does NOT sample N items uniformly from the 20N pool.
+        Instead, for every original sample i, each epoch randomly selects exactly
+        one augmented view among the R cached views.
+
+        Therefore each epoch contains exactly N items:
+            index_i = sampled_rep_i * N + i
+
+        This guarantees:
+        - every original sample appears exactly once per epoch;
+        - each sample uses one randomly selected augmentation view;
+        - no original sample is duplicated or missing within the epoch.
         """
         dataset = trainer.cache_train_loader.dataset
         dataset_size = int(len(dataset))
@@ -96,21 +107,59 @@ class CacheExecutor(BaseExecutor):
         if not do_subsample:
             return trainer.cache_train_loader
 
-        # If cache is already N, no need to create a subset.
+        # If cache is already N, no view sampling is needed.
         if dataset_size <= base_train_size:
             return trainer.cache_train_loader
 
-        n = max(1, base_train_size)
-        indices = torch.randperm(dataset_size)[:n].tolist()
+        n = max(1, int(base_train_size))
+
+        # Strict official-style path only applies when the pool is exactly
+        # an integer number of full augmented passes over the original train set.
+        #
+        # For plain BayesAdapter with CACHE_REPS=20 and pool aggregation:
+        #     dataset_size == 20 * n
+        if dataset_size % n == 0:
+            num_reps = dataset_size // n
+
+            # sample_ids: [0, 1, ..., N-1]
+            sample_ids = torch.arange(n, dtype=torch.long)
+
+            # For every original sample, choose one augmentation rep.
+            # rep_ids[i] is the selected view for original sample i.
+            rep_ids = torch.randint(
+                low=0,
+                high=num_reps,
+                size=(n,),
+                dtype=torch.long,
+            )
+
+            indices = (rep_ids * n + sample_ids).tolist()
+
+            # Official BayesAdapter iterates over saved feature batches without
+            # shuffling. Keep shuffle=False below for the closest reproduction.
+            #
+            # If you prefer your existing random batch order while still preserving
+            # "one view per original sample", uncomment these two lines:
+            #
+            # perm = torch.randperm(n).tolist()
+            # indices = [indices[i] for i in perm]
+
+        else:
+            # Fallback for adapters that modify the cache size after extraction
+            # e.g. CrossModal appending text features. This preserves the old
+            # behavior instead of silently producing wrong indexing.
+            indices = torch.randperm(dataset_size)[:n].tolist()
 
         return DataLoader(
             Subset(dataset, indices),
             batch_size=trainer.cfg.DATALOADER.TRAIN_X.BATCH_SIZE,
-            shuffle=True,
+            shuffle=False,
             drop_last=False,
             num_workers=0,
             pin_memory=torch.cuda.is_available(),
         )
+
+
 
     def run_epoch(self, trainer):
         trainer.set_model_mode("eval")

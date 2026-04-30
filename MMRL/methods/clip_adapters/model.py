@@ -114,9 +114,9 @@ class ClipAdaptersModel(nn.Module):
             if self._is_bayes_adapter():
                 logits_all = bayes_logits_all(self.logit_scale, features_for_logits, prototypes)
 
-                # Use E[softmax] instead of mean logits.
-                # This makes BayesAdapter/DREAM evaluation match the stated posterior predictive.
-                logits = self._mc_predictive_log_probs(logits_all)
+                # Official BayesAdapter-style MC aggregation:
+                # average logits over sampled classifiers.
+                logits = logits_all.mean(dim=0)
             else:
                 logits = bayes_logits(self.logit_scale, features_for_logits, prototypes)
 
