@@ -68,11 +68,16 @@ class FeatureCacheManager:
         clip_cfg = getattr(self.cfg, "CLIP_ADAPTERS", None)
         input_cfg = getattr(self.cfg, "INPUT", None)
         backbone_cfg = self.cfg.MODEL.BACKBONE
+
+        feature_only_key = bool(
+            self._cfg_get(clip_cfg, "CACHE_FEATURE_ONLY_KEY", True)
+        )
+
         metadata = {
-            # Bump because CACHE_REPS semantics changed:
-            # schema v4 averaged repeated train augmentations;
-            # schema v5 can preserve them as a feature pool.
-            # schema v6 supports adapter-stable feature-only cache keys.
+            # schema v6:
+            # cache key is adapter-independent when CACHE_FEATURE_ONLY_KEY=True.
+            # Cached payload stores CLIP image features + labels only;
+            # adapter-specific logits are recomputed after loading.
             "schema_version": 6,
 
             "dataset": self.cfg.DATASET.NAME,
@@ -91,12 +96,10 @@ class FeatureCacheManager:
                 getattr(self.cfg.MODEL, "INIT_WEIGHTS", "")
             ),
 
-            "method_name": self.cfg.METHOD.NAME,
-            "method_family": self.cfg.METHOD.FAMILY,
             "protocol": self.cfg.PROTOCOL.NAME,
             "phase": self._jsonable(getattr(self.cfg.PROTOCOL, "PHASE", None)),
 
-            # Image preprocessing affects cached features.
+            # Image preprocessing affects CLIP image features.
             "input_size": self._jsonable(self._cfg_get(input_cfg, "SIZE", None)),
             "input_interpolation": self._jsonable(
                 self._cfg_get(input_cfg, "INTERPOLATION", None)
@@ -118,40 +121,18 @@ class FeatureCacheManager:
             "train_aug": bool(train_aug),
             "aggregation": str(aggregation),
             "mode": str(mode),
+            "feature_only_key": bool(feature_only_key),
         }
 
-        feature_only_key = bool(
-            self._cfg_get(clip_cfg, "CACHE_FEATURE_ONLY_KEY", False)
-        )
-
-        # For BayesAdapter / DREAM-BayesAdapter, cache training only needs CLIP
-        # image features and labels. Do not include adapter-specific fields in
-        # the cache key; otherwise switching BAYES_ADAPTER <-> DREAM_BAYES_ADAPTER
-        # rebuilds the exact same CLIP feature pool.
-        #
-        # For CLAP constraint, TipA, CrossModal, etc., keep old behavior because
-        # cached logits / feature-pool shape can depend on adapter settings.
-        adapter_init = str(self._cfg_get(clip_cfg, "INIT", "unknown")).upper()
-        adapter_constraint = str(self._cfg_get(clip_cfg, "CONSTRAINT", "none")).lower()
-        is_bayes_like = (
-            "BAYES_ADAPTER" in adapter_init
-            or "DREAM_BAYES_ADAPTER" in adapter_init
-            or "DREAMBAYES" in adapter_init
-        )
-
-        use_stable_feature_key = (
-            feature_only_key
-            and mode == "features_only"
-            and adapter_constraint == "none"
-            and is_bayes_like
-        )
-
-        if not use_stable_feature_key:
-            # Cached payload includes logits in addition to image features.
-            # Adapter/logit-affecting settings must therefore be part of the key.
+        if not feature_only_key:
+            # Legacy strict key: keep adapter/logit-affecting fields.
             metadata.update(
                 {
-                    "method_tag": self._jsonable(getattr(self.cfg.METHOD, "TAG", "")),
+                    "method_name": self.cfg.METHOD.NAME,
+                    "method_family": self.cfg.METHOD.FAMILY,
+                    "method_tag": self._jsonable(
+                        getattr(self.cfg.METHOD, "TAG", "")
+                    ),
                     "adapter_init": self._jsonable(
                         self._cfg_get(clip_cfg, "INIT", "unknown")
                     ),
@@ -186,8 +167,6 @@ class FeatureCacheManager:
             )
 
         return metadata
-
-
 
 
 

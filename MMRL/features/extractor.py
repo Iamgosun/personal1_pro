@@ -53,35 +53,71 @@ class CLIPFeatureExtractor:
         if not isinstance(payload, dict):
             return False
 
-        required = ("labels", "logits", "features")
+        required = ("labels", "features")
         if any(key not in payload for key in required):
             return False
 
         labels = payload["labels"]
-        logits = payload["logits"]
         features = payload["features"]
 
         if not torch.is_tensor(labels):
-            return False
-        if not torch.is_tensor(logits):
             return False
         if not torch.is_tensor(features):
             return False
 
         if labels.ndim != 1:
             return False
-        if logits.ndim != 2:
-            return False
         if features.ndim != 2:
             return False
 
         n = int(labels.shape[0])
-        if int(logits.shape[0]) != n:
-            return False
         if int(features.shape[0]) != n:
             return False
 
         return True
+    @torch.no_grad()
+    def _compute_logits_from_features(
+        self,
+        features: torch.Tensor,
+        labels: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Recompute adapter-specific logits from cached CLIP image features.
+
+        The feature cache is shared across all adapters. Logits are deliberately
+        not reused from cache because they depend on the current adapter.
+        """
+        model_was_training = bool(self.trainer.model.training)
+        method_was_training = bool(self.trainer.method.training)
+
+        self.trainer.model.eval()
+        self.trainer.method.eval()
+
+        batch_size = int(self.trainer.cfg.DATALOADER.TRAIN_X.BATCH_SIZE)
+        logits_all = []
+
+        try:
+            n = int(features.shape[0])
+            for start in range(0, n, batch_size):
+                end = min(start + batch_size, n)
+
+                feat_b = features[start:end].to(self.trainer.device)
+                label_b = labels[start:end].to(self.trainer.device)
+
+                outputs = self.trainer.method.forward_eval(
+                    {"features": feat_b, "label": label_b},
+                    None,
+                )
+
+                logits_all.append(outputs.logits.detach().cpu())
+
+        finally:
+            if model_was_training:
+                self.trainer.model.train()
+            if method_was_training:
+                self.trainer.method.train()
+
+        return torch.cat(logits_all, dim=0)
 
     def _aggregation_mode(self, split: str) -> str:
         """
@@ -126,11 +162,27 @@ class CLIPFeatureExtractor:
 
         cached = self.cache_manager.load(spec)
         if cached is not None and self._is_valid_cached_payload(cached):
-            return (
-                cached["labels"].to(self.trainer.device),
-                cached["logits"].to(self.trainer.device),
-                cached["features"].to(self.trainer.device),
+            labels = cached["labels"]
+            features = cached["features"]
+            logits = self._compute_logits_from_features(features, labels)
+
+            print(
+                f"[FeatureCache] reuse shared CLIP feature cache: "
+                f"split={split}, id={spec.cache_id}, path={spec.tensor_path}",
+                flush=True,
             )
+
+            return (
+                labels.to(self.trainer.device),
+                logits.to(self.trainer.device),
+                features.to(self.trainer.device),
+            )
+
+        print(
+            f"[FeatureCache] build shared CLIP feature cache: "
+            f"split={split}, id={spec.cache_id}, path={spec.tensor_path}",
+            flush=True,
+        )
 
         model_was_training = bool(self.trainer.model.training)
         method_was_training = bool(self.trainer.method.training)
@@ -207,19 +259,20 @@ class CLIPFeatureExtractor:
                 logits = torch.stack(logits_all, dim=0).mean(0)
                 features = torch.stack(features_all, dim=0).mean(0)
 
+            logits = self._compute_logits_from_features(features, labels)
+
             payload = {
                 "labels": labels,
-                "logits": logits,
                 "features": features,
                 "meta": {
                     "num_samples": int(labels.shape[0]),
                     "base_num_samples": int(base_labels.shape[0]),
-                    "num_classes": int(logits.shape[-1]),
                     "feature_dim": int(features.shape[-1]),
                     "reps": reps,
                     "train_aug": bool(train_aug),
                     "mode": mode,
                     "aggregation": aggregation,
+                    "payload": "clip_features_and_labels_only",
                 },
             }
 
