@@ -3,14 +3,11 @@ from __future__ import annotations
 from .adapters import (
     BayesAdapter,
     CapelAdapter,
-    ECKAAdapter,
-    PPProKeROneHotAdapter,
     ClipAdapterResidual,
     CrossModalProbeAdapter,
     RandomProbeAdapter,
     TaskResidualAdapter,
     TipAdapter,
-    VncCapelAdapter,
     ZeroShotProbeAdapter,
 )
 
@@ -18,11 +15,6 @@ from .adapters import (
 def build_adapter(cfg, clip_model, base_text_features, classnames=None):
     init = str(cfg.CLIP_ADAPTERS.INIT)
     init_upper = init.upper()
-
-    if init_upper == "VNC_CAPEL" or init_upper == "VNCCAPEL":
-        if classnames is None:
-            raise ValueError("VncCapelAdapter requires classnames.")
-        return VncCapelAdapter(cfg, clip_model, base_text_features, classnames)
 
     if init_upper == "CAPEL":
         if classnames is None:
@@ -49,16 +41,5 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
 
     if "BAYES_ADAPTER" in init_upper:
         return BayesAdapter(cfg, clip_model, base_text_features)
-
-    if init_upper == "ECKA" or init_upper == "ECKA_CORE" or init_upper == "ECKA_CAL":
-        return ECKAAdapter(cfg, clip_model, base_text_features)
-
-    if (
-        init_upper == "PP_PROKER_ONEHOT"
-        or init_upper == "PP-PROKER-ONEHOT"
-        or init_upper == "PPPROKER_ONEHOT"
-        or init_upper == "PPPROKER"
-    ):
-        return PPProKeROneHotAdapter(cfg, clip_model, base_text_features)
 
     raise NotImplementedError(f"Unknown clip adapter init: {init}")

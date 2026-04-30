@@ -316,7 +316,7 @@ def get_refactor_defaults():
     # When using a feature pool, train on approximately one original train set
     # per epoch instead of consuming all augmented views every epoch.
     cfg.CLIP_ADAPTERS.CACHE_POOL_EPOCH_SUBSAMPLE = True
-
+    cfg.CLIP_ADAPTERS.CACHE_FEATURE_ONLY_KEY = True
     # Online mode:
     # Build transient support features/statistics for CLAP constraint and TipA bank.
     # This does not write disk cache.
@@ -355,6 +355,46 @@ def get_refactor_defaults():
     # BayesAdapter-specific defaults
     cfg.CLIP_ADAPTERS.BAYES_PRIOR_STD = 0.01
     cfg.CLIP_ADAPTERS.BAYES_KL_SCALE = 1.0
+
+
+    # DREAM-BayesAdapter-specific defaults
+    # BayesAdapter + text-anchored tangent density-ratio evidence head.
+    cfg.CLIP_ADAPTERS.DREAM_ENABLED = True
+
+    # Tangent density geometry
+    cfg.CLIP_ADAPTERS.DREAM_RANK = 32
+    cfg.CLIP_ADAPTERS.DREAM_CHUNK_CLASSES = 64
+    cfg.CLIP_ADAPTERS.DREAM_EPS = 1.0e-4
+
+    # Text/support shrinkage priors
+    cfg.CLIP_ADAPTERS.DREAM_TEXT_PRIOR_STRENGTH = 4.0
+    cfg.CLIP_ADAPTERS.DREAM_MEAN_PRIOR_STRENGTH = 4.0
+    cfg.CLIP_ADAPTERS.DREAM_COV_PRIOR_STRENGTH = 16.0
+
+    # Density-ratio product-of-experts
+    # If DREAM_LAMBDA < 0, the adapter chooses lambda from DREAM_LAMBDA_GRID.
+    # Include 0.0 so the method can fall back to pure BayesAdapter.
+    cfg.CLIP_ADAPTERS.DREAM_LAMBDA = -1.0
+    cfg.CLIP_ADAPTERS.DREAM_LAMBDA_GRID = [0.0, 0.1, 0.25, 0.5, 1.0]
+    cfg.CLIP_ADAPTERS.DREAM_LAMBDA_BETA = 0.01
+
+    # Penalize tangent-space orthogonal residuals for OOD robustness.
+    # Set 0.0 to disable.
+    cfg.CLIP_ADAPTERS.DREAM_ORTHOGONAL_GAMMA = 0.05
+
+    # Keep BayesAdapter training unchanged by default.
+    cfg.CLIP_ADAPTERS.DREAM_DENSITY_ON_TRAIN = False
+
+    # Evidence gate
+    cfg.CLIP_ADAPTERS.DREAM_APPLY_GATE = True
+    cfg.CLIP_ADAPTERS.DREAM_GATE_REQUIRES_POSITIVE_LAMBDA = True
+    cfg.CLIP_ADAPTERS.DREAM_GATE_ON_TRAIN = False
+    cfg.CLIP_ADAPTERS.DREAM_GATE_A = 5.0
+    cfg.CLIP_ADAPTERS.DREAM_GATE_QUANTILE = 0.05
+
+    # Logging
+    cfg.CLIP_ADAPTERS.DREAM_DEBUG = True
+
 
 
     # CAPEL-specific defaults
