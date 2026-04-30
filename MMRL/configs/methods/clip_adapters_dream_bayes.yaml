@@ -1,7 +1,7 @@
 METHOD:
   NAME: ClipAdapters
   FAMILY: adapter
-  TAG: DREAM_BAYES_ADAPTER
+  TAG: DREAM_BAYES_ADAPTER_V3
 
 CLIP_ADAPTERS:
   PREC: amp
@@ -11,58 +11,73 @@ CLIP_ADAPTERS:
   ENHANCED_BASE: none
   ALLOW_CACHE: true
 
-  # stochastic prototype sampling inherited from BayesAdapter
+  # BayesAdapter posterior sampling.
   N_SAMPLES: 3
   N_TEST_SAMPLES: 10
-
-  # BayesAdapter prior / KL
   BAYES_PRIOR_STD: 0.01
   BAYES_KL_SCALE: 1.0
   KL_WEIGHT: 0.0001
 
-  # cache executor / online support prefit
+  # Cache executor / support feature pool.
   CACHE_REPS: 20
   CACHE_TRAIN_AUG: true
   CACHE_AGGREGATION: pool
   CACHE_POOL_EPOCH_SUBSAMPLE: true
 
-  # DREAM density-ratio evidence head
+  # DREAM-BayesAdapter v3 strict switch.
   DREAM_ENABLED: true
-  DREAM_RANK: 32
-  DREAM_CHUNK_CLASSES: 64
-  DREAM_EPS: 0.0001
-  DREAM_TEXT_PRIOR_STRENGTH: 4.0
-  DREAM_MEAN_PRIOR_STRENGTH: 4.0
-  DREAM_COV_PRIOR_STRENGTH: 16.0
+  DREAM_V3_ENABLED: true
 
-  # -1 means choose lambda on support LOO-style NLL using the grid below.
-  # Set to 0.0 to force density product fallback to BayesAdapter.
-  DREAM_LAMBDA: -1.0
-  DREAM_LAMBDA_GRID: [0.0, 0.1, 0.25, 0.5, 1.0]
-  DREAM_LAMBDA_BETA: 0.01
-  DREAM_USE_LOO: true
-  DREAM_DENSITY_CLIP: 3.0
+  # Low-rank text-anchored spherical density ratio.
+  DREAM_V3_RANK: 32
+  DREAM_V3_CHUNK_CLASSES: 64
+  DREAM_V3_ALPHA_V: 1.0
+  DREAM_V3_ALPHA_T: 0.5
+  DREAM_V3_DELTA: 0.00001
 
-  # Orthogonal residual penalty catches OOD drift outside the low-rank semantic subspace.
-  # Set 0.0 for ablation if you want pure density-ratio formulas.
-  DREAM_ORTHOGONAL_GAMMA: 0.05
+  # Numerical constants.
+  DREAM_V3_EPS_THETA: 0.000001
+  DREAM_V3_EPS_P: 0.000000000001
+  DREAM_V3_EPS_SIGMA: 0.00001
+  DREAM_V3_EPS_D: 0.000001
+  DREAM_V3_EPS_R: 0.000001
 
-  # Default keeps BayesAdapter training unchanged; DREAM acts at eval/inference.
-  DREAM_DENSITY_ON_TRAIN: false
+  # Text/support priors and shrinkage.
+  DREAM_V3_NU_C: 4.0
+  DREAM_V3_NU_MU: 4.0
+  DREAM_V3_NU_SIGMA: 16.0
+  DREAM_V3_RHO0: 0.05
+  DREAM_V3_RHO_MIN: 0.05
+  DREAM_V3_GAMMA_C: 2.0
+  DREAM_V3_GAMMA_Q: 4.0
+
+  # Bounded residual clip: [-c_minus, c_plus].
+  DREAM_V3_C_MINUS: 1.5
+  DREAM_V3_C_PLUS: 2.0
+
+  # lambda0 < 0 means support-only selection from the grid.
+  # The grid includes 0.0 for exact BayesAdapter fallback.
+  DREAM_V3_LAMBDA: -1.0
+  DREAM_V3_LAMBDA_GRID: [0.0, 0.25, 0.5]
+  DREAM_V3_LAMBDA_BETA: 0.01
+  DREAM_V3_LAMBDA_MARGIN: 0.0
+
+  # Core method: T=1. Set a different value only for DREAM-Cal.
+  DREAM_V3_TEMPERATURE: 1.0
+
+  # Keep BayesAdapter training unchanged.
+  DREAM_V3_DENSITY_ON_TRAIN: false
+  DREAM_V3_POSTERIOR_BASE_ON_TRAIN: false
+  DREAM_V3_TEMPERATURE_ON_TRAIN: false
+
+  # Evidence is decoupled: no g*p+(1-g)/K probability mixture.
   DREAM_APPLY_GATE: false
+  DREAM_GATE_STRENGTH: 0.0
+  DREAM_V3_GATE_A: 5.0
 
-  # If true, lambda=0 also disables the gate, preserving strict fallback behavior.
-  DREAM_GATE_REQUIRES_POSITIVE_LAMBDA: true
+  # Large K*N background scale sampling cap for memory safety.
+  DREAM_V3_MAX_ALL_PAIRS: 262144
 
-  # rho-strength gate:
-  #   1.0 -> p_final = g*p_cls + (1-g)/K
-  #   0.0 -> exact no-op
-  DREAM_GATE_STRENGTH: 0.1
-  DREAM_GATE_ON_TRAIN: false
-  DREAM_GATE_A: 2.0
-  DREAM_GATE_QUANTILE: 0.01
-
-  DREAM_DEBUG: true
-
+  DREAM_V3_DEBUG: true
   GRID_SEARCH: false
   GRID_SEARCH_SPLIT: val
