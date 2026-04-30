@@ -5,6 +5,7 @@ from .adapters import (
     CapelAdapter,
     ClipAdapterResidual,
     CrossModalProbeAdapter,
+    DreamBayesAdapter,
     RandomProbeAdapter,
     TaskResidualAdapter,
     TipAdapter,
@@ -38,6 +39,11 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
 
     if "CROSSMODAL" in init_upper:
         return CrossModalProbeAdapter(cfg, clip_model, base_text_features)
+
+    # IMPORTANT: check DREAM before the generic BAYES_ADAPTER substring branch.
+    # Otherwise "DREAM_BAYES_ADAPTER" is swallowed by the plain BayesAdapter branch.
+    if init_upper in {"DREAM_BAYES_ADAPTER", "DREAMBAYES", "DREAM_BA"}:
+        return DreamBayesAdapter(cfg, clip_model, base_text_features)
 
     if "BAYES_ADAPTER" in init_upper:
         return BayesAdapter(cfg, clip_model, base_text_features)

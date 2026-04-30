@@ -16,6 +16,7 @@ from .loss import ClipAdaptersLoss
 from .online_heads import bayes_logits, bayes_logits_all, capel_logits, lp_logits
 import torch.nn.functional as F
 
+
 class ClipAdaptersModel(nn.Module):
     def __init__(self, cfg, classnames, clip_model):
         super().__init__()
@@ -51,6 +52,23 @@ class ClipAdaptersModel(nn.Module):
     def _is_bayes_adapter(self) -> bool:
         return str(getattr(self.adapter, "initialization_name", "")).upper() == "BAYES_ADAPTER"
 
+    @staticmethod
+    def _mc_predictive_log_probs(logits_all: torch.Tensor) -> torch.Tensor:
+        """
+        BayesAdapter posterior predictive in probability space:
+
+            log E_W[softmax(logits(W))]
+
+        This matches the DREAM theory better than softmax(E_W[logits]).
+        Returns log-probabilities with shape [B, C].
+        """
+        if logits_all.ndim != 3:
+            raise ValueError(
+                f"_mc_predictive_log_probs expects logits_all [S, B, C], got {tuple(logits_all.shape)}"
+            )
+        probs = torch.softmax(logits_all.float(), dim=-1).mean(dim=0).clamp_min(1e-12)
+        return torch.log(probs).to(dtype=logits_all.dtype)
+
     def forward(self, image, return_features=False, n_samples=None):
         try:
             image_features = self.image_encoder(image.type(self.dtype))
@@ -78,8 +96,7 @@ class ClipAdaptersModel(nn.Module):
             )
 
             if self.adapter.adapter_kind == "vnccapel_prototype":
-                # VNC 使用未乘 logit_scale 的 cosine logits 计算 prompt assignment。
-                # 这样比 tau * cos 更稳定，不会让 q_i 过早变成 one-hot。
+                # VNC uses unscaled cosine logits for prompt assignment.
                 features_norm = F.normalize(features_for_logits.float(), dim=-1)
                 prototypes_norm = F.normalize(self.adapter.prototypes.float(), dim=-1)
                 assignment_logits = torch.einsum(
@@ -96,7 +113,10 @@ class ClipAdaptersModel(nn.Module):
 
             if self._is_bayes_adapter():
                 logits_all = bayes_logits_all(self.logit_scale, features_for_logits, prototypes)
-                logits = logits_all.mean(dim=0)
+
+                # Use E[softmax] instead of mean logits.
+                # This makes BayesAdapter/DREAM evaluation match the stated posterior predictive.
+                logits = self._mc_predictive_log_probs(logits_all)
             else:
                 logits = bayes_logits(self.logit_scale, features_for_logits, prototypes)
 
@@ -104,11 +124,22 @@ class ClipAdaptersModel(nn.Module):
             prototypes = self.adapter.get_prototypes()
             logits = lp_logits(self.logit_scale, features_for_logits, prototypes)
 
+        # Optional additive evidence/cache logits.
+        # For DREAM this implements:
+        #   log p_cls(k|z) = log p_B(k|z) + lambda * standardized_density_ratio_k(z)
         cache_logits = self.adapter.cache_logits(features_for_logits)
         if cache_logits is not None:
             logits = logits + cache_logits
-            if logits_all is not None:
-                logits_all = logits_all + cache_logits.unsqueeze(0)
+
+        # Optional probability-space postprocess.
+        # For DREAM this implements:
+        #   p_final = rho-gated mixture of p_cls and uniform.
+        if hasattr(self.adapter, "postprocess_logits"):
+            logits = self.adapter.postprocess_logits(
+                logits,
+                features_for_logits,
+                training=bool(self.training),
+            )
 
         return {
             "logits": logits,
@@ -170,7 +201,6 @@ class ClipAdaptersMethod(BaseMethod):
         if head.get("assignment_logits") is not None:
             aux_logits["vnc_assignment_logits"] = head["assignment_logits"]
 
-
     def _bayes_kl_weight(self) -> float:
         if not self._is_bayes_adapter():
             return float(self.cfg.CLIP_ADAPTERS.KL_WEIGHT)
@@ -188,12 +218,16 @@ class ClipAdaptersMethod(BaseMethod):
     def _needs_online_support_features(self) -> bool:
         """
         Online mode should not use disk cold cache, but some adapters still need
-        transient support features/statistics before training.
+        transient support features/statistics before training/eval.
 
         - CLAP constraint needs labels_train/logits_train.
         - TipA/TipA-f need support features to build cache_keys/cache_values.
+        - DREAM-BayesAdapter needs support features to fit density evidence.
         """
         adapter = self.model.adapter
+
+        if bool(getattr(adapter, "needs_support_features", False)):
+            return True
 
         if getattr(adapter, "apply_constraint", "none") != "none":
             return True
@@ -480,6 +514,18 @@ class ClipAdaptersMethod(BaseMethod):
                 )
 
             print("[ClipAdaptersMethod] Online: building TipA support feature bank")
+            adapter.build_cache(
+                features_train.to(self.device),
+                labels_train.to(self.device),
+            )
+
+        if bool(getattr(adapter, "needs_support_features", False)):
+            if labels_train is None or features_train is None:
+                raise RuntimeError(
+                    f"{adapter.__class__.__name__} requires support features, "
+                    "but online prefit did not build them."
+                )
+            print(f"[ClipAdaptersMethod] Online: fitting {adapter.__class__.__name__} support head")
             adapter.build_cache(
                 features_train.to(self.device),
                 labels_train.to(self.device),

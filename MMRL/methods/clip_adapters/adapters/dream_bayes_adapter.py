@@ -12,19 +12,22 @@ class DreamBayesAdapter(BayesAdapter):
     """
     DREAM-BayesAdapter: BayesAdapter + text-anchored hyperspherical density-ratio evidence.
 
-    This class deliberately inherits the original BayesAdapter parameterization and keeps
+    This class inherits the original BayesAdapter parameterization and keeps
     initialization_name == "BAYES_ADAPTER" so the existing ClipAdapters loss path still
     uses the BayesAdapter Monte-Carlo logits and KL term.
 
-    Added behavior:
-      1. build_cache(features_train, labels_train): fit a lightweight tangent-space
-         shrinkage Gaussian density-ratio head from support CLIP features.
-      2. cache_logits(features): add lambda * standardized density-ratio logits at eval.
-      3. postprocess_logits(logits, features): optionally apply an ID evidence gate:
-            p_final = g * softmax(logits) + (1-g) / K.
-
-    The module is designed as a safe extension: when density fitting is unavailable, when
-    DREAM_LAMBDA is 0, or before build_cache() is called, it returns BayesAdapter behavior.
+    Key behavior:
+      1. build_cache(features_train, labels_train):
+           fit a lightweight tangent-space shrinkage Gaussian density-ratio head.
+      2. cache_logits(features):
+           add lambda * standardized density-ratio logits at eval.
+      3. postprocess_logits(logits, features):
+           optionally apply evidence gate:
+               p_final = alpha * p_cls + (1 - alpha) / K,
+           where alpha = 1 - rho * (1 - g).
+      4. Lambda and gate threshold are selected from support LOO-style scores.
+         For scalability, LOO keeps the fitted geometry fixed and recomputes
+         class Gaussian statistics for the held-out support point.
     """
 
     # Keep exact name for existing model._is_bayes_adapter() and ClipAdaptersLoss checks.
@@ -59,11 +62,17 @@ class DreamBayesAdapter(BayesAdapter):
         self.dream_gate_on_train = bool(getattr(cfg.CLIP_ADAPTERS, "DREAM_GATE_ON_TRAIN", False))
         self.dream_gate_a = float(getattr(cfg.CLIP_ADAPTERS, "DREAM_GATE_A", 5.0))
         self.dream_gate_quantile = float(getattr(cfg.CLIP_ADAPTERS, "DREAM_GATE_QUANTILE", 0.05))
+
+        # rho in the earlier review: rho=0 gives exact BayesAdapter fallback even if gate is defined.
+        self.dream_gate_strength = float(getattr(cfg.CLIP_ADAPTERS, "DREAM_GATE_STRENGTH", 1.0))
+
         self.dream_orthogonal_gamma = float(
             getattr(cfg.CLIP_ADAPTERS, "DREAM_ORTHOGONAL_GAMMA", 0.05)
         )
         self.dream_lambda_beta = float(getattr(cfg.CLIP_ADAPTERS, "DREAM_LAMBDA_BETA", 0.01))
         self.dream_manual_lambda = float(getattr(cfg.CLIP_ADAPTERS, "DREAM_LAMBDA", -1.0))
+        self.dream_density_clip = float(getattr(cfg.CLIP_ADAPTERS, "DREAM_DENSITY_CLIP", 3.0))
+        self.dream_use_loo = bool(getattr(cfg.CLIP_ADAPTERS, "DREAM_USE_LOO", True))
         self.dream_debug = bool(getattr(cfg.CLIP_ADAPTERS, "DREAM_DEBUG", True))
 
         # Fitted state. Empty buffers make the module state_dict-safe before fitting.
@@ -138,9 +147,10 @@ class DreamBayesAdapter(BayesAdapter):
             basis = vh[:max_rank].transpose(0, 1).contiguous()
         except RuntimeError:
             # Very small or numerically degenerate support set: fall back to text directions.
-            q, _ = torch.linalg.qr(text_dir.transpose(0, 1), mode="reduced")
+            q, _ = torch.linalg.qr(text_dir.transpose(0, 1).float(), mode="reduced")
             basis = q[:, :max_rank].contiguous()
 
+        # Normalize columns.
         return self._normalize(basis.transpose(0, 1)).transpose(0, 1).contiguous()
 
     def _project_basis_to_class_tangent(
@@ -223,13 +233,13 @@ class DreamBayesAdapter(BayesAdapter):
 
         for start in range(0, c, chunk):
             end = min(c, start + chunk)
-            m = centers[start:end]                       # [Cc, D]
+            m = centers[start:end]                           # [Cc, D]
             u = self._log_map(z[:, None, :], m[None, :, :])  # [B, Cc, D]
-            uk = class_basis[start:end]                  # [Cc, D, R]
-            x = torch.einsum("bcd,cdr->bcr", u, uk)      # [B, Cc, R]
+            uk = class_basis[start:end]                      # [Cc, D, R]
+            x = torch.einsum("bcd,cdr->bcr", u, uk)          # [B, Cc, R]
 
-            mu_k = mu[start:end].unsqueeze(0)            # [1, Cc, R]
-            var_k = var[start:end].unsqueeze(0)          # [1, Cc, R]
+            mu_k = mu[start:end].unsqueeze(0)                # [1, Cc, R]
+            var_k = var[start:end].unsqueeze(0)              # [1, Cc, R]
             var0_k = var0.view(1, 1, r)
 
             quad_p = (x - mu_k).pow(2).div(var_k).sum(dim=-1)
@@ -252,9 +262,113 @@ class DreamBayesAdapter(BayesAdapter):
     def _standardize_density(self, d: torch.Tensor) -> torch.Tensor:
         mean = d.mean(dim=-1, keepdim=True)
         std = d.std(dim=-1, unbiased=False, keepdim=True).clamp_min(self.dream_eps)
-        return (d - mean) / std
+        out = (d - mean) / std
+        if self.dream_density_clip > 0:
+            out = out.clamp(-float(self.dream_density_clip), float(self.dream_density_clip))
+        return out
 
-    def _select_lambda(self, features: torch.Tensor, labels: torch.Tensor, d: torch.Tensor) -> float:
+    @torch.no_grad()
+    def _base_log_probs_mc(self, features: torch.Tensor, n_samples: Optional[int] = None) -> torch.Tensor:
+        """
+        BayesAdapter posterior predictive for support lambda selection:
+
+            log E_W[softmax(tau * cos(z, W))]
+
+        This mirrors ClipAdaptersModel._mc_predictive_log_probs().
+        """
+        if n_samples is None:
+            n_samples = int(getattr(self.cfg.CLIP_ADAPTERS, "N_TEST_SAMPLES", 10))
+        n_samples = max(1, int(n_samples))
+
+        z = self._normalize(features.float())
+        prototypes = self.sample_prototypes(n_samples=n_samples).detach().float().to(z.device)
+        prototypes = self._normalize(prototypes)
+        scale = self.logit_scale.exp().detach().float().to(z.device)
+
+        logits_all = torch.einsum("bd,scd->sbc", z, prototypes) * scale
+        probs = torch.softmax(logits_all, dim=-1).mean(dim=0).clamp_min(1e-12)
+        return probs.log()
+
+    def _overwrite_own_class_with_loo_stats(
+        self,
+        z: torch.Tensor,
+        y: torch.Tensor,
+        d_full: torch.Tensor,
+        centers: torch.Tensor,
+        class_basis: torch.Tensor,
+        x_true: torch.Tensor,
+        var0: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Practical LOO density scores.
+
+        To keep this scalable for cached augmented feature pools, we keep the
+        fitted geometry (centers/basis) fixed and recompute the class Gaussian
+        statistics with each held-out sample removed. This removes the most
+        severe in-sample bias for lambda/gate calibration without refitting SVD
+        N times.
+        """
+        d_loo = d_full.detach().clone()
+
+        if int(z.shape[0]) == 0:
+            return d_loo
+
+        var0 = var0.to(device=z.device, dtype=z.dtype).clamp_min(self.dream_eps)
+        logdet0 = torch.log(var0).sum()
+        perp_scale = var0.mean().clamp_min(self.dream_eps)
+        r = int(var0.shape[0])
+
+        for k in range(self.num_classes):
+            idx = (y == k).nonzero(as_tuple=False).flatten()
+            n_k = int(idx.numel())
+            if n_k <= 0:
+                continue
+
+            x_k = x_true.index_select(0, idx).to(dtype=z.dtype)
+            if n_k == 1:
+                mu_ex = x_k.new_zeros(1, r)
+                var_ex = var0.view(1, r)
+            else:
+                sum_x = x_k.sum(dim=0, keepdim=True)
+                sum_x2 = x_k.pow(2).sum(dim=0, keepdim=True)
+
+                n_ex = float(n_k - 1)
+                sum_ex = sum_x - x_k
+                sum_x2_ex = sum_x2 - x_k.pow(2)
+
+                bar_ex = sum_ex / n_ex
+                mu_ex = (n_ex / (n_ex + self.dream_mean_prior_strength)) * bar_ex
+
+                ss_ex = (
+                    sum_x2_ex
+                    - 2.0 * mu_ex * sum_ex
+                    + n_ex * mu_ex.pow(2)
+                ).clamp_min(0.0)
+
+                var_ex = (
+                    self.dream_cov_prior_strength * var0.view(1, r) + ss_ex
+                ) / (self.dream_cov_prior_strength + n_ex)
+                var_ex = var_ex + self.dream_eps
+
+            z_k = z.index_select(0, idx)
+            m = centers[k : k + 1]
+            u = self._log_map(z_k, m)
+            x_query = u @ class_basis[k]
+
+            quad_p = (x_query - mu_ex).pow(2).div(var_ex.clamp_min(self.dream_eps)).sum(dim=-1)
+            quad_q = x_query.pow(2).div(var0.view(1, r)).sum(dim=-1)
+            logdet = torch.log(var_ex.clamp_min(self.dream_eps)).sum(dim=-1) - logdet0
+            ratio = -0.5 * (quad_p - quad_q + logdet)
+
+            if self.dream_orthogonal_gamma > 0:
+                rho = (u.pow(2).sum(dim=-1) - x_query.pow(2).sum(dim=-1)).clamp_min(0.0)
+                ratio = ratio - float(self.dream_orthogonal_gamma) * rho / (2.0 * perp_scale)
+
+            d_loo[idx, k] = ratio.to(d_loo.dtype)
+
+        return d_loo
+
+    def _select_lambda(self, features: torch.Tensor, labels: torch.Tensor, d_for_selection: torch.Tensor) -> float:
         if self.dream_manual_lambda >= 0.0:
             return float(self.dream_manual_lambda)
 
@@ -262,15 +376,15 @@ class DreamBayesAdapter(BayesAdapter):
         if not grid:
             return 0.0
 
-        z = self._normalize(features.float())
-        proto = self._normalize(self.get_prototypes().detach().float()).to(z.device)
-        base_logits = z @ proto.t() * self.logit_scale.exp().detach().float().to(z.device)
-        d_tilde = self._standardize_density(d.detach())
+        # Correct BayesAdapter base predictive:
+        #   log p_B = log E_W[softmax(logits(W))]
+        base_log_probs = self._base_log_probs_mc(features)
+        d_tilde = self._standardize_density(d_for_selection.detach())
 
         best_lmbda = 0.0
         best_obj = None
         for lmbda in grid:
-            logits = base_logits + float(lmbda) * d_tilde
+            logits = base_log_probs + float(lmbda) * d_tilde
             nll = F.cross_entropy(logits, labels, reduction="mean")
             obj = nll + self.dream_lambda_beta * float(lmbda) * float(lmbda)
             obj_value = float(obj.detach().cpu().item())
@@ -288,8 +402,9 @@ class DreamBayesAdapter(BayesAdapter):
         z_raw = features_train.detach().to(device=device, dtype=torch.float32)
         y_raw = labels_train.detach().to(device=device, dtype=torch.long).flatten()
         valid = (y_raw >= 0) & (y_raw < self.num_classes)
-        z_raw = z_raw.index_select(0, valid.nonzero(as_tuple=False).flatten())
-        y = y_raw.index_select(0, valid.nonzero(as_tuple=False).flatten())
+        valid_idx = valid.nonzero(as_tuple=False).flatten()
+        z_raw = z_raw.index_select(0, valid_idx)
+        y = y_raw.index_select(0, valid_idx)
 
         if int(z_raw.shape[0]) == 0:
             if self.dream_debug:
@@ -314,11 +429,31 @@ class DreamBayesAdapter(BayesAdapter):
         self.dream_var0 = var0.to(self.base_text_features.dtype)
         self.dream_fitted.fill_(True)
 
-        d, _ = self._density_ratio_from_fitted(z_raw)
-        lmbda = self._select_lambda(z_raw, y, d)
+        d_full, _ = self._density_ratio_from_fitted(z_raw)
+
+        if self.dream_use_loo:
+            d_select = self._overwrite_own_class_with_loo_stats(
+                z=z,
+                y=y,
+                d_full=d_full,
+                centers=centers,
+                class_basis=class_basis,
+                x_true=x,
+                var0=var0,
+            )
+            loo_tag = "fixed-geometry LOO"
+        else:
+            d_select = d_full
+            loo_tag = "in-sample"
+
+        lmbda = self._select_lambda(z_raw, y, d_select)
         self.dream_lambda = torch.tensor(lmbda, device=device, dtype=self.base_text_features.dtype)
 
-        r_score = torch.logsumexp(d - torch.log(d.new_tensor(float(self.num_classes))), dim=-1)
+        # Gate threshold from the same LOO-style evidence scores.
+        r_score = torch.logsumexp(
+            d_select - torch.log(d_select.new_tensor(float(self.num_classes))),
+            dim=-1,
+        )
         q = torch.quantile(r_score.float(), float(self.dream_gate_quantile)).to(device)
         q25 = torch.quantile(r_score.float(), 0.25).to(device)
         q75 = torch.quantile(r_score.float(), 0.75).to(device)
@@ -333,7 +468,8 @@ class DreamBayesAdapter(BayesAdapter):
                 "[DREAM-BayesAdapter] fitted density head: "
                 f"support={int(z.shape[0])}, classes={nonempty}/{self.num_classes}, "
                 f"rank={int(self.dream_basis.shape[1])}, lambda={float(self.dream_lambda):.4g}, "
-                f"gate_q={float(self.dream_gate_q):.4g}, gate_iqr={float(self.dream_gate_iqr):.4g}"
+                f"gate_q={float(self.dream_gate_q):.4g}, gate_iqr={float(self.dream_gate_iqr):.4g}, "
+                f"selection={loo_tag}, gate_strength={float(self.dream_gate_strength):.4g}"
             )
         return None
 
@@ -351,6 +487,7 @@ class DreamBayesAdapter(BayesAdapter):
         )
         return {
             "density_ratio": d,
+            "standardized_density_ratio": self._standardize_density(d),
             "orthogonal_residual": rho,
             "id_evidence": r_score,
             "gate": gate,
@@ -380,6 +517,8 @@ class DreamBayesAdapter(BayesAdapter):
             return logits
         if not bool(self.dream_fitted.item()):
             return logits
+        if self.dream_gate_strength <= 0.0:
+            return logits
         if self.dream_gate_requires_positive_lambda and abs(float(self.dream_lambda.detach().cpu().item())) <= 0.0:
             return logits
         if training and not self.dream_gate_on_train:
@@ -387,7 +526,14 @@ class DreamBayesAdapter(BayesAdapter):
 
         scores = self.dream_scores(features)
         gate = scores["gate"].to(device=logits.device, dtype=logits.dtype).unsqueeze(-1)
+
+        # rho-strength gate:
+        #   rho=1 -> original DREAM formula: g*p + (1-g)*uniform
+        #   rho=0 -> exact no-op fallback.
+        rho = max(0.0, min(1.0, float(self.dream_gate_strength)))
+        alpha = 1.0 - rho * (1.0 - gate)
+
         probs = torch.softmax(logits.float(), dim=-1).to(logits.dtype)
         uniform = probs.new_full(probs.shape, 1.0 / float(self.num_classes))
-        final_probs = (gate * probs + (1.0 - gate) * uniform).clamp_min(1e-12)
+        final_probs = (alpha * probs + (1.0 - alpha) * uniform).clamp_min(1e-12)
         return torch.log(final_probs).to(logits.dtype)

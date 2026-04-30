@@ -35,20 +35,29 @@ CLIP_ADAPTERS:
   DREAM_MEAN_PRIOR_STRENGTH: 4.0
   DREAM_COV_PRIOR_STRENGTH: 16.0
 
-  # -1 means choose lambda on support NLL using the grid below.
-  # Set to 0.0 to force exact BayesAdapter fallback at inference.
+  # -1 means choose lambda on support LOO-style NLL using the grid below.
+  # Set to 0.0 to force density product fallback to BayesAdapter.
   DREAM_LAMBDA: -1.0
   DREAM_LAMBDA_GRID: [0.0, 0.1, 0.25, 0.5, 1.0]
   DREAM_LAMBDA_BETA: 0.01
+  DREAM_USE_LOO: true
+  DREAM_DENSITY_CLIP: 3.0
 
   # Orthogonal residual penalty catches OOD drift outside the low-rank semantic subspace.
-  # Set 0.0 for ablation.
+  # Set 0.0 for ablation if you want pure density-ratio formulas.
   DREAM_ORTHOGONAL_GAMMA: 0.05
 
   # Default keeps BayesAdapter training unchanged; DREAM acts at eval/inference.
   DREAM_DENSITY_ON_TRAIN: false
   DREAM_APPLY_GATE: true
+
+  # If true, lambda=0 also disables the gate, preserving strict fallback behavior.
   DREAM_GATE_REQUIRES_POSITIVE_LAMBDA: true
+
+  # rho-strength gate:
+  #   1.0 -> p_final = g*p_cls + (1-g)/K
+  #   0.0 -> exact no-op
+  DREAM_GATE_STRENGTH: 1.0
   DREAM_GATE_ON_TRAIN: false
   DREAM_GATE_A: 5.0
   DREAM_GATE_QUANTILE: 0.05
