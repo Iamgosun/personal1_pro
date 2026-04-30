@@ -12,9 +12,9 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 # caltech101 oxford_pets dtd
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-   BayesAdapter}
+METHODS_ARG=${2:-   DREAM_BAYES_ADAPTER BayesAdapter CLAP}
 EXEC_MODE=${3:-cache}
-DATASETS_ARG=${4:-"  caltech101  "}
+DATASETS_ARG=${4:-"  caltech101  oxford_pets dtd"}
 SHOTS_ARG=${5:-"16"}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
@@ -25,7 +25,7 @@ TAG=${TAG:-}
 
 NGPU=${NGPU:-1}
 GPU_IDS=${GPU_IDS:-0 }
-JOBS_PER_GPU=${JOBS_PER_GPU:-3}
+JOBS_PER_GPU=${JOBS_PER_GPU:-2}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}

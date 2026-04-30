@@ -141,7 +141,7 @@ class BaseExecutor:
         calibrated_report = build_classification_calibration_report(
             logits=calibrated_logits,
             labels=labels,
-            n_bins=15,
+            n_bins=10,
         )
 
         report["temperature_scaling"] = {
@@ -186,7 +186,7 @@ class BaseExecutor:
         report = build_classification_calibration_report(
             logits=logits,
             labels=labels,
-            n_bins=15,
+            n_bins=10,
         )
 
         report = self._add_common_report_fields(

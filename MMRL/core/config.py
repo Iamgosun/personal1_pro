@@ -378,6 +378,14 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.DREAM_LAMBDA_GRID = [0.0, 0.1, 0.25, 0.5, 1.0]
     cfg.CLIP_ADAPTERS.DREAM_LAMBDA_BETA = 0.01
 
+
+    # LOO-style support calibration for lambda/gate.
+    cfg.CLIP_ADAPTERS.DREAM_USE_LOO = True
+
+    # Clip per-sample standardized density ratio to avoid exploding density logits.
+    cfg.CLIP_ADAPTERS.DREAM_DENSITY_CLIP = 3.0
+
+
     # Penalize tangent-space orthogonal residuals for OOD robustness.
     # Set 0.0 to disable.
     cfg.CLIP_ADAPTERS.DREAM_ORTHOGONAL_GAMMA = 0.05
@@ -389,6 +397,7 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.DREAM_APPLY_GATE = True
     cfg.CLIP_ADAPTERS.DREAM_GATE_REQUIRES_POSITIVE_LAMBDA = True
     cfg.CLIP_ADAPTERS.DREAM_GATE_ON_TRAIN = False
+    cfg.CLIP_ADAPTERS.DREAM_GATE_STRENGTH = 1.0
     cfg.CLIP_ADAPTERS.DREAM_GATE_A = 5.0
     cfg.CLIP_ADAPTERS.DREAM_GATE_QUANTILE = 0.05
 
