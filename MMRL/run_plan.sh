@@ -14,8 +14,8 @@ set -euo pipefail
 PROTOCOL=${1:-FS}
 METHODS_ARG=${2:-   DREAM_BAYES_ADAPTER BayesAdapter CLAP}
 EXEC_MODE=${3:-cache}
-DATASETS_ARG=${4:-"  caltech101  oxford_pets dtd"}
-SHOTS_ARG=${5:-"16"}
+DATASETS_ARG=${4:-"  caltech101  oxford_pets dtd eurosat fgvc_aircraft stanford_cars ucf101"}
+SHOTS_ARG=${5:-"1 2 4 8 16 32"}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
