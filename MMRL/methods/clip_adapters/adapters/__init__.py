@@ -10,5 +10,5 @@ from .capel_adapter import CapelAdapter
 from .vnccapel_adapter import VncCapelAdapter
 from .ecka_adapter import ECKAAdapter
 from .pp_proker_onehot import PPProKeROneHotAdapter
-
+from .hba_lr_adapter import HbaLrAdapter
 from .dream_bayes_adapter import DreamBayesAdapter

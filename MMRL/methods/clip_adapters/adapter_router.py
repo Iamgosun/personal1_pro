@@ -6,6 +6,7 @@ from .adapters import (
     ClipAdapterResidual,
     CrossModalProbeAdapter,
     DreamBayesAdapter,
+    HbaLrAdapter,
     RandomProbeAdapter,
     TaskResidualAdapter,
     TipAdapter,
@@ -39,6 +40,10 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
 
     if "CROSSMODAL" in init_upper:
         return CrossModalProbeAdapter(cfg, clip_model, base_text_features)
+
+    # HBA must be checked before the generic BAYES_ADAPTER branch.
+    if init_upper in {"HBA", "HBA_LR", "HBALR", "HBA-LR"}:
+        return HbaLrAdapter(cfg, clip_model, base_text_features)
 
     # IMPORTANT: check DREAM before the generic BAYES_ADAPTER substring branch.
     # Otherwise "DREAM_BAYES_ADAPTER" is swallowed by the plain BayesAdapter branch.
