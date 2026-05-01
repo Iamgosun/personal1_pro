@@ -168,6 +168,8 @@ class ClipAdaptersModel(nn.Module):
             "sub_logits": sub_logits,
             "assignment_logits": assignment_logits,
             "features_for_logits": features_for_logits,
+            "raw_features": features,
+            "adapted_features": features_for_logits,
         }
 
 

@@ -25,6 +25,61 @@ class ClipAdaptersLoss:
 
         return F.cross_entropy(flat_logits, flat_labels, reduction="none").mean()
 
+
+    def _btr_loss(self, outputs):
+        logits_all = outputs.aux_logits["bayes_logits_all"]
+        labels = outputs.labels
+
+        if not hasattr(self.adapter, "btr_data_term"):
+            raise AttributeError(
+                "BTR loss requires adapter.btr_data_term(); "
+                "check CLIP_ADAPTERS.INIT=BTR and adapter_router.py."
+            )
+
+        data_term, extras = self.adapter.btr_data_term(logits_all, labels)
+        loss = data_term
+
+        extras = {
+            "loss_ce": data_term.detach(),
+            "data_term": data_term.detach(),
+            **{
+                k: v.detach() if torch.is_tensor(v) else v
+                for k, v in extras.items()
+            },
+        }
+
+        # KL(q(R) || p(R))
+        kl = self.adapter.kl_divergence()
+        kl_weight = float(
+            outputs.extras.get(
+                "bayes_kl_weight",
+                self.adapter.bayes_kl_base_weight()
+                if hasattr(self.adapter, "bayes_kl_base_weight")
+                else self.base_kl_weight,
+            )
+        )
+        kl_term = kl * kl_weight
+        loss = loss + kl_term
+
+        extras["loss_kl"] = kl_term.detach()
+        extras["kl_term"] = kl_term.detach()
+        extras["kl_raw"] = kl.detach()
+        extras["kl_weight"] = data_term.detach().new_tensor(kl_weight)
+
+        # Optional Brier calibration regularization
+        brier_weight = float(getattr(self.adapter, "brier_weight", 0.0))
+        if brier_weight > 0 and hasattr(self.adapter, "brier_loss"):
+            brier_raw = self.adapter.brier_loss(logits_all, labels)
+            brier_term = brier_weight * brier_raw
+            loss = loss + brier_term
+
+            extras["loss_brier"] = brier_term.detach()
+            extras["brier_raw"] = brier_raw.detach()
+
+        outputs.losses.update(extras)
+        return loss
+
+
     def _hba_lr_loss(self, outputs):
         logits_all = outputs.aux_logits["bayes_logits_all"]
         labels = outputs.labels
@@ -329,6 +384,13 @@ class ClipAdaptersLoss:
             and "capel_sub_logits" in outputs.aux_logits
         ):
             return self._capel_loss(outputs)
+
+        if (
+            str(getattr(self.adapter, "btr_initialization_name", "")).upper() == "BTR"
+            and "bayes_logits_all" in outputs.aux_logits
+        ):
+            return self._btr_loss(outputs)
+
 
         if (
             str(getattr(self.adapter, "hba_initialization_name", "")).upper() == "HBA_LR"

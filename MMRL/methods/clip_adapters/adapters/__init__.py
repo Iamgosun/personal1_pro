@@ -16,3 +16,4 @@ from .deba_adapter import DEBAAdapter
 from .sbea_adapter import SBEAAdapter
 from .bayes_adapter_plus import BayesAdapterPlus
 from .rcv_bayes_adapter import RCVBayesAdapter
+from .bayesian_task_residual_adapter import BayesianTaskResidualAdapter

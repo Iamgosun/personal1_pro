@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .adapters import (
     BayesAdapter,
-    BayesAdapterPlus,
+    BayesianTaskResidualAdapter,
     CapelAdapter,
     ClipAdapterResidual,
     CrossModalProbeAdapter,
@@ -13,7 +13,7 @@ from .adapters import (
     TaskResidualAdapter,
     TipAdapter,
     ZeroShotProbeAdapter,
-    RCVBayesAdapter,
+    SBEAAdapter,
 )
 
 
@@ -32,7 +32,14 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
     if init_upper.startswith("ZS") or init_upper == "ZS":
         return ZeroShotProbeAdapter(cfg, clip_model, base_text_features)
 
-    if "TR" in init_upper:
+    if "TR" in init_upper and init_upper not in {
+        "BTR",
+        "BAYESIAN_TASK_RESIDUAL",
+        "BAYESIAN_TASKRES",
+        "BAYESIAN_TASK_RESIDUAL_ADAPTER",
+        "TASKRES_BAYES",
+        "BAYES_TASKRES",
+    }:
         return TaskResidualAdapter(cfg, clip_model, base_text_features)
 
     if "CLIPA" in init_upper:
@@ -44,23 +51,22 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
     if "CROSSMODAL" in init_upper:
         return CrossModalProbeAdapter(cfg, clip_model, base_text_features)
 
-    # BayesAdapter++ must be checked before the generic BAYES_ADAPTER branch,
-    # because "BAYES_ADAPTER_PLUS" contains the substring "BAYES_ADAPTER".
+    # Bayesian Task Residual should be checked before generic HBA/BAYES routing.
     if init_upper in {
-        "BAYES_ADAPTER_PLUS",
-        "BAYES_PLUS",
-        "BAYESADAPTER_PLUS",
-        "BA_PLUS",
-        "BAPLUS",
+        "BTR",
+        "BAYESIAN_TASK_RESIDUAL",
+        "BAYESIAN_TASKRES",
+        "BAYESIAN_TASK_RESIDUAL_ADAPTER",
+        "TASKRES_BAYES",
+        "BAYES_TASKRES",
     }:
-        return BayesAdapterPlus(cfg, clip_model, base_text_features)
+        return BayesianTaskResidualAdapter(cfg, clip_model, base_text_features)
 
     # HBA must be checked before the generic BAYES_ADAPTER branch.
     if init_upper in {"HBA", "HBA_LR", "HBALR", "HBA-LR"}:
         return HbaLrAdapter(cfg, clip_model, base_text_features)
 
     # DEBA is a separate method-level adapter, not the old BayesAdapter branch.
-    # It is checked before DREAM/BAYES_ADAPTER generic routing.
     if init_upper in {
         "DEBA",
         "DEBA_ADAPTER",
@@ -74,21 +80,12 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
     }:
         return DEBAAdapter(cfg, clip_model, base_text_features)
 
+    if init_upper in {"SBEA", "SBEA_ARD", "SPARSE_BAYES_ENERGY_ADAPTER"}:
+        return SBEAAdapter(cfg, clip_model, base_text_features)
+
     # IMPORTANT: check DREAM before the generic BAYES_ADAPTER substring branch.
-    # Otherwise "DREAM_BAYES_ADAPTER" is swallowed by the plain BayesAdapter branch.
     if init_upper in {"DREAM_BAYES_ADAPTER", "DREAMBAYES", "DREAM_BA"}:
         return DreamBayesAdapter(cfg, clip_model, base_text_features)
-
-
-    if init_upper in {
-        "RCV",
-        "RCV_BAYES",
-        "RCV_BAYES_ADAPTER",
-        "RCV-BAYES-ADAPTER",
-        "RELIABILITY_CALIBRATED_BAYES_ADAPTER",
-    }:
-        return RCVBayesAdapter(cfg, clip_model, base_text_features)
-
 
     if "BAYES_ADAPTER" in init_upper:
         return BayesAdapter(cfg, clip_model, base_text_features)

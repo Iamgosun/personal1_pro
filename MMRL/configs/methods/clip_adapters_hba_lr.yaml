@@ -1,22 +1,45 @@
 CLIP_ADAPTERS:
   INIT: HBA_LR
 
-  N_SAMPLES: 5
-  N_TEST_SAMPLES: 50
+  N_SAMPLES: 3
+  N_TEST_SAMPLES: 10
 
-  HBA_RANK: 4
-  HBA_RHO: 1.0
+  # Low-rank posterior mean:
+  #   mu_W = T + alpha * A B
+  HBA_RANK: 32
+  HBA_RHO: 0.5
+  HBA_MAX_COEFF_NORM: 0.0
 
-  HBA_S0: 0.01
-  HBA_S_MIN: 0.0001
-
-  HBA_SUPPORT_INIT: True
-  HBA_INIT_RESIDUAL: logmap
-  HBA_INIT_STRENGTH: 1.0
-  HBA_INIT_MAX_NORM: 5.0
-
+  # Full-prototype Gaussian posterior q(W)
+  BAYES_PRIOR_STD: 0.01
+  HBA_POSTERIOR_INIT_STD: 0.01
   HBA_BETA: 0.00005
   BAYES_KL_SCALE: 1.0
 
+  # Optional support initialization.
+  # Set False for LoRA-style zero-shot start.
+  HBA_SUPPORT_INIT: True
+  HBA_INIT_RESIDUAL: euclidean
+  HBA_INIT_STRENGTH: 1.0
+  HBA_INIT_MAX_NORM: 0.0
+
+  # Basis regularization
   HBA_LAMBDA_B: 0.0
   HBA_LAMBDA_ORTH: 0.0001
+
+  # KL already anchors q(W) to zero-shot prior.
+  HBA_LAMBDA_PROTO_ANCHOR: 0.0
+
+  # Strict TaskRes/BayesAdapter does not adapt image features.
+  HBA_USE_VISUAL_ADAPTER: False
+  HBA_LAMBDA_VISUAL_ANCHOR: 0.0
+
+  # Temperature calibration.
+  # Applied before posterior predictive MC aggregation.
+  HBA_TEMPERATURE: 1.0
+  HBA_TEMPERATURE_ON_TRAIN: False
+
+  CACHE_REPS: 20
+  CACHE_TRAIN_AUG: True
+  CACHE_AGGREGATION: pool
+  CACHE_POOL_EPOCH_SUBSAMPLE: True

@@ -12,7 +12,7 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 # caltech101 oxford_pets dtd  caltech101   dtd  fgvc_aircraft stanford_cars ucf101
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-     rcv_bayes_adapter}
+METHODS_ARG=${2:-     BTR}
 EXEC_MODE=${3:-cache}
 DATASETS_ARG=${4:-"    caltech101  dtd"}
 SHOTS_ARG=${5:-" 1 2 4 16"}
