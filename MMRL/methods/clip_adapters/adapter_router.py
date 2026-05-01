@@ -12,6 +12,7 @@ from .adapters import (
     TaskResidualAdapter,
     TipAdapter,
     ZeroShotProbeAdapter,
+    SBEAAdapter,
 )
 
 
@@ -60,6 +61,10 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
         "DEBA_MIX",
     }:
         return DEBAAdapter(cfg, clip_model, base_text_features)
+
+    if init_upper in {"SBEA", "SBEA_ARD", "SPARSE_BAYES_ENERGY_ADAPTER"}:
+        return SBEAAdapter(cfg, clip_model, base_text_features)
+
 
     # IMPORTANT: check DREAM before the generic BAYES_ADAPTER substring branch.
     # Otherwise "DREAM_BAYES_ADAPTER" is swallowed by the plain BayesAdapter branch.

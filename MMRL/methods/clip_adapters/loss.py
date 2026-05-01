@@ -198,6 +198,80 @@ class ClipAdaptersLoss:
         outputs.losses.update(extras)
         return loss
 
+    def _sbea_loss(self, outputs):
+        logits_all = outputs.aux_logits["bayes_logits_all"]
+        labels = outputs.labels
+
+        if not hasattr(self.adapter, "mc_predictive_log_probs"):
+            raise AttributeError(
+                "SBEA loss requires adapter.mc_predictive_log_probs()."
+            )
+
+        log_probs = self.adapter.mc_predictive_log_probs(logits_all)
+        data_term = F.nll_loss(log_probs, labels, reduction="mean")
+
+        loss = data_term
+
+        extras = {
+            "loss_ce": data_term.detach(),
+            "data_term": data_term.detach(),
+        }
+
+        kl = self.adapter.kl_divergence()
+
+        kl_weight = float(
+            outputs.extras.get(
+                "bayes_kl_weight",
+                self.adapter.bayes_kl_base_weight()
+                if hasattr(self.adapter, "bayes_kl_base_weight")
+                else self.base_kl_weight,
+            )
+        )
+
+        kl_term = kl * kl_weight
+        loss = loss + kl_term
+
+        extras["loss_kl"] = kl_term.detach()
+        extras["kl_term"] = kl_term.detach()
+        extras["kl_raw"] = kl.detach()
+        extras["kl_weight"] = data_term.detach().new_tensor(kl_weight)
+
+        hyper_weight = float(
+            getattr(self.cfg.CLIP_ADAPTERS, "SBEA_ARD_HYPER_WEIGHT", 1.0e-4)
+        )
+        if hyper_weight > 0 and hasattr(self.adapter, "ard_hyper_regularization"):
+            hyper_raw = self.adapter.ard_hyper_regularization()
+            hyper_term = hyper_weight * hyper_raw
+            loss = loss + hyper_term
+
+            extras["sbea_ard_hyper_raw"] = hyper_raw.detach()
+            extras["sbea_ard_hyper_term"] = hyper_term.detach()
+
+        proto_anchor_weight = float(
+            getattr(self.cfg.CLIP_ADAPTERS, "SBEA_PROTO_ANCHOR_WEIGHT", 0.0)
+        )
+        if proto_anchor_weight > 0 and hasattr(
+            self.adapter, "prototype_anchor_regularization"
+        ):
+            proto_anchor_raw = self.adapter.prototype_anchor_regularization()
+            proto_anchor_term = proto_anchor_weight * proto_anchor_raw
+            loss = loss + proto_anchor_term
+
+            extras["sbea_proto_anchor_raw"] = proto_anchor_raw.detach()
+            extras["sbea_proto_anchor_term"] = proto_anchor_term.detach()
+
+        if hasattr(self.adapter, "sbea_uncertainty"):
+            with torch.no_grad():
+                unc = self.adapter.sbea_uncertainty(logits_all)
+
+            for key, value in unc.items():
+                if torch.is_tensor(value):
+                    extras[f"sbea_{key}_mean"] = value.float().mean().detach()
+
+        outputs.losses.update(extras)
+        return loss
+
+
     def _vnccapel_loss(self, outputs):
         loss_ce = F.cross_entropy(outputs.logits, outputs.labels)
 
@@ -270,6 +344,13 @@ class ClipAdaptersLoss:
             and "bayes_logits_all" in outputs.aux_logits
         ):
             return self._deba_loss(outputs)
+
+        if (
+            str(getattr(self.adapter, "sbea_initialization_name", "")).upper() == "SBEA"
+            and "bayes_logits_all" in outputs.aux_logits
+        ):
+            return self._sbea_loss(outputs)
+
 
         if (
             str(getattr(self.adapter, "initialization_name", "")).upper() == "BAYES_ADAPTER"

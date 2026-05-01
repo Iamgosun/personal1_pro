@@ -13,3 +13,4 @@ from .pp_proker_onehot import PPProKeROneHotAdapter
 from .hba_lr_adapter import HbaLrAdapter
 from .dream_bayes_adapter import DreamBayesAdapter
 from .deba_adapter import DEBAAdapter
+from .sbea_adapter import SBEAAdapter
