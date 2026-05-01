@@ -1,0 +1,61 @@
+METHOD:
+  NAME: ClipAdapters
+  FAMILY: adapter
+  EXEC_MODE: online
+  TAG: rcv_bayes_adapter
+
+CLIP_ADAPTERS:
+  PREC: amp
+  TYPE: MP
+  INIT: RCV_BAYES_ADAPTER
+  CONSTRAINT: none
+  ENHANCED_BASE: none
+
+  ALLOW_CACHE: true
+
+  # MC sampling
+  N_SAMPLES: 3
+  N_TEST_SAMPLES: 10
+
+  # Original BayesAdapter base prior.
+  # RCV will keep prior mean = CLIP text prototype,
+  # but replace the class-wise prior std after support prefit.
+  BAYES_PRIOR_STD: 0.01
+
+  # Keep BayesAdapter KL scaling unchanged for first ablation.
+  BAYES_KL_SCALE: 1.0
+
+  # Compatibility fallback.
+  KL_WEIGHT: 0.0001
+
+  # -------------------------------
+  # RCV-BayesAdapter
+  # -------------------------------
+  # <=0 means use BAYES_PRIOR_STD.
+  RCV_PRIOR_MIN_STD: 0.01
+
+  # First safe choice: 2x base prior.
+  # If too conservative, try 0.03 or 0.05.
+  RCV_PRIOR_MAX_STD: 0.02
+
+  # <=0 means robust MAD scale from support margins.
+  RCV_MARGIN_TAU: -1.0
+
+  # Visual compactness temperature.
+  # Smaller -> only very compact classes can relax prior.
+  RCV_COMPACT_TAU: 0.05
+
+  # Shot reliability: n / (n + kappa).
+  # Larger -> more conservative for 1/2-shot.
+  RCV_SHOT_KAPPA: 4.0
+
+  RCV_DEBUG: true
+
+
+    # cache executor
+  CACHE_REPS: 20
+  CACHE_TRAIN_AUG: true
+  CACHE_AGGREGATION: pool
+  CACHE_POOL_EPOCH_SUBSAMPLE: true
+
+  
