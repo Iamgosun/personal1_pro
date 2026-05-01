@@ -78,18 +78,7 @@ def fit_temperature(
     lr: float = 0.01,
     device: str | torch.device | None = None,
 ) -> float:
-    """Fit one scalar temperature on validation logits by minimizing NLL.
-
-    Args:
-        logits: Validation logits with shape [N, C].
-        labels: Validation labels with shape [N].
-        max_iter: LBFGS maximum iterations.
-        lr: LBFGS learning rate.
-        device: Device used to optimize temperature.
-
-    Returns:
-        A positive scalar temperature.
-    """
+    """Fit one scalar temperature on validation logits by minimizing NLL."""
     if logits.numel() == 0 or labels.numel() == 0:
         return 1.0
 
@@ -196,6 +185,220 @@ def calibration_bins(
     return float(ece), bins
 
 
+def _binary_auroc(scores: torch.Tensor, targets: torch.Tensor) -> float:
+    """
+    AUROC for binary targets.
+
+    Args:
+        scores: Higher means more likely positive.
+        targets: 1 for positive, 0 for negative.
+
+    Returns:
+        AUROC in [0, 1]. Returns NaN if only one class is present.
+    """
+    scores = scores.detach().float().reshape(-1)
+    targets = targets.detach().long().reshape(-1)
+
+    n = int(scores.numel())
+    if n == 0:
+        return float("nan")
+
+    positives = targets == 1
+    negatives = targets == 0
+    n_pos = int(positives.sum().item())
+    n_neg = int(negatives.sum().item())
+
+    if n_pos == 0 or n_neg == 0:
+        return float("nan")
+
+    order = torch.argsort(scores, stable=True)
+    sorted_scores = scores[order]
+
+    ranks = torch.empty(n, dtype=torch.float64, device=scores.device)
+
+    # Average ranks for ties. Ranks are 1-based.
+    start = 0
+    while start < n:
+        end = start + 1
+        while end < n and sorted_scores[end] == sorted_scores[start]:
+            end += 1
+
+        avg_rank = 0.5 * (float(start + 1) + float(end))
+        ranks[order[start:end]] = avg_rank
+        start = end
+
+    sum_pos_ranks = ranks[positives].sum()
+    auc = (sum_pos_ranks - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg)
+
+    return float(auc.detach().cpu().item())
+
+
+def _risk_coverage_curve_from_uncertainty(
+    uncertainty: torch.Tensor,
+    errors: torch.Tensor,
+    score_name: str,
+) -> Tuple[float, float, List[Dict[str, float]]]:
+    """
+    Build risk-coverage curve.
+
+    uncertainty:
+        Higher means more uncertain / more likely to be rejected.
+
+    Sorting:
+        Keep least uncertain samples first. As coverage increases, include more
+        uncertain samples.
+
+    AURC:
+        Mean selective risk over all coverage levels k/N.
+
+    EAURC:
+        AURC minus optimal AURC for the same number of errors.
+    """
+    uncertainty = uncertainty.detach().float().reshape(-1)
+    errors = errors.detach().float().reshape(-1)
+
+    n = int(errors.numel())
+    if n == 0:
+        return float("nan"), float("nan"), []
+
+    order = torch.argsort(uncertainty, descending=False, stable=True)
+    sorted_errors = errors[order]
+
+    cum_errors = torch.cumsum(sorted_errors, dim=0)
+    counts = torch.arange(1, n + 1, device=errors.device, dtype=torch.float32)
+    coverage = counts / float(n)
+    risk = cum_errors / counts
+    selective_accuracy = 1.0 - risk
+
+    aurc = float(risk.mean().item())
+
+    # Optimal curve keeps all correct samples before all wrong samples.
+    optimal_errors = torch.sort(errors, descending=False).values
+    optimal_cum_errors = torch.cumsum(optimal_errors, dim=0)
+    optimal_risk = optimal_cum_errors / counts
+    optimal_aurc = float(optimal_risk.mean().item())
+    eaurc = aurc - optimal_aurc
+
+    curve: List[Dict[str, float]] = []
+    for idx in range(n):
+        kept_index = int(idx + 1)
+        curve.append(
+            {
+                "score_name": score_name,
+                "rank": kept_index,
+                "coverage": float(coverage[idx].item()),
+                "risk": float(risk[idx].item()),
+                "selective_accuracy": float(selective_accuracy[idx].item()),
+                "num_kept": kept_index,
+                "num_total": n,
+                "num_errors_kept": float(cum_errors[idx].item()),
+                "threshold_uncertainty": float(uncertainty[order[idx]].item()),
+            }
+        )
+
+    return aurc, eaurc, curve
+
+
+def _coverage_summary_from_curve(
+    curve: List[Dict[str, float]],
+    coverages: List[float] | None = None,
+) -> List[Dict[str, float]]:
+    if coverages is None:
+        coverages = [1.0, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5, 0.3, 0.2, 0.1]
+
+    if not curve:
+        return []
+
+    rows: List[Dict[str, float]] = []
+    n = int(curve[-1]["num_total"])
+    score_name = str(curve[-1]["score_name"])
+
+    for cov in coverages:
+        cov = float(cov)
+        k = max(1, min(n, int(round(cov * n))))
+        row = dict(curve[k - 1])
+        row["requested_coverage"] = cov
+        row["score_name"] = score_name
+        rows.append(row)
+
+    return rows
+
+
+def selective_prediction_report(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+) -> Dict[str, object]:
+    """
+    Build selective prediction metrics from logits only.
+
+    This intentionally does not depend on DEBA-specific fields, so it can compare
+    BayesAdapter, DEBA, HBA, CLAP, and other adapters fairly.
+
+    Positive class for error detection AUROC:
+        error = 1 if prediction is wrong, else 0
+
+    Uncertainty scores:
+        least_confidence:
+            1 - max softmax probability
+
+        entropy:
+            predictive entropy
+
+        margin_uncertainty:
+            1 - (top1 probability - top2 probability)
+    """
+    logits = logits.detach().cpu().float()
+    labels = labels.detach().cpu().long()
+
+    probs = F.softmax(logits, dim=1)
+    preds = probs.argmax(dim=1)
+    errors = (preds != labels).long()
+
+    confidences, _ = probs.max(dim=1)
+    top2 = torch.topk(probs, k=min(2, probs.shape[1]), dim=1).values
+
+    if top2.shape[1] == 1:
+        margin = torch.ones_like(confidences)
+    else:
+        margin = top2[:, 0] - top2[:, 1]
+
+    entropy = -(probs.clamp_min(1.0e-12) * probs.clamp_min(1.0e-12).log()).sum(dim=1)
+
+    uncertainty_scores = {
+        "least_confidence": 1.0 - confidences,
+        "entropy": entropy,
+        "margin_uncertainty": 1.0 - margin,
+    }
+
+    metrics: Dict[str, float] = {}
+    curves: Dict[str, List[Dict[str, float]]] = {}
+    coverage_summary: Dict[str, List[Dict[str, float]]] = {}
+
+    for score_name, uncertainty in uncertainty_scores.items():
+        aurc, eaurc, curve = _risk_coverage_curve_from_uncertainty(
+            uncertainty=uncertainty,
+            errors=errors,
+            score_name=score_name,
+        )
+        auroc = _binary_auroc(uncertainty, errors)
+
+        metrics[f"{score_name}_aurc"] = aurc
+        metrics[f"{score_name}_eaurc"] = eaurc
+        metrics[f"{score_name}_error_auroc"] = auroc
+
+        curves[score_name] = curve
+        coverage_summary[score_name] = _coverage_summary_from_curve(curve)
+
+    return {
+        "metrics": metrics,
+        "curves": curves,
+        "coverage_summary": coverage_summary,
+        "error_rate": float(errors.float().mean().item()),
+        "num_errors": int(errors.sum().item()),
+        "num_correct": int((errors == 0).sum().item()),
+    }
+
+
 def build_classification_calibration_report(
     logits: torch.Tensor,
     labels: torch.Tensor,
@@ -211,6 +414,8 @@ def build_classification_calibration_report(
     brier = brier_score(logits, labels)
     ece, bins = calibration_bins(logits, labels, n_bins=n_bins)
 
+    selective = selective_prediction_report(logits, labels)
+
     metrics = {
         "accuracy": acc,
         "error": err,
@@ -220,8 +425,13 @@ def build_classification_calibration_report(
         "ece": ece,
     }
 
+    # Flatten selective metrics into top-level metrics CSV so result_parser can
+    # compare methods without opening JSON.
+    for key, value in selective["metrics"].items():
+        metrics[key] = value
+
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "num_samples": int(labels.numel()),
         "metrics": metrics,
         "prediction": {
@@ -236,6 +446,7 @@ def build_classification_calibration_report(
             "n_bins": int(n_bins),
             "bins": bins,
         },
+        "selective_prediction": selective,
         "ood": {},
     }
 
@@ -288,6 +499,52 @@ def _write_bins_csv(path: Path, bins: List[Dict[str, object]]):
             writer.writerow(default_fields)
 
 
+def _write_generic_rows_csv(path: Path, rows: List[Dict[str, object]]):
+    with path.open("w", encoding="utf-8", newline="") as f:
+        if rows:
+            fieldnames = list(rows[0].keys())
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        else:
+            writer = csv.writer(f)
+            writer.writerow([])
+
+
+def _flatten_selective_curves(report: Dict[str, object]) -> List[Dict[str, object]]:
+    selective = report.get("selective_prediction", {})
+    if not isinstance(selective, dict):
+        return []
+
+    curves = selective.get("curves", {})
+    if not isinstance(curves, dict):
+        return []
+
+    rows: List[Dict[str, object]] = []
+    for _score_name, curve in curves.items():
+        if isinstance(curve, list):
+            rows.extend(curve)
+
+    return rows
+
+
+def _flatten_selective_summary(report: Dict[str, object]) -> List[Dict[str, object]]:
+    selective = report.get("selective_prediction", {})
+    if not isinstance(selective, dict):
+        return []
+
+    summaries = selective.get("coverage_summary", {})
+    if not isinstance(summaries, dict):
+        return []
+
+    rows: List[Dict[str, object]] = []
+    for _score_name, summary_rows in summaries.items():
+        if isinstance(summary_rows, list):
+            rows.extend(summary_rows)
+
+    return rows
+
+
 def save_metric_report(
     output_dir: str,
     split: str,
@@ -300,8 +557,17 @@ def save_metric_report(
     metrics_csv_path = outdir / f"{split}_metrics.csv"
     bins_csv_path = outdir / f"{split}_calibration_bins.csv"
 
+    selective_curve_csv_path = outdir / f"{split}_risk_coverage_curve.csv"
+    selective_summary_csv_path = outdir / f"{split}_selective_summary.csv"
+
     calibrated_metrics_csv_path = outdir / f"{split}_metrics_calibrated.csv"
     calibrated_bins_csv_path = outdir / f"{split}_calibration_bins_calibrated.csv"
+    calibrated_selective_curve_csv_path = (
+        outdir / f"{split}_risk_coverage_curve_calibrated.csv"
+    )
+    calibrated_selective_summary_csv_path = (
+        outdir / f"{split}_selective_summary_calibrated.csv"
+    )
 
     report = _to_builtin(report)
 
@@ -321,14 +587,23 @@ def save_metric_report(
         list(report.get("calibration", {}).get("bins", [])),
     )
 
+    selective_curve_rows = _flatten_selective_curves(report)
+    selective_summary_rows = _flatten_selective_summary(report)
+
+    _write_generic_rows_csv(selective_curve_csv_path, selective_curve_rows)
+    _write_generic_rows_csv(selective_summary_csv_path, selective_summary_rows)
+
     saved_paths = {
         "json": str(json_path),
         "metrics_csv": str(metrics_csv_path),
         "bins_csv": str(bins_csv_path),
+        "risk_coverage_curve_csv": str(selective_curve_csv_path),
+        "selective_summary_csv": str(selective_summary_csv_path),
     }
 
     metrics_calibrated = report.get("metrics_calibrated")
     calibration_calibrated = report.get("calibration_calibrated")
+    selective_calibrated = report.get("selective_prediction_calibrated")
 
     if metrics_calibrated is not None:
         calibrated_metric_row = dict(metrics_calibrated)
@@ -350,5 +625,28 @@ def save_metric_report(
             list(calibration_calibrated.get("bins", [])),
         )
         saved_paths["bins_calibrated_csv"] = str(calibrated_bins_csv_path)
+
+    if selective_calibrated is not None:
+        calibrated_tmp_report = {
+            "selective_prediction": selective_calibrated,
+        }
+        calibrated_curve_rows = _flatten_selective_curves(calibrated_tmp_report)
+        calibrated_summary_rows = _flatten_selective_summary(calibrated_tmp_report)
+
+        _write_generic_rows_csv(
+            calibrated_selective_curve_csv_path,
+            calibrated_curve_rows,
+        )
+        _write_generic_rows_csv(
+            calibrated_selective_summary_csv_path,
+            calibrated_summary_rows,
+        )
+
+        saved_paths["risk_coverage_curve_calibrated_csv"] = str(
+            calibrated_selective_curve_csv_path
+        )
+        saved_paths["selective_summary_calibrated_csv"] = str(
+            calibrated_selective_summary_csv_path
+        )
 
     return saved_paths

@@ -8,6 +8,7 @@ from evaluation.metrics import (
     build_classification_calibration_report,
     fit_temperature,
     save_metric_report,
+    selective_prediction_report,
 )
 from evaluation.protocol_router import select_eval_logits as legacy_select_eval_logits
 
@@ -155,6 +156,7 @@ class BaseExecutor:
         report["metrics_calibrated"] = calibrated_report["metrics"]
         report["prediction_calibrated"] = calibrated_report["prediction"]
         report["calibration_calibrated"] = calibrated_report["calibration"]
+        report["selective_prediction_calibrated"] = calibrated_report["selective_prediction"]
 
         return report
 

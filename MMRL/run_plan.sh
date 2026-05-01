@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Usage:
 #   GPU_IDS="0 1" bash run_plan.sh FS " VCRMMMRL MMRL BayesMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
-#   GPU_IDS="0 1" bash run_plan.sh FS "HBA_LR DREAM_BAYES_ADAPTER PP_PROKER_ONEHOT ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
+#   GPU_IDS="0 1" bash run_plan.sh FS " DEBA_J HBA_LR DREAM_BAYES_ADAPTER PP_PROKER_ONEHOT ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
 #   online cache
 # Notes:clip_adapters_dream_bayes.yaml
 #   - Normal methods use their normal method config.
@@ -12,11 +12,13 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 # caltech101 oxford_pets dtd  caltech101   dtd  fgvc_aircraft stanford_cars ucf101
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-   HBA_LR  }
+METHODS_ARG=${2:-     DEBA_J}
 EXEC_MODE=${3:-cache}
-DATASETS_ARG=${4:-"   dtd "}
+DATASETS_ARG=${4:-"    caltech101 "}
 SHOTS_ARG=${5:-" 16 "}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
+
+EVAL_ONLY=${EVAL_ONLY:-0}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
 OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
@@ -53,167 +55,182 @@ resolve_protocol_cfg() {
   esac
 }
 
+method_key() {
+  local method=$1
+  echo "$method" | tr '[:upper:]' '[:lower:]' | sed 's/-/_/g'
+}
+
+is_clip_adapter_cfg() {
+  local cfg=$1
+  [[ "$cfg" == configs/methods/clip_adapters*.yaml ]]
+}
+
+resolve_method_cfg() {
+  local method=$1
+  local key
+  key="$(method_key "$method")"
+
+  # Non-adapter method families with non-generic filenames.
+  case "$method" in
+    MMRL)
+      echo "configs/methods/mmrl.yaml"
+      return 0
+      ;;
+
+    MMRLMix)
+      echo "configs/methods/mmrl_mix.yaml"
+      return 0
+      ;;
+
+    BayesMMRL)
+      echo "configs/methods/bayesmmrl.yaml"
+      return 0
+      ;;
+
+    VCRMMMRL)
+      echo "configs/methods/vcrm_mmrl.yaml"
+      return 0
+      ;;
+
+    MMRLpp|MMRLPP)
+      echo "configs/methods/mmrlpp.yaml"
+      return 0
+      ;;
+
+    ClipAdapters|ClipADAPTER)
+      echo "configs/methods/clip_adapters.yaml"
+      return 0
+      ;;
+  esac
+
+  # Backward-compatible aliases whose historical config filenames do not
+  # exactly match the lowercase method name.
+  case "$key" in
+    zs)
+      echo "configs/methods/clip_adapters_zs.yaml"
+      return 0
+      ;;
+
+    bayesadapter|bayes_adapter)
+      echo "configs/methods/clip_adapters_bayes.yaml"
+      return 0
+      ;;
+
+    bayesadapter_l2|bayes_adapter_l2)
+      echo "configs/methods/clip_adapters_bayes_clap.yaml"
+      return 0
+      ;;
+
+    dream_bayes_adapter|dreambayes|dream_ba)
+      echo "configs/methods/clip_adapters_dream_bayes.yaml"
+      return 0
+      ;;
+
+    taskres|task_res|tr)
+      echo "configs/methods/clip_adapters_tr.yaml"
+      return 0
+      ;;
+
+    taskres_grid|task_res_grid|tr_grid)
+      echo "configs/methods/clip_adapters_tr_grid.yaml"
+      return 0
+      ;;
+
+    clipa|clip_adapter|clipadapter)
+      echo "configs/methods/clip_adapters_clipa.yaml"
+      return 0
+      ;;
+
+    tipa_f|tipa_f_)
+      echo "configs/methods/clip_adapters_tipa_f.yaml"
+      return 0
+      ;;
+
+    tipa_f_grid|tipa_f__grid)
+      echo "configs/methods/clip_adapters_tipa_f_grid.yaml"
+      return 0
+      ;;
+
+    crossmodal|cross_modal)
+      echo "configs/methods/clip_adapters_crossmodal.yaml"
+      return 0
+      ;;
+  esac
+
+  # Generic discovery rule.
+  # Example:
+  #   DEBA        -> configs/methods/clip_adapters_deba.yaml
+  #   DEBA_P      -> configs/methods/clip_adapters_deba_p.yaml
+  #   DEBA_J      -> configs/methods/clip_adapters_deba_j.yaml
+  #   VNC_CAPEL   -> configs/methods/clip_adapters_vnc_capel.yaml
+  local candidates=(
+    "configs/methods/${key}.yaml"
+    "configs/methods/clip_adapters_${key}.yaml"
+  )
+
+  local cfg
+  for cfg in "${candidates[@]}"; do
+    if [[ -f "$cfg" ]]; then
+      echo "$cfg"
+      return 0
+    fi
+  done
+
+  echo "Unknown METHOD=$method; no matching method config found." >&2
+  echo "Tried:" >&2
+  for cfg in "${candidates[@]}"; do
+    echo "  - $cfg" >&2
+  done
+  return 1
+}
 
 resolve_runtime_cfg() {
   local method=$1
+  local method_cfg
+  method_cfg="$(resolve_method_cfg "$method")"
 
   case "$method" in
     MMRL|MMRLMix|BayesMMRL|VCRMMMRL|MMRLpp|MMRLPP)
       echo "configs/runtime/mmrl_family.yaml"
-      ;;
-
-    ZS|CLAP|HBA_LR|DREAM_BAYES_ADAPTER|PP_PROKER_ONEHOT|ECKA|ZS_CLAP|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2|CAPEL|VNC_CAPEL|ClipAdapters|ClipADAPTER)
-      echo "configs/runtime/adapter_family.yaml"
-      ;;
-
-    *)
-      echo "configs/runtime/default.yaml"
+      return 0
       ;;
   esac
+
+  if is_clip_adapter_cfg "$method_cfg"; then
+    echo "configs/runtime/adapter_family.yaml"
+    return 0
+  fi
+
+  echo "configs/runtime/default.yaml"
 }
 
 resolve_configs() {
   local method=$1
   local method_cfg protocol_cfg runtime_cfg
 
-  case "$method" in
-    MMRL)
-      method_cfg="configs/methods/mmrl.yaml"
-      ;;
-
-    MMRLMix)
-      method_cfg="configs/methods/mmrl_mix.yaml"
-      ;;
-
-    BayesMMRL)
-      method_cfg="configs/methods/bayesmmrl.yaml"
-      ;;
-    VCRMMMRL)
-      method_cfg="configs/methods/vcrm_mmrl.yaml"
-      ;;
-
-    MMRLpp|MMRLPP)
-      method_cfg="configs/methods/mmrlpp.yaml"
-      ;;
-
-    ClipAdapters|ClipADAPTER)
-      method_cfg="configs/methods/clip_adapters.yaml"
-      ;;
-
-    ZS)
-      method_cfg="configs/methods/clip_adapters_zs.yaml"
-      ;;
-
-    CLAP)
-      method_cfg="configs/methods/clip_adapters_clap.yaml"
-      ;;
-    PP_PROKER_ONEHOT)
-      method_cfg="configs/methods/clip_adapters_pp_proker_onehot.yaml"
-      ;;
-    ECKA)
-      method_cfg="configs/methods/clip_adapters_ecka.yaml"
-      ;;
-    ZS_CLAP)
-      method_cfg="configs/methods/clip_adapters_clap.yaml"
-      ;;
-    CAPEL)
-      method_cfg="configs/methods/clip_adapters_capel.yaml"
-      ;;
-    VNC_CAPEL)
-      method_cfg="configs/methods/clip_adapters_vnccapel.yaml"
-      ;;
-    RANDOM)
-      method_cfg="configs/methods/clip_adapters_random.yaml"
-      ;;
-    DREAM_BAYES_ADAPTER)
-      method_cfg="configs/methods/clip_adapters_dream_bayes.yaml"
-      ;;
-    HBA_LR)
-      method_cfg="configs/methods/clip_adapters_hba_lr.yaml"
-      ;;
-
-    TR|TaskRes)
-      method_cfg="configs/methods/clip_adapters_tr.yaml"
-      ;;
-
-    TR_grid|TaskRes_grid)
-      method_cfg="configs/methods/clip_adapters_tr_grid.yaml"
-      ;;
-
-    ClipA|CLIPA)
-      method_cfg="configs/methods/clip_adapters_clipa.yaml"
-      ;;
-
-    TipA)
-      method_cfg="configs/methods/clip_adapters_tipa.yaml"
-      ;;
-
-    TipA-f-|TipA-F|TIPA-F)
-      method_cfg="configs/methods/clip_adapters_tipa_f.yaml"
-      ;;
-
-    TipA-f-_grid|TipA-F_grid|TIPA-F_grid)
-      method_cfg="configs/methods/clip_adapters_tipa_f_grid.yaml"
-      ;;
-
-    CrossModal|CROSSMODAL)
-      method_cfg="configs/methods/clip_adapters_crossmodal.yaml"
-      ;;
-
-    BayesAdapter|BAYES_ADAPTER)
-      method_cfg="configs/methods/clip_adapters_bayes.yaml"
-      ;;
-
-    BayesAdapter_l2|BAYES_ADAPTER_l2)
-      method_cfg="configs/methods/clip_adapters_bayes_clap.yaml"
-      ;;
-
-    *)
-      echo "Unknown METHOD=$method" >&2
-      exit 1
-      ;;
-  esac
-
-
+  method_cfg="$(resolve_method_cfg "$method")"
   protocol_cfg="$(resolve_protocol_cfg "$PROTOCOL")"
   runtime_cfg="$(resolve_runtime_cfg "$method")"
 
   echo "$method_cfg $protocol_cfg $runtime_cfg"
-  
 }
 
 resolve_launch_method() {
   local method=$1
+  local method_cfg
 
-  case "$method" in
-    ZS|CLAP|HBA_LR|DREAM_BAYES_ADAPTER|PP_PROKER_ONEHOT|ECKA|ZS_CLAP|CAPEL|VNC_CAPEL|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2)
-      echo "ClipAdapters"
-      ;;
-    *)
-      echo "$method"
-      ;;
-  esac
+  method_cfg="$(resolve_method_cfg "$method")"
+
+  if is_clip_adapter_cfg "$method_cfg"; then
+    echo "ClipAdapters"
+  else
+    echo "$method"
+  fi
 }
 
 resolve_launch_exec_mode() {
-  local method=$1
-
-  case "$method" in
-    ZS|CLAP|HBA_LR|DREAM_BAYES_ADAPTER|ECKA|PP_PROKER_ONEHOT|ZS_CLAP|CAPEL|VNC_CAPEL|RANDOM|TR|TaskRes|TR_grid|TaskRes_grid|ClipA|CLIPA|TipA|TipA-f-|TipA-F|TIPA-F|TipA-f-_grid|TipA-F_grid|TIPA-F_grid|CrossModal|CROSSMODAL|BayesAdapter|BAYES_ADAPTER|BayesAdapter_l2|BAYES_ADAPTER_l2|ClipAdapters|ClipADAPTER)
-      # Respect the third CLI argument.
-      #
-      # cache:
-      #   cold feature cache; feature extraction is done before training
-      #
-      # online:
-      #   realtime image augmentation + realtime CLIP image encoding;
-      #   only transient support features are built for CLAP/TipA/CrossModal
-      echo "$EXEC_MODE"
-      ;;
-    *)
-      echo "$EXEC_MODE"
-      ;;
-  esac
+  # Keep the old behavior: respect the third CLI argument for all methods.
+  echo "$EXEC_MODE"
 }
 
 resolve_run_tag() {
@@ -514,6 +531,61 @@ launch_one_case() {
 
   mkdir -p "$outdir"
 
+  if [[ "$EVAL_ONLY" == "1" ]]; then
+    : > "$logfile"
+    write_log_header "$logfile" "$gpu_id" "$method" "$dataset" "$shot" "$seed"
+
+    {
+      echo
+      echo "============================================================"
+      echo "EVAL_ONLY: reuse checkpoint from ${outdir}"
+      echo "MODEL_DIR: ${outdir}"
+      echo "============================================================"
+    } >> "$logfile"
+
+    if CUDA_VISIBLE_DEVICES="${gpu_id}" python run.py \
+        --root "${DATA_ROOT}" \
+        --dataset-config-file "configs/datasets/${dataset}.yaml" \
+        --method-config-file "${method_cfg}" \
+        --protocol-config-file "${protocol_cfg}" \
+        --runtime-config-file "${runtime_cfg}" \
+        --output-dir "${outdir}" \
+        --model-dir "${outdir}" \
+        --method "${launch_method}" \
+        --protocol "${PROTOCOL}" \
+        --exec-mode "${launch_exec_mode}" \
+        --seed "${seed}" \
+        --eval-only \
+        DATASET.NUM_SHOTS "${shot}" \
+        DATASET.SUBSAMPLE_CLASSES "${subsample}" \
+        MODEL.BACKBONE.NAME "${BACKBONE}" \
+        >> "$logfile" 2>&1; then
+      {
+        echo
+        echo "============================================================"
+        echo "END: $(date '+%F %T')"
+        echo "STATUS: SUCCESS"
+        echo "============================================================"
+      } >> "$logfile"
+      echo "SUCCESS" > "$statusfile"
+      return 0
+    else
+      local rc=$?
+      {
+        echo
+        echo "============================================================"
+        echo "END: $(date '+%F %T')"
+        echo "STATUS: FAILED"
+        echo "EXIT_CODE: ${rc}"
+        echo "============================================================"
+      } >> "$logfile"
+      echo "FAILED(${rc})" > "$statusfile"
+      return "$rc"
+    fi
+  fi
+
+
+
   if [[ "$SKIP_EXISTING" == "1" ]] && case_is_complete "$method" "$dataset" "$shot" "$seed"; then
     echo "SKIP" > "$statusfile"
     return 0
@@ -773,12 +845,15 @@ main() {
           logfile="${outdir}/run.log"
           statusfile="${outdir}/job_status.txt"
 
-          if [[ "$SKIP_EXISTING" == "1" ]] && case_is_complete "$method" "$dataset" "$shot" "$seed"; then
+
+          if [[ "$EVAL_ONLY" != "1" && "$SKIP_EXISTING" == "1" ]] && case_is_complete "$method" "$dataset" "$shot" "$seed"; then
             mkdir -p "$outdir"
             echo "SKIP" > "$statusfile"
             echo "[SKIP] method=${method} dataset=${dataset} shot=${shot} seed=${seed}"
             continue
           fi
+
+
 
           wait_for_any_slot
           local slot="$READY_SLOT"

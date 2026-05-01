@@ -124,6 +124,51 @@ class ClipAdaptersLoss:
         outputs.losses.update(extras)
         return loss
 
+    def _deba_loss(self, outputs):
+        """
+        DEBA loss is intentionally isolated from the old BayesAdapter branch.
+
+        The adapter may expose initialization_name="BAYES_ADAPTER" only to reuse
+        the existing MC logits path in model.py. This loss branch is selected by
+        deba_initialization_name == "DEBA", not by initialization_name.
+        """
+        logits_all = outputs.aux_logits["bayes_logits_all"]
+        labels = outputs.labels
+
+        if not hasattr(self.adapter, "deba_data_term"):
+            raise AttributeError(
+                "DEBA loss requires adapter.deba_data_term(); "
+                "check CLIP_ADAPTERS.INIT=DEBA and adapter_router.py."
+            )
+
+        data_term, extras = self.adapter.deba_data_term(logits_all, labels)
+        loss = data_term
+
+        if getattr(self.adapter, "apply_constraint", "none") != "none":
+            constraint = self.adapter.zero_shot_constraint()
+            loss = loss + constraint
+            extras["loss_constraint"] = constraint.detach()
+
+        kl = self.adapter.kl_divergence()
+        kl_weight = float(
+            outputs.extras.get(
+                "bayes_kl_weight",
+                self.adapter.bayes_kl_base_weight()
+                if hasattr(self.adapter, "bayes_kl_base_weight")
+                else self.base_kl_weight,
+            )
+        )
+        kl_term = kl * kl_weight
+
+        loss = loss + kl_term
+        extras["loss_kl"] = kl_term.detach()
+        extras["kl_term"] = kl_term.detach()
+        extras["kl_raw"] = kl.detach()
+        extras["kl_weight"] = data_term.detach().new_tensor(kl_weight)
+
+        outputs.losses.update(extras)
+        return loss
+
     def _capel_loss(self, outputs):
         loss_ce = F.cross_entropy(outputs.logits, outputs.labels)
 
@@ -216,6 +261,15 @@ class ClipAdaptersLoss:
             and "bayes_logits_all" in outputs.aux_logits
         ):
             return self._hba_lr_loss(outputs)
+
+        # DEBA is a separate method branch. It is checked before the generic
+        # BayesAdapter branch because DEBAAdapter reuses initialization_name
+        # "BAYES_ADAPTER" only for model.py MC routing compatibility.
+        if (
+            str(getattr(self.adapter, "deba_initialization_name", "")).upper() == "DEBA"
+            and "bayes_logits_all" in outputs.aux_logits
+        ):
+            return self._deba_loss(outputs)
 
         if (
             str(getattr(self.adapter, "initialization_name", "")).upper() == "BAYES_ADAPTER"

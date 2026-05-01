@@ -5,6 +5,7 @@ from .adapters import (
     CapelAdapter,
     ClipAdapterResidual,
     CrossModalProbeAdapter,
+    DEBAAdapter,
     DreamBayesAdapter,
     HbaLrAdapter,
     RandomProbeAdapter,
@@ -44,6 +45,21 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
     # HBA must be checked before the generic BAYES_ADAPTER branch.
     if init_upper in {"HBA", "HBA_LR", "HBALR", "HBA-LR"}:
         return HbaLrAdapter(cfg, clip_model, base_text_features)
+
+    # DEBA is a separate method-level adapter, not the old BayesAdapter branch.
+    # It is checked before DREAM/BAYES_ADAPTER generic routing.
+    if init_upper in {
+        "DEBA",
+        "DEBA_ADAPTER",
+        "DEBA-P",
+        "DEBA_P",
+        "DEBA-J",
+        "DEBA_J",
+        "DEBA_INTERP",
+        "DEBA-MIX",
+        "DEBA_MIX",
+    }:
+        return DEBAAdapter(cfg, clip_model, base_text_features)
 
     # IMPORTANT: check DREAM before the generic BAYES_ADAPTER substring branch.
     # Otherwise "DREAM_BAYES_ADAPTER" is swallowed by the plain BayesAdapter branch.
