@@ -12,7 +12,7 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 # caltech101 oxford_pets dtd  caltech101   dtd  fgvc_aircraft stanford_cars ucf101
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-   BayesMMRL}
+METHODS_ARG=${2:- MMRL  BayesMMRL}
 EXEC_MODE=${3:-online}
 DATASETS_ARG=${4:-"    caltech101  ucf101"}
 SHOTS_ARG=${5:-"  16"}
@@ -27,7 +27,7 @@ TAG=${TAG:-}
 
 NGPU=${NGPU:-1}
 GPU_IDS=${GPU_IDS:-0 }
-JOBS_PER_GPU=${JOBS_PER_GPU:-1}
+JOBS_PER_GPU=${JOBS_PER_GPU:-2}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}

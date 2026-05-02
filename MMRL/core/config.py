@@ -158,6 +158,7 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.EVAL_MODE = src.EVAL_MODE
     sec.EVAL_USE_POSTERIOR_MEAN = src.EVAL_USE_POSTERIOR_MEAN
     sec.EVAL_AGGREGATION = src.EVAL_AGGREGATION
+    sec.USE_MEAN_MAIN_MC_REP = src.USE_MEAN_MAIN_MC_REP
 
     sec.REP_SIGMA_MODE = src.REP_SIGMA_MODE
     sec.REP_PRIOR_MODE = src.REP_PRIOR_MODE
@@ -291,6 +292,7 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.EVAL_MODE = "mc_predictive"   # posterior_mean | mc_predictive | mean_plus_mc
     cfg.BAYES_MMRL.EVAL_USE_POSTERIOR_MEAN = False
     cfg.BAYES_MMRL.EVAL_AGGREGATION = "prob_mean"   # prob_mean | logit_mean
+    cfg.BAYES_MMRL.USE_MEAN_MAIN_MC_REP = True
 
     # ----- schemes A/B: Bayes on representation tokens R -----
     # q_0(R) = p(R) is enforced automatically in code
