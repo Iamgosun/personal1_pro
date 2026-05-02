@@ -225,6 +225,7 @@ class BayesMMRLMethod(BaseMethod):
         )
         print(f"[BayesMMRLMethod] trainable params: {enabled}")
 
+        # Kept for full-MC ablation/backward compatibility.
         self.sample_loss = MMRLLoss(
             reg_weight=bayes_cfg.REG_WEIGHT,
             alpha=bayes_cfg.ALPHA,
@@ -285,9 +286,6 @@ class BayesMMRLMethod(BaseMethod):
         which calls token Cholesky and feature covariance stats. Keep it off by
         default during every forward; set BAYES_MMRL.LOG_POSTERIOR_STATS_EVERY_FORWARD
         to True if you need the old behavior.
-
-        This does not affect logits, loss, gradients, or evaluation metrics that
-        use logits/labels. It only changes the optional extras dict.
         """
         enabled = bool(
             getattr(
@@ -303,15 +301,6 @@ class BayesMMRLMethod(BaseMethod):
         return dict(self.model.posterior_stats())
 
     def _skip_kl_when_beta_zero(self) -> bool:
-        """
-        During KL warmup, kl_beta can be exactly 0. In that case, the KL terms
-        are multiplied by zero and do not affect the loss or gradients. Skipping
-        the raw KL computation is mathematically equivalent for optimization and
-        avoids matrix-normal Cholesky/lowrank/logdet work during warmup.
-
-        Set BAYES_MMRL.SKIP_KL_WHEN_BETA_ZERO=False if you need raw_kl_* logs
-        during warmup to match the old implementation.
-        """
         return bool(
             getattr(
                 self.cfg.BAYES_MMRL,
@@ -320,7 +309,45 @@ class BayesMMRLMethod(BaseMethod):
             )
         )
 
+    def _kl_terms_for_loss(self, data_term: torch.Tensor):
+        kl_normalizer = float(getattr(self, "kl_normalizer", 1.0))
+        kl_normalizer = max(1.0, kl_normalizer)
+
+        kl_beta = float(getattr(self, "kl_beta", 1.0))
+        kl_beta = min(1.0, max(0.0, kl_beta))
+
+        if kl_beta == 0.0 and self._skip_kl_when_beta_zero():
+            raw_kl_rep = data_term.detach().new_zeros(())
+            raw_kl_proj_rep = data_term.detach().new_zeros(())
+        else:
+            raw_kl = self.model.kl_terms()
+            raw_kl_rep = raw_kl["rep_tokens"]
+            raw_kl_proj_rep = raw_kl["proj_rep"]
+
+        kl_rep_term = kl_beta * self.rep_kl_weight * raw_kl_rep / kl_normalizer
+        kl_proj_rep_term = (
+            kl_beta * self.proj_rep_kl_weight * raw_kl_proj_rep / kl_normalizer
+        )
+        kl_term = kl_rep_term + kl_proj_rep_term
+
+        return {
+            "raw_kl_rep": raw_kl_rep,
+            "raw_kl_proj_rep": raw_kl_proj_rep,
+            "kl_rep_term": kl_rep_term,
+            "kl_proj_rep_term": kl_proj_rep_term,
+            "kl_term": kl_term,
+            "kl_normalizer": data_term.detach().new_tensor(kl_normalizer),
+            "kl_beta": data_term.detach().new_tensor(kl_beta),
+        }
+
     def _build_outputs_from_samples(self, label, img_ref, sample_outputs):
+        """
+        Old full-MC objective. Kept as a controlled ablation.
+
+        It intentionally lets logits/main features/text features depend on the
+        sampled random variable. The recommended Mean-main + MC-rep path below
+        does not use this function.
+        """
         per_sample_losses = []
         logits_list = []
         logits_rep_list = []
@@ -349,27 +376,8 @@ class BayesMMRLMethod(BaseMethod):
             text_features_list.append(text_features)
 
         data_term = torch.stack(per_sample_losses, dim=0).mean(dim=0)
-
-        kl_normalizer = float(getattr(self, "kl_normalizer", 1.0))
-        kl_normalizer = max(1.0, kl_normalizer)
-
-        kl_beta = float(getattr(self, "kl_beta", 1.0))
-        kl_beta = min(1.0, max(0.0, kl_beta))
-
-        if kl_beta == 0.0 and self._skip_kl_when_beta_zero():
-            raw_kl_rep = data_term.detach().new_zeros(())
-            raw_kl_proj_rep = data_term.detach().new_zeros(())
-        else:
-            raw_kl = self.model.kl_terms()
-            raw_kl_rep = raw_kl["rep_tokens"]
-            raw_kl_proj_rep = raw_kl["proj_rep"]
-
-        kl_rep_term = kl_beta * self.rep_kl_weight * raw_kl_rep / kl_normalizer
-        kl_proj_rep_term = (
-            kl_beta * self.proj_rep_kl_weight * raw_kl_proj_rep / kl_normalizer
-        )
-        kl_term = kl_rep_term + kl_proj_rep_term
-        total_loss = data_term + kl_term
+        kl_terms = self._kl_terms_for_loss(data_term)
+        total_loss = data_term + kl_terms["kl_term"]
 
         logits_mean = torch.stack(logits_list, dim=0).mean(dim=0)
         logits_rep_mean = torch.stack(logits_rep_list, dim=0).mean(dim=0)
@@ -381,7 +389,11 @@ class BayesMMRLMethod(BaseMethod):
             keepdim=True,
         )
 
-        extras = self._maybe_posterior_stats()
+        losses = {
+            "data_term": data_term,
+            "total": total_loss,
+            **kl_terms,
+        }
 
         return MethodOutputs(
             logits=logits_mean,
@@ -396,18 +408,97 @@ class BayesMMRLMethod(BaseMethod):
                 "img_ref": img_ref,
                 "text_ref": self.text_features_clip,
             },
-            losses={
-                "data_term": data_term,
-                "raw_kl_rep": raw_kl_rep,
-                "raw_kl_proj_rep": raw_kl_proj_rep,
-                "kl_rep_term": kl_rep_term,
-                "kl_proj_rep_term": kl_proj_rep_term,
-                "kl_term": kl_term,
-                "total": total_loss,
-                "kl_normalizer": data_term.detach().new_tensor(kl_normalizer),
-                "kl_beta": data_term.detach().new_tensor(kl_beta),
+            losses=losses,
+            extras=self._maybe_posterior_stats(),
+        )
+
+    def _build_outputs_mean_main_mc_rep(self, label, img_ref, out):
+        """
+        Recommended objective: clean posterior-mean main/text branch + MC rep branch.
+
+        Dependency structure:
+          - loss_main, loss_cos_img, loss_cos_text depend only on R_mu / clean path.
+          - loss_rep depends on sampled R_s or sampled proj_rep.
+          - fusion uses clean main logits and posterior-predictive rep logits.
+        """
+        text_features = out["text_features"][: self.num_classes]
+        logits_main = out["logits_main"]
+        logits_rep = out["logits_rep"]
+        logits_fusion = out["logits_fusion"]
+        image_features_main = out["image_features_main"]
+
+        loss_main = F.cross_entropy(logits_main, label)
+
+        logits_rep_stack = out.get("logits_rep_stack")
+        if logits_rep_stack is not None:
+            loss_rep = torch.stack(
+                [
+                    F.cross_entropy(logits_rep_stack[s], label)
+                    for s in range(logits_rep_stack.shape[0])
+                ],
+                dim=0,
+            ).mean()
+        else:
+            loss_rep = F.cross_entropy(logits_rep, label)
+
+        loss_cos_img = 1.0 - torch.mean(
+            F.cosine_similarity(image_features_main, img_ref, dim=1)
+        )
+        loss_cos_text = 1.0 - torch.mean(
+            F.cosine_similarity(text_features, self.text_features_clip, dim=1)
+        )
+
+        alpha = float(self.cfg.BAYES_MMRL.ALPHA)
+        reg_weight = float(self.cfg.BAYES_MMRL.REG_WEIGHT)
+        data_term = (
+            alpha * loss_main
+            + (1.0 - alpha) * loss_rep
+            + reg_weight * loss_cos_img
+            + reg_weight * loss_cos_text
+        )
+
+        kl_terms = self._kl_terms_for_loss(data_term)
+        total_loss = data_term + kl_terms["kl_term"]
+
+        losses = {
+            "loss_main": loss_main,
+            "loss_rep": loss_rep,
+            "loss_cos_img": loss_cos_img,
+            "loss_cos_text": loss_cos_text,
+            "data_term": data_term,
+            "total": total_loss,
+            **kl_terms,
+        }
+
+        return MethodOutputs(
+            logits=logits_main,
+            labels=label,
+            aux_logits={
+                "rep": logits_rep,
+                "fusion": logits_fusion,
             },
-            extras=extras,
+            features={
+                "img": image_features_main,
+                "text": text_features,
+                "img_ref": img_ref,
+                "text_ref": self.text_features_clip,
+            },
+            losses=losses,
+            extras=self._maybe_posterior_stats(),
+        )
+
+    def _use_mean_main_mc_rep(self) -> bool:
+        """
+        Default to the recommended decoupled objective without requiring a new
+        YACS config key. To run the old full-MC ablation, set an existing/allowed
+        field in code or add BAYES_MMRL.USE_MEAN_MAIN_MC_REP=False to your config.
+        """
+        return bool(
+            getattr(
+                self.cfg.BAYES_MMRL,
+                "USE_MEAN_MAIN_MC_REP",
+                True,
+            )
         )
 
     def forward_train(self, batch):
@@ -418,6 +509,17 @@ class BayesMMRLMethod(BaseMethod):
             img_ref = self.image_encoder_clip(image.type(self.dtype))
             img_ref = img_ref / img_ref.norm(dim=-1, keepdim=True)
 
+        if self._use_mean_main_mc_rep():
+            out = self.model.forward_mean_main_mc_rep(
+                image,
+                num_samples=self.n_mc_train,
+                use_posterior_mean_for_rep=False,
+                aggregation=str(
+                    getattr(self.cfg.BAYES_MMRL, "EVAL_AGGREGATION", "prob_mean")
+                ),
+            )
+            return self._build_outputs_mean_main_mc_rep(label, img_ref, out)
+
         sample_outputs = self.model.forward_train_samples(image, self.n_mc_train)
         return self._build_outputs_from_samples(label, img_ref, sample_outputs)
 
@@ -427,6 +529,31 @@ class BayesMMRLMethod(BaseMethod):
         if label is not None:
             label = label.to(self.device)
 
+        if self._use_mean_main_mc_rep():
+            out = self.model.forward_mean_main_mc_rep(
+                image,
+                num_samples=self.n_mc_test,
+                use_posterior_mean_for_rep=self.eval_use_posterior_mean,
+                aggregation=str(
+                    getattr(self.cfg.BAYES_MMRL, "EVAL_AGGREGATION", "prob_mean")
+                ),
+            )
+            text_features = out["text_features"][: self.num_classes]
+
+            return MethodOutputs(
+                logits=out["logits_main"],
+                labels=label,
+                aux_logits={
+                    "rep": out["logits_rep"],
+                    "fusion": out["logits_fusion"],
+                },
+                features={
+                    "img": out["image_features_main"],
+                    "text": text_features,
+                },
+                extras=self._maybe_posterior_stats(),
+            )
+
         logits, logits_rep, logits_fusion, image_features, text_features = (
             self.model.forward_eval(
                 image,
@@ -435,8 +562,6 @@ class BayesMMRLMethod(BaseMethod):
             )
         )
         text_features = text_features[: self.num_classes]
-
-        extras = self._maybe_posterior_stats()
 
         return MethodOutputs(
             logits=logits,
@@ -449,5 +574,5 @@ class BayesMMRLMethod(BaseMethod):
                 "img": image_features,
                 "text": text_features,
             },
-            extras=extras,
+            extras=self._maybe_posterior_stats(),
         )

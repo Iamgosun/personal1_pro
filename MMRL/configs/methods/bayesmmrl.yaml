@@ -3,9 +3,11 @@ METHOD:
   FAMILY: internal_adaptation
   EXEC_MODE: online
 
+
 BAYES_MMRL:
+
   PREC: amp
-  ALPHA: 0.7
+  ALPHA: 0.5
   REG_WEIGHT: 0.5
 
   N_REP_TOKENS: 5
@@ -14,36 +16,31 @@ BAYES_MMRL:
 
   BAYES_TARGET: "rep_tokens"   # rep_tokens | proj_rep
 
-  # ----- 固定 -----
-  N_MC_TRAIN: 5
+  # MC
+  N_MC_TRAIN: 3
   N_MC_TEST: 10
-  EVAL_MODE: "mc_predictive"   # posterior_mean | mc_predictive | mean_plus_mc
-  EVAL_USE_POSTERIOR_MEAN: False
-  EVAL_AGGREGATION: "logit_mean"   # prob_mean | logit_mean
-  KL_WARMUP_EPOCHS: 5
 
-  # ----- Bayes on R -----
-  # 1) global
-  # 2) per_token
-  # 3) diagonal
-  # 4) matrix_normal_diag
-  # 5) matrix_normal_diag_lowrank
-  #
-  # code enforces q_0(R) = p(R)
-  REP_SIGMA_MODE: "diagonal"     # global | per_token | diagonal | matrix_normal_diag | matrix_normal_diag_lowrank
+  # Mean-main + MC-rep
+  EVAL_MODE: "mean_main_mc_rep"   # posterior_mean | mc_predictive | mean_plus_mc | mean_main_mc_rep
+  EVAL_USE_POSTERIOR_MEAN: False
+  EVAL_AGGREGATION: "prob_mean"  # prob_mean | logit_mean
+
+  # posterior over R
+  REP_SIGMA_MODE: "diagonal"        # global | per_token | diagonal | matrix_normal_diag | matrix_normal_diag_lowrank
   REP_PRIOR_MODE: "zero"          # zero | clip_joint
   REP_PRIOR_STD: 0.05
-  REP_KL_WEIGHT: 1e-2
+  KL_WARMUP_EPOCHS: 5
+  REP_KL_WEIGHT: 1e-3
+
+
 
   # ----- Matrix-Normal specific -----
   REP_MN_ENFORCE_TRACE: True
   REP_MN_LOWRANK_RANK: 8
 
-  # ----- Scheme C: Bayes on proj_rep -----
-  # code enforces q_0(W) = p(W)
-  # self_proj_rep: prior mean = deterministic MMRL proj_rep
-  # clip_proj    : prior mean = CLIP visual projection head proj
-  PROJ_REP_SIGMA_MODE: "row"          # global | row
-  PROJ_REP_PRIOR_MODE: "clip_proj"    # self_proj_rep | clip_proj
+
+  # only used when BAYES_TARGET: proj_rep
+  PROJ_REP_SIGMA_MODE: "row"
+  PROJ_REP_PRIOR_MODE: "clip_proj"
   PROJ_REP_PRIOR_STD: 0.01
-  PROJ_REP_KL_WEIGHT: 1e-2
+  PROJ_REP_KL_WEIGHT: 1.0e-6
