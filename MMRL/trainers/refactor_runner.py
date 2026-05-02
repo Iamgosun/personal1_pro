@@ -110,8 +110,8 @@ class RefactorRunner(TrainerX):
 
         return (
             "representation_learner.",
-            "image_encoder.proj_rep.",
-            "image_encoder.bayes_proj_rep.",
+            "image_encoder.proj_rep",
+            "image_encoder.bayes_proj_rep",
             "image_encoder.A.",
             "image_encoder.B.",
         )
@@ -174,8 +174,8 @@ class RefactorRunner(TrainerX):
         trainable_prefixes = (
             "adapter.",
             "representation_learner.",
-            "image_encoder.proj_rep.",
-            "image_encoder.bayes_proj_rep.",
+            "image_encoder.proj_rep",
+            "image_encoder.bayes_proj_rep",
             "image_encoder.A.",
             "image_encoder.B.",
         )
