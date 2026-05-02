@@ -176,6 +176,8 @@ def _as_legacy_bayes_mmrl(cfg):
 
     # lightweight backward-compatible aliases
     sec.KL_WEIGHT = src.REP_KL_WEIGHT
+    sec.MAIN_CONSISTENCY_WEIGHT = src.MAIN_CONSISTENCY_WEIGHT
+    sec.MAIN_CONSISTENCY_MODE = src.MAIN_CONSISTENCY_MODE
     sec.PRIOR_STD = src.REP_PRIOR_STD
     sec.SIGMA_MODE = src.REP_SIGMA_MODE
 
@@ -296,6 +298,8 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.REP_PRIOR_MODE = "zero"       # zero | clip_joint
     cfg.BAYES_MMRL.REP_PRIOR_STD = 0.05
     cfg.BAYES_MMRL.REP_KL_WEIGHT = 5e-4
+    cfg.BAYES_MMRL.MAIN_CONSISTENCY_WEIGHT = 0.0
+    cfg.BAYES_MMRL.MAIN_CONSISTENCY_MODE = "prob"  # prob | logit
 
     # matrix-normal specific defaults
     cfg.BAYES_MMRL.REP_MN_ENFORCE_TRACE = True

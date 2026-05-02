@@ -340,13 +340,61 @@ class BayesMMRLMethod(BaseMethod):
             "kl_beta": data_term.detach().new_tensor(kl_beta),
         }
 
+
+    def _main_consistency_penalty(self, logits_stack: torch.Tensor):
+        """
+        Penalize sample-to-sample variation of main-branch predictions.
+
+        Args:
+            logits_stack: [S, B, C], main logits from full-MC samples.
+
+        Returns:
+            scalar tensor.
+
+        Modes:
+            - "prob":  variance of softmax probabilities. More scale-stable.
+            - "logit": variance of raw logits. More direct but affected by 100.0 scale.
+        """
+        if logits_stack.shape[0] <= 1:
+            return logits_stack.detach().new_zeros(())
+
+        mode = str(
+            getattr(
+                self.cfg.BAYES_MMRL,
+                "MAIN_CONSISTENCY_MODE",
+                "prob",
+            )
+        ).lower()
+
+        if mode == "prob":
+            probs_stack = torch.softmax(logits_stack, dim=-1)
+            return probs_stack.var(dim=0, unbiased=False).mean()
+
+        if mode == "logit":
+            return logits_stack.var(dim=0, unbiased=False).mean()
+
+        raise ValueError(
+            f"Unsupported MAIN_CONSISTENCY_MODE: {mode}. "
+            "Expected one of {'prob', 'logit'}."
+        )
+
+
+
     def _build_outputs_from_samples(self, label, img_ref, sample_outputs):
         """
-        Old full-MC objective. Kept as a controlled ablation.
+        Full-MC VI objective with optional main-consistency regularization.
 
-        It intentionally lets logits/main features/text features depend on the
-        sampled random variable. The recommended Mean-main + MC-rep path below
-        does not use this function.
+        Base VI term:
+            E_q[L_MMRL(r)] + KL(q||p)
+
+        Optional main consistency:
+            + lambda_main_cons * Var_s[p_main^{(s)}]
+              or
+            + lambda_main_cons * Var_s[z_main^{(s)}]
+
+        This does not replace the VI objective. It only constrains the main
+        branch to be stable under posterior samples, while the rep branch can
+        still carry useful MC uncertainty.
         """
         per_sample_losses = []
         logits_list = []
@@ -375,11 +423,38 @@ class BayesMMRLMethod(BaseMethod):
             image_features_list.append(image_features)
             text_features_list.append(text_features)
 
+        # ------------------------------------------------------------------
+        # 1) Original VI data term: E_q[L_MMRL(r)]
+        # ------------------------------------------------------------------
         data_term = torch.stack(per_sample_losses, dim=0).mean(dim=0)
-        kl_terms = self._kl_terms_for_loss(data_term)
-        total_loss = data_term + kl_terms["kl_term"]
 
-        logits_mean = torch.stack(logits_list, dim=0).mean(dim=0)
+        # ------------------------------------------------------------------
+        # 2) KL term
+        # ------------------------------------------------------------------
+        kl_terms = self._kl_terms_for_loss(data_term)
+
+        # ------------------------------------------------------------------
+        # 3) Main-consistency penalty
+        #    This is the new mechanism diagnostic/regularizer.
+        # ------------------------------------------------------------------
+        logits_stack = torch.stack(logits_list, dim=0)  # [S, B, C]
+        main_consistency = self._main_consistency_penalty(logits_stack)
+
+        main_consistency_weight = float(
+            getattr(
+                self.cfg.BAYES_MMRL,
+                "MAIN_CONSISTENCY_WEIGHT",
+                0.0,
+            )
+        )
+        main_consistency_term = main_consistency_weight * main_consistency
+
+        total_loss = data_term + kl_terms["kl_term"] + main_consistency_term
+
+        # ------------------------------------------------------------------
+        # 4) Output aggregation, same as original full-MC path
+        # ------------------------------------------------------------------
+        logits_mean = logits_stack.mean(dim=0)
         logits_rep_mean = torch.stack(logits_rep_list, dim=0).mean(dim=0)
         logits_fusion_mean = torch.stack(logits_fusion_list, dim=0).mean(dim=0)
         image_features_mean = torch.stack(image_features_list, dim=0).mean(dim=0)
@@ -391,6 +466,11 @@ class BayesMMRLMethod(BaseMethod):
 
         losses = {
             "data_term": data_term,
+            "main_consistency": main_consistency,
+            "main_consistency_term": main_consistency_term,
+            "main_consistency_weight": data_term.detach().new_tensor(
+                main_consistency_weight
+            ),
             "total": total_loss,
             **kl_terms,
         }
@@ -411,6 +491,8 @@ class BayesMMRLMethod(BaseMethod):
             losses=losses,
             extras=self._maybe_posterior_stats(),
         )
+
+
 
     def _build_outputs_mean_main_mc_rep(self, label, img_ref, out):
         """

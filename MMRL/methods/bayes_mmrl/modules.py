@@ -1097,8 +1097,6 @@ class BayesianVisualEncoderWrapper(nn.Module):
         proj_rep = self._resolve_proj_rep(use_posterior_mean=use_posterior_mean)
         return self._forward_vit_with_proj(inputs, proj_rep)
 
-
-# Replace the existing class BayesianCustomMMRLModel with this complete class.
 class BayesianCustomMMRLModel(nn.Module):
     """
     Supports:
@@ -1106,13 +1104,21 @@ class BayesianCustomMMRLModel(nn.Module):
         - Scheme B: Bayes on R with CLIP prior
         - Scheme C: Bayes on P_v^r with deterministic R
 
-    Default training/evaluation path for BayesMMRLMethod is now:
-        Mean-main + MC-rep
+    Correct Mean-main + MC-rep contract:
 
-    Dependency contract for forward_mean_main_mc_rep():
-        - logits_main, image_features_main, text_features depend on posterior mean only.
-        - logits_rep_stack depends on MC samples.
-        - logits_fusion uses clean main + posterior-predictive rep.
+        Clean main branch:
+            R_mu -> text_features_mu
+            R_mu -> image_features_main
+            logits_main = image_features_main @ text_features_mu.T
+
+        MC rep branch:
+            R_s -> text_features_s
+            R_s -> image_features_rep_s
+            logits_rep_s = image_features_rep_s @ text_features_s.T
+
+    The MC rep branch must use paired text/visual prototypes from the same
+    posterior draw. It must not use a deterministic text classifier w_mu for
+    sampled visual rep features.
     """
 
     def __init__(self, cfg, classnames, clip_model):
@@ -1121,23 +1127,21 @@ class BayesianCustomMMRLModel(nn.Module):
 
         self.alpha = float(bayes_cfg.ALPHA)
         self.bayes_target = str(getattr(bayes_cfg, "BAYES_TARGET", "rep_tokens"))
+
         self.eval_mode = _canonical_eval_mode(
             getattr(bayes_cfg, "EVAL_MODE", "mc_predictive")
         )
         self.eval_use_posterior_mean = bool(
             getattr(bayes_cfg, "EVAL_USE_POSTERIOR_MEAN", False)
         )
-
         self.eval_aggregation = _canonical_eval_aggregation(
             getattr(bayes_cfg, "EVAL_AGGREGATION", "prob_mean")
         )
-
         self.n_mc_test = max(1, int(bayes_cfg.N_MC_TEST))
 
-        # This is distribution-equivalent to the old per-sample loop for the
-        # rep-token posterior sampling/projection. It can change the exact RNG
-        # draw order, so set BAYES_MMRL.BATCH_REP_TOKEN_MC=False to restore the
-        # old deterministic sequence if you need bitwise comparability.
+        # Batched sampling/projection is distribution-equivalent to looping.
+        # It may change exact RNG ordering, but this replacement prioritizes
+        # correct posterior-predictive semantics over old bitwise behavior.
         self.batch_rep_token_mc = bool(
             getattr(bayes_cfg, "BATCH_REP_TOKEN_MC", True)
         )
@@ -1221,6 +1225,18 @@ class BayesianCustomMMRLModel(nn.Module):
             )
         return stats
 
+    def _encode_text(
+        self,
+        compound_rep_tokens_text: Sequence[torch.Tensor],
+    ) -> torch.Tensor:
+        text_features = self.text_encoder(
+            self.prompt_embeddings,
+            self.tokenized_prompts,
+            compound_rep_tokens_text,
+        )
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+        return text_features
+
     def _encode_image(
         self,
         image: torch.Tensor,
@@ -1243,12 +1259,7 @@ class BayesianCustomMMRLModel(nn.Module):
         compound_rep_tokens_visual: Sequence[torch.Tensor],
         use_posterior_mean_proj: bool = False,
     ):
-        text_features = self.text_encoder(
-            self.prompt_embeddings,
-            self.tokenized_prompts,
-            compound_rep_tokens_text,
-        )
-        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+        text_features = self._encode_text(compound_rep_tokens_text)
 
         image_features, image_features_rep = self._encode_image(
             image,
@@ -1290,6 +1301,78 @@ class BayesianCustomMMRLModel(nn.Module):
         logits_fusion = self.alpha * logits + (1.0 - self.alpha) * logits_rep
 
         return logits, logits_rep, logits_fusion, image_features, text_features
+
+    @staticmethod
+    def _slice_projected_tokens(
+        rep_text_many: Sequence[torch.Tensor],
+        rep_visual_many: Sequence[torch.Tensor],
+        sample_index: int,
+    ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+        """
+        Convert batched projected tokens back to the original per-sample format.
+
+        Input list element shape:
+            [S, K, D]
+
+        Output list element shape:
+            [K, D]
+        """
+        rep_text = [x[sample_index].contiguous() for x in rep_text_many]
+        rep_visual = [x[sample_index].contiguous() for x in rep_visual_many]
+        return rep_text, rep_visual
+
+    def _sample_rep_token_pairs_many(
+        self,
+        num_samples: int,
+    ) -> List[Tuple[List[torch.Tensor], List[torch.Tensor]]]:
+        """
+        Sample paired text/visual representation-token paths.
+
+        This is the key fix:
+            each MC sample keeps (rep_text_s, rep_visual_s) from the same
+            posterior draw R_s.
+
+        Therefore:
+            text_features_s = TextEncoder(prompt, rep_text_s)
+            image_features_rep_s = ImageEncoder(image, rep_visual_s)
+            logits_rep_s = image_features_rep_s @ text_features_s.T
+        """
+        num_samples = max(1, int(num_samples))
+
+        if self.batch_rep_token_mc and hasattr(
+            self.representation_learner,
+            "project_sample_tokens_many",
+        ):
+            rep_text_many, rep_visual_many = (
+                self.representation_learner.project_sample_tokens_many(num_samples)
+            )
+            return [
+                self._slice_projected_tokens(
+                    rep_text_many,
+                    rep_visual_many,
+                    sample_index,
+                )
+                for sample_index in range(num_samples)
+            ]
+
+        samples = []
+        for _ in range(num_samples):
+            rep_text, rep_visual = self.representation_learner.project_sample_tokens()
+            samples.append((rep_text, rep_visual))
+        return samples
+
+    def _mean_rep_token_pairs_many(
+        self,
+        num_samples: int,
+    ) -> List[Tuple[List[torch.Tensor], List[torch.Tensor]]]:
+        """
+        Repeat posterior-mean representation tokens.
+
+        Used only when caller explicitly asks use_posterior_mean_for_rep=True.
+        """
+        num_samples = max(1, int(num_samples))
+        rep_text_mu, rep_visual_mu = self.representation_learner.project_mean_tokens()
+        return [(rep_text_mu, rep_visual_mu) for _ in range(num_samples)]
 
     def _aggregate_train_outputs(self, sample_outputs):
         logits = torch.stack([out[0] for out in sample_outputs], dim=0).mean(dim=0)
@@ -1363,12 +1446,7 @@ class BayesianCustomMMRLModel(nn.Module):
             or self._cached_mode != cache_mode
         ):
             rep_text, rep_visual = self.representation_learner.project_mean_tokens()
-            text_features = self.text_encoder(
-                self.prompt_embeddings,
-                self.tokenized_prompts,
-                rep_text,
-            )
-            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+            text_features = self._encode_text(rep_text)
 
             self._cached_text_features = text_features
             self._cached_rep_visual = rep_visual
@@ -1376,54 +1454,17 @@ class BayesianCustomMMRLModel(nn.Module):
 
         return self._cached_text_features, self._cached_rep_visual
 
-    @staticmethod
-    def _slice_projected_tokens(
-        rep_text_many: Sequence[torch.Tensor],
-        rep_visual_many: Sequence[torch.Tensor],
-        sample_index: int,
-    ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-        """
-        Convert batched projected tokens back to the original per-sample format.
-
-        Input list element shape:
-            [S, K, D]
-
-        Output list element shape:
-            [K, D]
-        """
-        rep_text = [x[sample_index].contiguous() for x in rep_text_many]
-        rep_visual = [x[sample_index].contiguous() for x in rep_visual_many]
-        return rep_text, rep_visual
-
     def forward_train_samples(self, image: torch.Tensor, num_samples: int):
-        """Old full-MC path, kept for ablations."""
+        """
+        Full-MC path.
+
+        Each sample uses paired text/visual tokens:
+            rep_text_s, rep_visual_s = sample R_s
+        """
         num_samples = max(1, int(num_samples))
         outputs = []
 
-        if self.batch_rep_token_mc and hasattr(self.representation_learner, "project_sample_tokens_many"):
-            rep_text_many, rep_visual_many = (
-                self.representation_learner.project_sample_tokens_many(num_samples)
-            )
-
-            for sample_index in range(num_samples):
-                rep_text, rep_visual = self._slice_projected_tokens(
-                    rep_text_many,
-                    rep_visual_many,
-                    sample_index,
-                )
-                outputs.append(
-                    self._encode_with_tokens(
-                        image,
-                        rep_text,
-                        rep_visual,
-                        use_posterior_mean_proj=False,
-                    )
-                )
-
-            return outputs
-
-        for _ in range(num_samples):
-            rep_text, rep_visual = self.representation_learner.project_sample_tokens()
+        for rep_text, rep_visual in self._sample_rep_token_pairs_many(num_samples):
             outputs.append(
                 self._encode_with_tokens(
                     image,
@@ -1432,39 +1473,8 @@ class BayesianCustomMMRLModel(nn.Module):
                     use_posterior_mean_proj=False,
                 )
             )
+
         return outputs
-
-    def _sample_rep_visual_tokens_many(
-        self,
-        num_samples: int,
-    ) -> List[List[torch.Tensor]]:
-        """
-        Sample only the visual representation-token path for MC rep logits.
-
-        The text samples, if produced by the representation learner, are
-        intentionally ignored so the classifier w stays deterministic.
-        """
-        num_samples = max(1, int(num_samples))
-
-        if self.batch_rep_token_mc and hasattr(
-            self.representation_learner,
-            "project_sample_tokens_many",
-        ):
-            rep_text_many, rep_visual_many = (
-                self.representation_learner.project_sample_tokens_many(num_samples)
-            )
-            del rep_text_many
-            return [
-                [x[sample_index].contiguous() for x in rep_visual_many]
-                for sample_index in range(num_samples)
-            ]
-
-        rep_visual_samples = []
-        for _ in range(num_samples):
-            rep_text, rep_visual = self.representation_learner.project_sample_tokens()
-            del rep_text
-            rep_visual_samples.append(rep_visual)
-        return rep_visual_samples
 
     def forward_mean_main_mc_rep(
         self,
@@ -1474,31 +1484,29 @@ class BayesianCustomMMRLModel(nn.Module):
         aggregation: str | None = None,
     ) -> Dict[str, torch.Tensor]:
         """
-        Recommended decoupled forward.
+        Correct decoupled forward.
 
-        Clean branch:
-            R_mu -> text_features_mu, image_features_main, logits_main
+        Clean main branch:
+            R_mu -> text_features_mu
+            R_mu -> image_features_main
+            logits_main = image_features_main @ text_features_mu.T
 
-        Stochastic branch:
-            R_s or sampled proj_rep -> image_features_rep_s -> logits_rep_s
-            with text_features_mu fixed.
+        MC rep branch:
+            R_s -> text_features_s
+            R_s -> image_features_rep_s
+            logits_rep_s = image_features_rep_s @ text_features_s.T
+
+        The MC rep branch uses MC text prototypes. It does not reuse
+        text_features_mu as the rep classifier.
         """
         num_samples = max(1, int(num_samples))
         aggregation = _canonical_eval_aggregation(aggregation or self.eval_aggregation)
         eps = 1e-8
 
-        # 1) Clean posterior-mean path for class token and text classifier.
+        # 1) Clean posterior-mean main path.
         rep_text_mu, rep_visual_mu = self.representation_learner.project_mean_tokens()
 
-        text_features_mu = self.text_encoder(
-            self.prompt_embeddings,
-            self.tokenized_prompts,
-            rep_text_mu,
-        )
-        text_features_mu = text_features_mu / text_features_mu.norm(
-            dim=-1,
-            keepdim=True,
-        )
+        text_features_mu = self._encode_text(rep_text_mu)
 
         image_features_main, image_features_rep_mu = self._encode_image(
             image,
@@ -1516,18 +1524,25 @@ class BayesianCustomMMRLModel(nn.Module):
 
         logits_main = 100.0 * image_features_main @ text_features_mu.t()
 
-        # 2) MC representation path. Text classifier remains fixed at w_mu.
+        # 2) Correct MC representation path:
+        #    each rep logit uses paired MC text prototype and MC visual rep.
         logits_rep_list = []
         image_features_rep_list = []
+        text_features_rep_list = []
 
         if use_posterior_mean_for_rep:
-            rep_visual_samples = [rep_visual_mu for _ in range(num_samples)]
+            rep_token_pairs = self._mean_rep_token_pairs_many(num_samples)
             proj_mean_flags = [True for _ in range(num_samples)]
         else:
-            rep_visual_samples = self._sample_rep_visual_tokens_many(num_samples)
+            rep_token_pairs = self._sample_rep_token_pairs_many(num_samples)
             proj_mean_flags = [False for _ in range(num_samples)]
 
-        for rep_visual_s, use_proj_mean_s in zip(rep_visual_samples, proj_mean_flags):
+        for (rep_text_s, rep_visual_s), use_proj_mean_s in zip(
+            rep_token_pairs,
+            proj_mean_flags,
+        ):
+            text_features_s = self._encode_text(rep_text_s)
+
             _, image_features_rep_s = self._encode_image(
                 image,
                 rep_visual_s,
@@ -1537,9 +1552,12 @@ class BayesianCustomMMRLModel(nn.Module):
                 dim=-1,
                 keepdim=True,
             )
-            logits_rep_s = 100.0 * image_features_rep_s @ text_features_mu.t()
+
+            logits_rep_s = 100.0 * image_features_rep_s @ text_features_s.t()
+
             logits_rep_list.append(logits_rep_s)
             image_features_rep_list.append(image_features_rep_s)
+            text_features_rep_list.append(text_features_s)
 
         logits_rep_stack = torch.stack(logits_rep_list, dim=0)
 
@@ -1550,14 +1568,22 @@ class BayesianCustomMMRLModel(nn.Module):
 
             logits_rep = torch.log(probs_rep.clamp_min(eps))
             logits_fusion = torch.log(probs_fusion.clamp_min(eps))
+
         elif aggregation == "logit_mean":
             logits_rep = logits_rep_stack.mean(dim=0)
             logits_fusion = self.alpha * logits_main + (1.0 - self.alpha) * logits_rep
+
         else:
             raise ValueError(f"Unsupported aggregation: {aggregation}")
 
         image_features_rep = torch.stack(image_features_rep_list, dim=0).mean(dim=0)
         image_features_rep = image_features_rep / image_features_rep.norm(
+            dim=-1,
+            keepdim=True,
+        )
+
+        text_features_rep = torch.stack(text_features_rep_list, dim=0).mean(dim=0)
+        text_features_rep = text_features_rep / text_features_rep.norm(
             dim=-1,
             keepdim=True,
         )
@@ -1570,6 +1596,8 @@ class BayesianCustomMMRLModel(nn.Module):
             "image_features_main": image_features_main,
             "image_features_rep": image_features_rep,
             "text_features": text_features_mu,
+            "text_features_main": text_features_mu,
+            "text_features_rep": text_features_rep,
             "image_features_rep_mu": image_features_rep_mu,
         }
 
@@ -1629,32 +1657,7 @@ class BayesianCustomMMRLModel(nn.Module):
         if eval_mode == "mc_predictive":
             sample_outputs = []
 
-            if self.batch_rep_token_mc and hasattr(self.representation_learner, "project_sample_tokens_many"):
-                rep_text_many, rep_visual_many = (
-                    self.representation_learner.project_sample_tokens_many(num_samples)
-                )
-
-                for sample_index in range(num_samples):
-                    rep_text, rep_visual = self._slice_projected_tokens(
-                        rep_text_many,
-                        rep_visual_many,
-                        sample_index,
-                    )
-                    sample_outputs.append(
-                        self._encode_with_tokens(
-                            image,
-                            rep_text,
-                            rep_visual,
-                            use_posterior_mean_proj=False,
-                        )
-                    )
-
-                return self._aggregate_eval_outputs(sample_outputs)
-
-            for _ in range(num_samples):
-                rep_text, rep_visual = (
-                    self.representation_learner.project_sample_tokens()
-                )
+            for rep_text, rep_visual in self._sample_rep_token_pairs_many(num_samples):
                 sample_outputs.append(
                     self._encode_with_tokens(
                         image,
@@ -1663,6 +1666,7 @@ class BayesianCustomMMRLModel(nn.Module):
                         use_posterior_mean_proj=False,
                     )
                 )
+
             return self._aggregate_eval_outputs(sample_outputs)
 
         if eval_mode == "mean_plus_mc":
@@ -1680,35 +1684,7 @@ class BayesianCustomMMRLModel(nn.Module):
 
             n_mc = max(0, num_samples - 1)
 
-            if n_mc > 0 and self.batch_rep_token_mc and hasattr(
-                self.representation_learner,
-                "project_sample_tokens_many",
-            ):
-                rep_text_many, rep_visual_many = (
-                    self.representation_learner.project_sample_tokens_many(n_mc)
-                )
-
-                for sample_index in range(n_mc):
-                    rep_text, rep_visual = self._slice_projected_tokens(
-                        rep_text_many,
-                        rep_visual_many,
-                        sample_index,
-                    )
-                    sample_outputs.append(
-                        self._encode_with_tokens(
-                            image,
-                            rep_text,
-                            rep_visual,
-                            use_posterior_mean_proj=False,
-                        )
-                    )
-
-                return self._aggregate_eval_outputs(sample_outputs)
-
-            for _ in range(n_mc):
-                rep_text, rep_visual = (
-                    self.representation_learner.project_sample_tokens()
-                )
+            for rep_text, rep_visual in self._sample_rep_token_pairs_many(n_mc):
                 sample_outputs.append(
                     self._encode_with_tokens(
                         image,
@@ -1721,8 +1697,5 @@ class BayesianCustomMMRLModel(nn.Module):
             return self._aggregate_eval_outputs(sample_outputs)
 
         raise ValueError(f"Unsupported EVAL_MODE: {eval_mode}")
-
-
-
 
 
