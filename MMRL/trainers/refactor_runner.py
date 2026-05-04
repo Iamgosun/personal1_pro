@@ -195,6 +195,29 @@ class RefactorRunner(TrainerX):
 
         return key.startswith(expected_missing_prefixes)
 
+    
+    def _is_b2n_test_new(self) -> bool:
+        return (
+            str(getattr(self.cfg.PROTOCOL, "NAME", "")).upper() == "B2N"
+            and str(getattr(self.cfg.PROTOCOL, "PHASE", "")) == "test_new"
+        )
+
+    def _should_reinit_clip_adapter_for_b2n_test_new(self) -> bool:
+        if not self._is_b2n_test_new():
+            return False
+
+        model = getattr(self.method, "model", None)
+        if model is None:
+            return False
+
+        # ClipAdaptersModel owns `adapter`.
+        return hasattr(model, "adapter")
+    
+    
+    
+    
+    
+    
     def save_model(self, epoch, directory, is_best=False, val_result=None, model_name=""):
         """
         Override Dassl TrainerX.save_model().
@@ -490,7 +513,18 @@ class RefactorRunner(TrainerX):
             filtered_state_dict = {}
             skipped_keys = []
 
+            reinit_clip_adapter = self._should_reinit_clip_adapter_for_b2n_test_new()
+
             for k, v in state_dict.items():
+                # B2N test_new for ClipAdapters:
+                # The adapter parameters are class-specific. They were trained
+                # on base classes and must not be loaded into the new-class model.
+                # Keep the new adapter initialized from current new-class classnames.
+                key_no_module = self._strip_module_prefix(k)
+                if reinit_clip_adapter and key_no_module.startswith("adapter."):
+                    skipped_keys.append(k)
+                    continue
+
                 if any(s in k for s in skip_keywords):
                     skipped_keys.append(k)
                     continue
@@ -500,6 +534,9 @@ class RefactorRunner(TrainerX):
                     continue
 
                 filtered_state_dict[k] = v
+                
+                
+                
 
             print(f'Loading weights to {name} from "{model_path}" (epoch = {ckpt_epoch})')
 

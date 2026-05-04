@@ -255,6 +255,174 @@ class BayesMMRLMethod(BaseMethod):
     def select_train_logits(self, outputs):
         return outputs.aux_logits.get("fusion", outputs.logits)
 
+    @staticmethod
+    def _entropy_from_logits(logits: torch.Tensor) -> torch.Tensor:
+        """
+        Normalized predictive entropy in [0, 1].
+
+        Args:
+            logits: [B, C]
+
+        Returns:
+            entropy: [B]
+        """
+        probs = torch.softmax(logits.float(), dim=-1).clamp_min(1e-12)
+        entropy = -(probs * probs.log()).sum(dim=-1)
+
+        num_classes = logits.shape[-1]
+        if num_classes > 1:
+            entropy = entropy / torch.log(
+                logits.new_tensor(float(num_classes), dtype=torch.float32)
+            )
+
+        return entropy
+
+    @staticmethod
+    def _margin_from_logits(logits: torch.Tensor) -> torch.Tensor:
+        """
+        Top-1 minus top-2 probability margin.
+
+        Args:
+            logits: [B, C]
+
+        Returns:
+            margin: [B]
+        """
+        probs = torch.softmax(logits.float(), dim=-1)
+
+        if probs.shape[-1] == 1:
+            return probs[..., 0]
+
+        top2 = torch.topk(probs, k=2, dim=-1).values
+        return top2[..., 0] - top2[..., 1]
+
+    def _dynamic_no_beta_fusion(
+        self,
+        logits_c: torch.Tensor,
+        logits_r: torch.Tensor,
+    ):
+        """
+        Dynamic no-beta fusion.
+
+        No learned gate and no beta search:
+            prior_r = 1 - alpha
+            score = logit(prior_r)
+                    + (H(C) - H(R))
+                    + (margin(R) - margin(C))
+            omega_r = sigmoid(score)
+            logits_dyn = (1 - omega_r) * logits_c + omega_r * logits_r
+
+        Args:
+            logits_c: [B, C], main/CLIP branch logits.
+            logits_r: [B, C], representation branch logits.
+
+        Returns:
+            logits_dynamic: [B, C]
+            extras: detached diagnostics.
+        """
+        alpha = float(self.cfg.BAYES_MMRL.ALPHA)
+        prior_r = 1.0 - alpha
+        prior_r = min(max(prior_r, 1e-6), 1.0 - 1e-6)
+
+        base = torch.logit(
+            logits_c.new_tensor(prior_r, dtype=torch.float32)
+        )
+
+        entropy_c = self._entropy_from_logits(logits_c)
+        entropy_r = self._entropy_from_logits(logits_r)
+        u_gap = entropy_c - entropy_r
+
+        margin_c = self._margin_from_logits(logits_c)
+        margin_r = self._margin_from_logits(logits_r)
+        margin_gain = margin_r - margin_c
+
+        score = base + u_gap + margin_gain
+        omega_r = torch.sigmoid(score).to(logits_c.dtype)
+
+        logits_dynamic = (
+            (1.0 - omega_r.unsqueeze(-1)) * logits_c
+            + omega_r.unsqueeze(-1) * logits_r
+        )
+
+        extras = {
+            "dynamic_no_beta_weight_r": omega_r.detach(),
+            "dynamic_no_beta_u_gap": u_gap.detach(),
+            "dynamic_no_beta_margin_gain": margin_gain.detach(),
+        }
+
+        return logits_dynamic, extras
+
+    def _eval_fusion_variant(self) -> str:
+        """
+        Which fusion variant should be used as aux_logits['fusion'].
+
+        Valid values:
+            - static
+            - dynamic_no_beta
+        """
+        variant = str(
+            getattr(
+                self.cfg.BAYES_MMRL,
+                "EVAL_FUSION_VARIANT",
+                "static",
+            )
+        ).lower()
+
+        if variant not in {"static", "dynamic_no_beta"}:
+            raise ValueError(
+                "BAYES_MMRL.EVAL_FUSION_VARIANT must be one of "
+                "{'static', 'dynamic_no_beta'}, "
+                f"got {variant}"
+            )
+
+        return variant
+
+    def _build_fusion_aux_logits(
+        self,
+        logits_main: torch.Tensor,
+        logits_rep: torch.Tensor,
+        logits_static: torch.Tensor,
+    ):
+        """
+        Build all fusion variants for reporting.
+
+        Returns:
+            aux_logits:
+                rep
+                fusion
+                fusion_static
+                fusion_dynamic_no_beta
+
+            extras:
+                eval_fusion_variant
+                dynamic no-beta diagnostics
+        """
+        logits_dynamic, dyn_extras = self._dynamic_no_beta_fusion(
+            logits_c=logits_main,
+            logits_r=logits_rep,
+        )
+
+        variant = self._eval_fusion_variant()
+
+        if variant == "dynamic_no_beta":
+            logits_selected = logits_dynamic
+        else:
+            logits_selected = logits_static
+
+        aux_logits = {
+            "rep": logits_rep,
+            "fusion": logits_selected,
+            "fusion_static": logits_static,
+            "fusion_dynamic_no_beta": logits_dynamic,
+        }
+
+        extras = {
+            "eval_fusion_variant": variant,
+            **dyn_extras,
+        }
+
+        return aux_logits, extras
+
     def select_eval_logits(self, outputs, eval_ctx):
         logits = outputs.logits
         logits_fusion = outputs.aux_logits.get("fusion")
@@ -279,6 +447,7 @@ class BayesMMRLMethod(BaseMethod):
             return logits
 
         return logits
+
 
     def _maybe_posterior_stats(self):
         """
@@ -605,6 +774,7 @@ class BayesMMRLMethod(BaseMethod):
         sample_outputs = self.model.forward_train_samples(image, self.n_mc_train)
         return self._build_outputs_from_samples(label, img_ref, sample_outputs)
 
+
     def forward_eval(self, batch, eval_ctx):
         image = batch["img"].to(self.device)
         label = batch.get("label")
@@ -622,21 +792,31 @@ class BayesMMRLMethod(BaseMethod):
             )
             text_features = out["text_features"][: self.num_classes]
 
+            logits_main = out["logits_main"]
+            logits_rep = out["logits_rep"]
+            logits_static = out["logits_fusion"]
+
+            aux_logits, fusion_extras = self._build_fusion_aux_logits(
+                logits_main=logits_main,
+                logits_rep=logits_rep,
+                logits_static=logits_static,
+            )
+
+            extras = self._maybe_posterior_stats()
+            extras.update(fusion_extras)
+
             return MethodOutputs(
-                logits=out["logits_main"],
+                logits=logits_main,
                 labels=label,
-                aux_logits={
-                    "rep": out["logits_rep"],
-                    "fusion": out["logits_fusion"],
-                },
+                aux_logits=aux_logits,
                 features={
                     "img": out["image_features_main"],
                     "text": text_features,
                 },
-                extras=self._maybe_posterior_stats(),
+                extras=extras,
             )
 
-        logits, logits_rep, logits_fusion, image_features, text_features = (
+        logits, logits_rep, logits_static, image_features, text_features = (
             self.model.forward_eval(
                 image,
                 num_samples=self.n_mc_test,
@@ -645,16 +825,22 @@ class BayesMMRLMethod(BaseMethod):
         )
         text_features = text_features[: self.num_classes]
 
+        aux_logits, fusion_extras = self._build_fusion_aux_logits(
+            logits_main=logits,
+            logits_rep=logits_rep,
+            logits_static=logits_static,
+        )
+
+        extras = self._maybe_posterior_stats()
+        extras.update(fusion_extras)
+
         return MethodOutputs(
             logits=logits,
             labels=label,
-            aux_logits={
-                "rep": logits_rep,
-                "fusion": logits_fusion,
-            },
+            aux_logits=aux_logits,
             features={
                 "img": image_features,
                 "text": text_features,
             },
-            extras=self._maybe_posterior_stats(),
+            extras=extras,
         )

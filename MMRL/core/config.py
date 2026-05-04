@@ -160,6 +160,9 @@ def _as_legacy_bayes_mmrl(cfg):
     sec.EVAL_AGGREGATION = src.EVAL_AGGREGATION
     sec.USE_MEAN_MAIN_MC_REP = src.USE_MEAN_MAIN_MC_REP
 
+    sec.REPORT_FUSION_VARIANTS = src.REPORT_FUSION_VARIANTS
+    sec.EVAL_FUSION_VARIANT = src.EVAL_FUSION_VARIANT
+    
     sec.REP_SIGMA_MODE = src.REP_SIGMA_MODE
     sec.REP_PRIOR_MODE = src.REP_PRIOR_MODE
     sec.REP_PRIOR_STD = src.REP_PRIOR_STD
@@ -293,6 +296,18 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.EVAL_USE_POSTERIOR_MEAN = False
     cfg.BAYES_MMRL.EVAL_AGGREGATION = "prob_mean"   # prob_mean | logit_mean
     cfg.BAYES_MMRL.USE_MEAN_MAIN_MC_REP = True
+
+
+
+    # BayesMMRL C/R fusion reporting.
+    #
+    # EVAL_FUSION_VARIANT controls which fusion is used by select_eval_logits:
+    #   - "static":          original alpha fusion
+    #   - "dynamic_no_beta": dynamic no-beta fusion
+    #
+    # REPORT_FUSION_VARIANTS controls whether executor reports both variants.
+    cfg.BAYES_MMRL.REPORT_FUSION_VARIANTS = True
+    cfg.BAYES_MMRL.EVAL_FUSION_VARIANT = "dynamic_no_beta"
 
     # ----- schemes A/B: Bayes on representation tokens R -----
     # q_0(R) = p(R) is enforced automatically in code
