@@ -20,6 +20,31 @@ def _copy_mmrl_family(src, sec):
     if hasattr(src, "LOSS_FUSE_WEIGHT"):
         sec.LOSS_FUSE_WEIGHT = src.LOSS_FUSE_WEIGHT
 
+def _as_legacy_bayes_text_mmrl(cfg):
+    if not hasattr(cfg.TRAINER, "BayesTextMMRL"):
+        cfg.TRAINER.BayesTextMMRL = CN()
+
+    sec = cfg.TRAINER.BayesTextMMRL
+    src = cfg.BAYES_TEXT_MMRL
+
+    sec.PREC = src.PREC
+    sec.ALPHA = src.ALPHA
+    sec.REG_WEIGHT = src.REG_WEIGHT
+    sec.N_REP_TOKENS = src.N_REP_TOKENS
+    sec.REP_LAYERS = src.REP_LAYERS
+    sec.REP_DIM = src.REP_DIM
+
+    sec.N_MC_TRAIN = src.N_MC_TRAIN
+    sec.N_MC_TEST = src.N_MC_TEST
+    sec.EVAL_USE_POSTERIOR_MEAN = src.EVAL_USE_POSTERIOR_MEAN
+    sec.EVAL_AGGREGATION = src.EVAL_AGGREGATION
+
+    sec.TEXT_PRIOR_STD = src.TEXT_PRIOR_STD
+    sec.TEXT_MIN_SIGMA = src.TEXT_MIN_SIGMA
+    sec.TEXT_KL_WEIGHT = src.TEXT_KL_WEIGHT
+    sec.KL_WARMUP_EPOCHS = src.KL_WARMUP_EPOCHS
+
+
 
 def _as_legacy_clipadapter(cfg):
     """
@@ -340,6 +365,33 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.PRIOR_STD = cfg.BAYES_MMRL.REP_PRIOR_STD
     cfg.BAYES_MMRL.SIGMA_MODE = cfg.BAYES_MMRL.REP_SIGMA_MODE
 
+
+
+
+
+    cfg.BAYES_TEXT_MMRL = CN()
+    cfg.BAYES_TEXT_MMRL.PREC = "amp"
+    cfg.BAYES_TEXT_MMRL.ALPHA = 0.7
+    cfg.BAYES_TEXT_MMRL.REG_WEIGHT = 0.5
+
+    cfg.BAYES_TEXT_MMRL.N_REP_TOKENS = 5
+    cfg.BAYES_TEXT_MMRL.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
+    cfg.BAYES_TEXT_MMRL.REP_DIM = 512
+
+    cfg.BAYES_TEXT_MMRL.N_MC_TRAIN = 3
+    cfg.BAYES_TEXT_MMRL.N_MC_TEST = 10
+    cfg.BAYES_TEXT_MMRL.EVAL_USE_POSTERIOR_MEAN = False
+    cfg.BAYES_TEXT_MMRL.EVAL_AGGREGATION = "prob_mean"
+
+    cfg.BAYES_TEXT_MMRL.TEXT_PRIOR_STD = 0.05
+    cfg.BAYES_TEXT_MMRL.TEXT_MIN_SIGMA = 1e-6
+    cfg.BAYES_TEXT_MMRL.TEXT_KL_WEIGHT = 5e-2
+    cfg.BAYES_TEXT_MMRL.KL_WARMUP_EPOCHS = 5
+
+
+
+
+
     # Open extension namespace for clip-adapter methods.
     #
     # YACS normally rejects unknown keys during yaml merge. Making only this
@@ -529,6 +581,7 @@ def get_refactor_defaults():
     _as_legacy_bayes_mmrl(cfg)
     _as_legacy_vcrm_mmrl(cfg)
     _as_legacy_clipadapter(cfg)
+    _as_legacy_bayes_text_mmrl(cfg)
     return cfg
 
 
@@ -569,6 +622,7 @@ def finalize_cfg(cfg):
     _as_legacy_bayes_mmrl(cfg)
     _as_legacy_vcrm_mmrl(cfg)
     _as_legacy_clipadapter(cfg)
+    _as_legacy_bayes_text_mmrl(cfg)
 
     cfg.freeze()
     return cfg

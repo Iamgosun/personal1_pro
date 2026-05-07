@@ -32,6 +32,8 @@ import methods.clip_adapters  # noqa: F401
 import executors.online_executor  # noqa: F401
 import executors.cache_executor  # noqa: F401
 import methods.vcrm_mmrl  # noqa: F401
+import methods.bayes_text_mmrl  # noqa: F401
+
 
 @TRAINER_REGISTRY.register()
 class RefactorRunner(TrainerX):
@@ -114,6 +116,7 @@ class RefactorRunner(TrainerX):
             "image_encoder.bayes_proj_rep",
             "image_encoder.A.",
             "image_encoder.B.",
+            "text_posterior.",
         )
 
     @staticmethod
@@ -178,6 +181,7 @@ class RefactorRunner(TrainerX):
             "image_encoder.bayes_proj_rep",
             "image_encoder.A.",
             "image_encoder.B.",
+            "text_posterior.",
         )
 
         if key.startswith(trainable_prefixes):
