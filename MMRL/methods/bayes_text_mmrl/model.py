@@ -82,6 +82,7 @@ class BayesTextMMRLMethod(BaseMMRLFamilyMethod):
             dim=0,
         ).mean()
 
+
     def _build_train_outputs(self, label, img_ref, out):
         method_cfg = getattr(self.cfg, self.cfg_section_name)
 
@@ -94,9 +95,22 @@ class BayesTextMMRLMethod(BaseMMRLFamilyMethod):
         loss_main = self._expected_ce(logits_stack, label)
         loss_rep = self._expected_ce(logits_rep_stack, label)
 
+        # Same as MMRL image-side cosine regularization:
+        # keep learned image feature close to frozen CLIP image feature.
         loss_cos_img = 1.0 - F.cosine_similarity(
             out["image_features"],
             img_ref,
+            dim=1,
+        ).mean()
+
+        # Restored MMRL text-side cosine regularization:
+        # keep learned BayesText/MMRL text mean close to frozen CLIP text feature.
+        #
+        # text_mean: [C, d], current MMRL text-side output used as posterior mean
+        # text_ref:  [C, d], zero-shot CLIP text feature prior/reference
+        loss_cos_text = 1.0 - F.cosine_similarity(
+            text_mean,
+            text_ref,
             dim=1,
         ).mean()
 
@@ -122,10 +136,15 @@ class BayesTextMMRLMethod(BaseMMRLFamilyMethod):
         alpha = float(method_cfg.ALPHA)
         reg_weight = float(method_cfg.REG_WEIGHT)
 
+        # MMRL-style data term:
+        # CE(main) + CE(rep) + image cosine reg + text cosine reg.
+        #
+        # KL is kept as the Bayesian posterior regularizer.
         data_term = (
             alpha * loss_main
             + (1.0 - alpha) * loss_rep
             + reg_weight * loss_cos_img
+            + reg_weight * loss_cos_text
         )
 
         total = data_term + kl_text_term
@@ -138,6 +157,7 @@ class BayesTextMMRLMethod(BaseMMRLFamilyMethod):
             "loss_main": loss_main,
             "loss_rep": loss_rep,
             "loss_cos_img": loss_cos_img,
+            "loss_cos_text": loss_cos_text,
             "raw_kl_text": raw_kl_text,
             "kl_text_term": kl_text_term,
             "kl_beta": text_mean.detach().new_tensor(kl_beta),
@@ -161,6 +181,7 @@ class BayesTextMMRLMethod(BaseMMRLFamilyMethod):
             },
             losses=losses,
         )
+
 
     def forward_train(self, batch):
         image = batch["img"].to(self.device)
