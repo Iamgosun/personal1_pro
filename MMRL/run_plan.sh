@@ -14,7 +14,7 @@ set -euo pipefail
 PROTOCOL=${1:-FS}
 METHODS_ARG=${2:-  MMRL BayesTextMMRL }
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-"    dtd fgvc_aircraft ucf101 "}
+DATASETS_ARG=${4:-"  caltech101  dtd fgvc_aircraft ucf101 "}
 SHOTS_ARG=${5:-"  16"}
 SEEDS_ARG=${6:-${SEEDS:-"1  "}}
 
