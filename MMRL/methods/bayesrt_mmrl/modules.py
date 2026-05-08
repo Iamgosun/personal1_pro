@@ -12,7 +12,6 @@ def _softplus_inverse(x: torch.Tensor) -> torch.Tensor:
     x = x.clamp_min(eps)
     return torch.log(torch.expm1(x))
 
-
 def _resolve_sigma_shape(shape: tuple[int, int], mode: str):
     rows, cols = shape
     mode = str(mode)
@@ -20,21 +19,20 @@ def _resolve_sigma_shape(shape: tuple[int, int], mode: str):
     if mode == "global":
         return ()
 
-    # For matrix W with shape [input_dim, output_dim]:
-    # - row/input: one sigma per input row
-    # - col/output: one sigma per output dimension
-    if mode in {"row", "input"}:
+    # W: [input_dim, output_dim]
+    # hidden @ W -> feature
+    if mode == "input":
         return (rows, 1)
 
-    if mode in {"col", "output"}:
+    if mode == "output":
         return (1, cols)
 
-    if mode in {"diagonal", "full"}:
+    if mode == "diagonal":
         return shape
 
     raise ValueError(
         f"Unsupported sigma mode: {mode}. "
-        "Expected one of {global, row, col, input, output, diagonal}."
+        "Expected one of {'global', 'input', 'output', 'diagonal'}."
     )
 
 
@@ -396,22 +394,56 @@ class BayesRTMMRLModel(nn.Module):
             self.text_posterior = None
             self.register_buffer("text_projection", text_projection)
 
+
+    @staticmethod
+    def probs_bma(logits_stack: torch.Tensor) -> torch.Tensor:
+        """
+        Bayesian model averaging in probability space.
+
+        Args:
+            logits_stack: [S, B, C]
+
+        Returns:
+            p_bar: [B, C]
+        """
+        return torch.softmax(logits_stack.float(), dim=-1).mean(dim=0)
+
+    @staticmethod
+    def log_probs_bma(logits_stack: torch.Tensor) -> torch.Tensor:
+        """
+        Returns log posterior predictive probabilities: log p_bar.
+        """
+        probs = BayesRTMMRLModel.probs_bma(logits_stack)
+        return torch.log(probs.clamp_min(1.0e-12)).to(logits_stack.dtype)
+
+    @staticmethod
+    def logits_mean(logits_stack: torch.Tensor) -> torch.Tensor:
+        """
+        MC average in logit space.
+        """
+        return logits_stack.mean(dim=0)
+
     @staticmethod
     def aggregate_logits(
         logits_stack: torch.Tensor,
         aggregation: str = "prob_mean",
     ) -> torch.Tensor:
+        """
+        Backward-compatible helper.
+
+        New BayesRT fusion code should prefer consuming logits_stack directly.
+        """
         if aggregation == "logit_mean":
-            return logits_stack.mean(dim=0)
+            return BayesRTMMRLModel.logits_mean(logits_stack)
 
         if aggregation == "prob_mean":
-            probs = torch.softmax(logits_stack.float(), dim=-1).mean(dim=0)
-            return torch.log(probs.clamp_min(1.0e-12)).to(logits_stack.dtype)
+            return BayesRTMMRLModel.log_probs_bma(logits_stack)
 
         raise ValueError(
             f"Unsupported aggregation={aggregation}. "
             "Expected one of {'prob_mean', 'logit_mean'}."
         )
+
 
     def text_sample_features(
         self,
@@ -456,7 +488,7 @@ class BayesRTMMRLModel(nn.Module):
         image: torch.Tensor,
         num_samples: int,
         use_posterior_mean: bool = False,
-        aggregation: str = "prob_mean",
+        aggregation: str | None = None,  # deprecated, ignored
     ):
         num_samples = max(1, int(num_samples))
 
@@ -506,15 +538,19 @@ class BayesRTMMRLModel(nn.Module):
             text_samples,
         )
 
-        logits_main = self.aggregate_logits(
-            logits_main_stack,
-            aggregation=aggregation,
+        # Keep branch posterior predictive outputs for logging / fallback only.
+        # Fusion should be built from logits_*_stack in BayesRTMMRLMethod.
+        p_main = self.probs_bma(logits_main_stack)
+        p_rep = self.probs_bma(logits_rep_stack)
+
+        logits_main = torch.log(p_main.clamp_min(1.0e-12)).to(logits_main_stack.dtype)
+        logits_rep = torch.log(p_rep.clamp_min(1.0e-12)).to(logits_rep_stack.dtype)
+
+        # Backward-compatible static probability fusion.
+        p_fusion = self.alpha * p_main + (1.0 - self.alpha) * p_rep
+        logits_fusion = torch.log(p_fusion.clamp_min(1.0e-12)).to(
+            logits_main_stack.dtype
         )
-        logits_rep = self.aggregate_logits(
-            logits_rep_stack,
-            aggregation=aggregation,
-        )
-        logits_fusion = self.alpha * logits_main + (1.0 - self.alpha) * logits_rep
 
         return {
             "logits_main": logits_main,
@@ -527,6 +563,17 @@ class BayesRTMMRLModel(nn.Module):
             "text_features": text_mean,
             "text_samples": text_samples,
         }
+
+
+
+
+
+
+
+
+
+
+
 
     def kl_terms(self):
         zero = next(self.parameters()).new_zeros(())

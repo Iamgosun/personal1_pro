@@ -411,7 +411,7 @@ def get_refactor_defaults():
     cfg.BAYESRT_MMRL.REP_DIM = 512
 
     cfg.BAYESRT_MMRL.BAYES_R_ENABLED = True
-    cfg.BAYESRT_MMRL.R_SIGMA_MODE = "row"
+    cfg.BAYESRT_MMRL.R_SIGMA_MODE = "output"
     cfg.BAYESRT_MMRL.R_PRIOR_MODE = "zero"
     cfg.BAYESRT_MMRL.R_PRIOR_STD = 0.01
     cfg.BAYESRT_MMRL.R_KL_WEIGHT = 1e-6

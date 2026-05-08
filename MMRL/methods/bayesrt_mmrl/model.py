@@ -15,6 +15,10 @@ from methods.mmrl_family.modules import (
 
 from .modules import BayesRTMMRLModel
 
+class OutputTotalLoss(torch.nn.Module):
+    def forward(self, outputs):
+        return outputs.losses["total"]
+    
 
 @METHOD_REGISTRY.register("BayesRTMMRL")
 class BayesRTMMRLMethod(BaseMethod):
@@ -91,7 +95,11 @@ class BayesRTMMRLMethod(BaseMethod):
         enabled = freeze_all_but(self.model, trainable_substrings)
         print(f"[BayesRTMMRL] trainable params: {enabled}")
 
+        self.loss = OutputTotalLoss()
+
         return self
+    
+
 
     def get_precision(self) -> str:
         return self.cfg.BAYESRT_MMRL.PREC
@@ -112,21 +120,220 @@ class BayesRTMMRLMethod(BaseMethod):
 
         self.kl_beta = min(1.0, max(0.0, beta))
 
-    def _aggregation(self) -> str:
-        aggregation = str(
+    @staticmethod
+    def _probs_bma(logits_stack: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            logits_stack: [S, B, C]
+
+        Returns:
+            p_bar: [B, C]
+        """
+        return torch.softmax(logits_stack.float(), dim=-1).mean(dim=0)
+
+    @staticmethod
+    def _log_probs_bma(logits_stack: torch.Tensor) -> torch.Tensor:
+        probs = BayesRTMMRLMethod._probs_bma(logits_stack)
+        return torch.log(probs.clamp_min(1.0e-12)).to(logits_stack.dtype)
+
+    @staticmethod
+    def _logits_mean(logits_stack: torch.Tensor) -> torch.Tensor:
+        return logits_stack.mean(dim=0)
+
+    def _branch_logits_from_stacks(
+        self,
+        logits_main_stack: torch.Tensor,
+        logits_rep_stack: torch.Tensor,
+    ):
+        """
+        Default single-branch output for eval/logging/novel path.
+
+        For a Bayesian branch, the most principled default is posterior
+        predictive probability, i.e. log mean softmax.
+        """
+        logits_main = self._log_probs_bma(logits_main_stack)
+        logits_rep = self._log_probs_bma(logits_rep_stack)
+        return logits_main, logits_rep
+
+    @staticmethod
+    def _mutual_information_from_probs_stack(
+        probs_stack: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Args:
+            probs_stack: [S, B, C]
+
+        Returns:
+            normalized MI per sample: [B]
+        """
+        probs_stack = probs_stack.float().clamp_min(1.0e-12)
+        mean_probs = probs_stack.mean(dim=0).clamp_min(1.0e-12)
+
+        h_mean = -(mean_probs * mean_probs.log()).sum(dim=-1)
+        h_each = -(probs_stack * probs_stack.log()).sum(dim=-1).mean(dim=0)
+
+        mi = h_mean - h_each
+
+        num_classes = probs_stack.shape[-1]
+        if num_classes > 1:
+            mi = mi / torch.log(
+                probs_stack.new_tensor(float(num_classes), dtype=torch.float32)
+            )
+
+        return mi
+
+    def _fusion_static_prob_from_stacks(
+        self,
+        logits_main_stack: torch.Tensor,
+        logits_rep_stack: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Mixture-of-experts style fusion:
+
+            p = alpha * pbar_c + (1 - alpha) * pbar_r
+
+        This matches the intended MMRL/BayesRT probability-space fusion.
+        """
+        alpha = float(self.cfg.BAYESRT_MMRL.ALPHA)
+
+        p_main = self._probs_bma(logits_main_stack)
+        p_rep = self._probs_bma(logits_rep_stack)
+
+        p = alpha * p_main + (1.0 - alpha) * p_rep
+        return torch.log(p.clamp_min(1.0e-12)).to(logits_main_stack.dtype)
+
+    def _fusion_static_logit_from_stacks(
+        self,
+        logits_main_stack: torch.Tensor,
+        logits_rep_stack: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Logit-space ablation:
+
+            z = alpha * mean(z_c) + (1 - alpha) * mean(z_r)
+        """
+        alpha = float(self.cfg.BAYESRT_MMRL.ALPHA)
+
+        z_main = self._logits_mean(logits_main_stack)
+        z_rep = self._logits_mean(logits_rep_stack)
+
+        return alpha * z_main + (1.0 - alpha) * z_rep
+
+    def _fusion_poe_logprob_from_stacks(
+        self,
+        logits_main_stack: torch.Tensor,
+        logits_rep_stack: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Product-of-experts style ablation.
+
+        This reproduces the old behavior when aggregation='prob_mean':
+
+            log p = alpha * log pbar_c + (1 - alpha) * log pbar_r
+
+        Keep this only as an explicit ablation, not as the default.
+        """
+        alpha = float(self.cfg.BAYESRT_MMRL.ALPHA)
+
+        log_p_main = self._log_probs_bma(logits_main_stack)
+        log_p_rep = self._log_probs_bma(logits_rep_stack)
+
+        return alpha * log_p_main + (1.0 - alpha) * log_p_rep
+
+    def _fusion_uncertainty_prob_from_stacks(
+        self,
+        logits_main_stack: torch.Tensor,
+        logits_rep_stack: torch.Tensor,
+    ):
+        """
+        MI precision-weighted probability fusion:
+
+            p = (pi_c * pbar_c + pi_r * pbar_r) / (pi_c + pi_r)
+
+        where:
+            pi_c = alpha / (MI_c + eps)
+            pi_r = (1 - alpha) / (MI_r + eps)
+        """
+        eps = 1.0e-6
+        alpha = float(self.cfg.BAYESRT_MMRL.ALPHA)
+
+        p_main_stack = torch.softmax(logits_main_stack.float(), dim=-1)
+        p_rep_stack = torch.softmax(logits_rep_stack.float(), dim=-1)
+
+        p_main = p_main_stack.mean(dim=0)
+        p_rep = p_rep_stack.mean(dim=0)
+
+        u_main = self._mutual_information_from_probs_stack(p_main_stack)
+        u_rep = self._mutual_information_from_probs_stack(p_rep_stack)
+
+        pi_main = alpha / (u_main + eps)
+        pi_rep = (1.0 - alpha) / (u_rep + eps)
+
+        p = (
+            pi_main.unsqueeze(-1) * p_main
+            + pi_rep.unsqueeze(-1) * p_rep
+        ) / (pi_main + pi_rep).unsqueeze(-1)
+
+        logits = torch.log(p.clamp_min(1.0e-12)).to(logits_main_stack.dtype)
+
+        extras = {
+            "u_main_mi": u_main.detach(),
+            "u_rep_mi": u_rep.detach(),
+            "precision_main": pi_main.detach(),
+            "precision_rep": pi_rep.detach(),
+        }
+
+        return logits, extras
+
+    def _build_fusion_from_stacks(
+        self,
+        logits_main_stack: torch.Tensor,
+        logits_rep_stack: torch.Tensor,
+    ):
+        variant = str(
             getattr(
                 self.cfg.BAYESRT_MMRL,
-                "EVAL_AGGREGATION",
-                "prob_mean",
+                "EVAL_FUSION_VARIANT",
+                "static_prob",
             )
+        ).lower()
+
+        if variant in {"static", "static_prob", "prob"}:
+            logits = self._fusion_static_prob_from_stacks(
+                logits_main_stack,
+                logits_rep_stack,
+            )
+            return logits, {"eval_fusion_variant": "static_prob"}
+
+        if variant in {"static_logit", "logit"}:
+            logits = self._fusion_static_logit_from_stacks(
+                logits_main_stack,
+                logits_rep_stack,
+            )
+            return logits, {"eval_fusion_variant": "static_logit"}
+
+        if variant in {"uncertainty", "uncertainty_prob", "mi"}:
+            logits, extras = self._fusion_uncertainty_prob_from_stacks(
+                logits_main_stack,
+                logits_rep_stack,
+            )
+            extras["eval_fusion_variant"] = "uncertainty_prob"
+            return logits, extras
+
+        if variant in {"poe", "poe_logprob", "old_static"}:
+            logits = self._fusion_poe_logprob_from_stacks(
+                logits_main_stack,
+                logits_rep_stack,
+            )
+            return logits, {"eval_fusion_variant": "poe_logprob"}
+
+        raise ValueError(
+            "BAYESRT_MMRL.EVAL_FUSION_VARIANT must be one of "
+            "{'static_prob', 'static_logit', 'uncertainty_prob', 'poe_logprob'}, "
+            f"got {variant}"
         )
-        if aggregation not in {"prob_mean", "logit_mean"}:
-            raise ValueError(
-                "BAYESRT_MMRL.EVAL_AGGREGATION must be one of "
-                "{'prob_mean', 'logit_mean'}, "
-                f"got {aggregation}"
-            )
-        return aggregation
+
+
 
     @staticmethod
     def _expected_ce(
@@ -181,86 +388,23 @@ class BayesRTMMRLMethod(BaseMethod):
 
         return mi
 
-    def _uncertainty_fusion(
-        self,
-        logits_main: torch.Tensor,
-        logits_rep: torch.Tensor,
-        logits_main_stack: torch.Tensor,
-        logits_rep_stack: torch.Tensor,
-    ):
-        eps = 1.0e-6
-        alpha = float(self.cfg.BAYESRT_MMRL.ALPHA)
 
-        u_main = self._mutual_information_from_logits_stack(logits_main_stack)
-        u_rep = self._mutual_information_from_logits_stack(logits_rep_stack)
 
-        pi_main = alpha / (u_main + eps)
-        pi_rep = (1.0 - alpha) / (u_rep + eps)
-
-        p_main = torch.softmax(logits_main.float(), dim=-1)
-        p_rep = torch.softmax(logits_rep.float(), dim=-1)
-
-        p = (
-            pi_main.unsqueeze(-1) * p_main
-            + pi_rep.unsqueeze(-1) * p_rep
-        ) / (pi_main + pi_rep).unsqueeze(-1)
-
-        logits = torch.log(p.clamp_min(1.0e-12)).to(logits_main.dtype)
-
-        extras = {
-            "u_main_mi": u_main.detach(),
-            "u_rep_mi": u_rep.detach(),
-            "precision_main": pi_main.detach(),
-            "precision_rep": pi_rep.detach(),
-        }
-
-        return logits, extras
-
-    def _build_eval_fusion(
-        self,
-        logits_main,
-        logits_rep,
-        logits_fusion_static,
-        logits_main_stack,
-        logits_rep_stack,
-    ):
-        variant = str(
-            getattr(
-                self.cfg.BAYESRT_MMRL,
-                "EVAL_FUSION_VARIANT",
-                "static",
-            )
-        ).lower()
-
-        if variant == "static":
-            return logits_fusion_static, {"eval_fusion_variant": "static"}
-
-        if variant == "uncertainty":
-            logits_unc, extras = self._uncertainty_fusion(
-                logits_main=logits_main,
-                logits_rep=logits_rep,
-                logits_main_stack=logits_main_stack,
-                logits_rep_stack=logits_rep_stack,
-            )
-            extras["eval_fusion_variant"] = "uncertainty"
-            return logits_unc, extras
-
-        raise ValueError(
-            "BAYESRT_MMRL.EVAL_FUSION_VARIANT must be one of "
-            "{'static', 'uncertainty'}, "
-            f"got {variant}"
-        )
 
     def _build_train_outputs(self, label, img_ref, out):
         cfg = self.cfg.BAYESRT_MMRL
 
-        logits_main = out["logits_main"][:, : self.num_classes]
-        logits_rep = out["logits_rep"][:, : self.num_classes]
-        logits_fusion = out["logits_fusion"][:, : self.num_classes]
-
         logits_main_stack = out["logits_main_stack"][..., : self.num_classes]
         logits_rep_stack = out["logits_rep_stack"][..., : self.num_classes]
 
+        logits_main, logits_rep = self._branch_logits_from_stacks(
+            logits_main_stack,
+            logits_rep_stack,
+        )
+        logits_fusion, fusion_extras = self._build_fusion_from_stacks(
+            logits_main_stack,
+            logits_rep_stack,
+        )
         text_features = out["text_features"][: self.num_classes]
         text_ref = self.text_features_clip[: self.num_classes].to(text_features.device)
 
@@ -335,7 +479,8 @@ class BayesRTMMRLMethod(BaseMethod):
             "total": total,
         }
 
-        extras = {}
+  
+        extras = dict(fusion_extras)
 
         if getattr(self.model.image_encoder, "bayes_proj_rep", None) is not None:
             sigma_r = self.model.image_encoder.bayes_proj_rep.posterior_sigma().detach()
@@ -386,7 +531,6 @@ class BayesRTMMRLMethod(BaseMethod):
             image=image,
             num_samples=self.n_mc_train,
             use_posterior_mean=False,
-            aggregation=self._aggregation(),
         )
 
         return self._build_train_outputs(label, img_ref, out)
@@ -402,33 +546,39 @@ class BayesRTMMRLMethod(BaseMethod):
         # Conservative novel/new-task path:
         # B2N novel uses main branch in select_eval_logits.
         # This additionally avoids text sampling if requested.
-        if (
-            str(eval_ctx.protocol).upper() == "B2N"
-            and str(eval_ctx.subsample_classes or "all") != "base"
-            and bool(self.cfg.BAYESRT_MMRL.NOVEL_TEXT_MEAN_ONLY)
-        ):
-            use_posterior_mean = True
+        protocol = str(eval_ctx.protocol).upper()
+        dataset = str(eval_ctx.dataset_name)
+        sub_cls = str(eval_ctx.subsample_classes or "all")
+
+        if bool(self.cfg.BAYESRT_MMRL.NOVEL_TEXT_MEAN_ONLY):
+            is_b2n_novel = protocol == "B2N" and sub_cls != "base"
+            is_cd_target = protocol == "CD" and dataset != "ImageNet"
+
+            if is_b2n_novel or is_cd_target:
+                use_posterior_mean = True
 
         out = self.model.forward_joint(
             image=image,
             num_samples=self.n_mc_test,
             use_posterior_mean=use_posterior_mean,
-            aggregation=self._aggregation(),
         )
-
-        logits_main = out["logits_main"][:, : self.num_classes]
-        logits_rep = out["logits_rep"][:, : self.num_classes]
-        logits_fusion_static = out["logits_fusion"][:, : self.num_classes]
 
         logits_main_stack = out["logits_main_stack"][..., : self.num_classes]
         logits_rep_stack = out["logits_rep_stack"][..., : self.num_classes]
 
-        logits_fusion, fusion_extras = self._build_eval_fusion(
-            logits_main=logits_main,
-            logits_rep=logits_rep,
-            logits_fusion_static=logits_fusion_static,
-            logits_main_stack=logits_main_stack,
-            logits_rep_stack=logits_rep_stack,
+        logits_main, logits_rep = self._branch_logits_from_stacks(
+            logits_main_stack,
+            logits_rep_stack,
+        )
+
+        logits_fusion, fusion_extras = self._build_fusion_from_stacks(
+            logits_main_stack,
+            logits_rep_stack,
+        )
+
+        logits_fusion_static = self._fusion_static_prob_from_stacks(
+            logits_main_stack,
+            logits_rep_stack,
         )
 
         extras = dict(fusion_extras)
@@ -460,6 +610,7 @@ class BayesRTMMRLMethod(BaseMethod):
                 "rep": logits_rep,
                 "fusion": logits_fusion,
                 "fusion_static": logits_fusion_static,
+                "fusion_static_prob": logits_fusion_static,
             },
             features={
                 "img": out["image_features_main"],
