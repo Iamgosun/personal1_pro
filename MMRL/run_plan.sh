@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Usage:
-#   GPU_IDS="0 1" bash run_plan.sh FS "BayesTextMMRL VCRMMMRL MMRL BayesMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
+#   GPU_IDS="0 1" bash run_plan.sh FS "BayesRTMMRL 
+# BayesTextMMRL VCRMMMRL MMRL BayesMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
 #   GPU_IDS="0 1" bash run_plan.sh FS " SBEA_ARD DEBA_J HBA_LR DREAM_BAYES_ADAPTER PP_PROKER_ONEHOT ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
 #   online cache
 # Notes:clip_adapters_dream_bayes.yaml
@@ -12,7 +13,7 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 # caltech101 oxford_pets dtd  caltech101   dtd  fgvc_aircraft stanford_cars ucf101
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-  MMRL BayesTextMMRL }
+METHODS_ARG=${2:-  MMRL BayesRTMMRL }
 EXEC_MODE=${3:-online}
 DATASETS_ARG=${4:-"  caltech101  dtd fgvc_aircraft ucf101 "}
 SHOTS_ARG=${5:-"  16"}
@@ -91,8 +92,10 @@ resolve_method_cfg() {
       echo "configs/methods/bayes_text_mmrl.yaml"
       return 0
       ;;
-
-
+    BayesRTMMRL)
+      echo "configs/methods/bayesrt_mmrl.yaml"
+      return 0
+      ;;
     VCRMMMRL)
       echo "configs/methods/vcrm_mmrl.yaml"
       return 0
@@ -196,7 +199,7 @@ resolve_runtime_cfg() {
   method_cfg="$(resolve_method_cfg "$method")"
 
   case "$method" in
-    MMRL|MMRLMix|BayesMMRL|BayesTextMMRL|VCRMMMRL|MMRLpp|MMRLPP)
+    MMRL|MMRLMix|BayesMMRL|BayesRTMMRL|BayesTextMMRL|VCRMMMRL|MMRLpp|MMRLPP)
       echo "configs/runtime/mmrl_family.yaml"
       return 0
       ;;

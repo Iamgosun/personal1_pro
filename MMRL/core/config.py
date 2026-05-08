@@ -44,7 +44,41 @@ def _as_legacy_bayes_text_mmrl(cfg):
     sec.TEXT_KL_WEIGHT = src.TEXT_KL_WEIGHT
     sec.KL_WARMUP_EPOCHS = src.KL_WARMUP_EPOCHS
 
+def _as_legacy_bayesrt_mmrl(cfg):
+    if not hasattr(cfg.TRAINER, "BayesRTMMRL"):
+        cfg.TRAINER.BayesRTMMRL = CN()
 
+    sec = cfg.TRAINER.BayesRTMMRL
+    src = cfg.BAYESRT_MMRL
+
+    sec.PREC = src.PREC
+    sec.ALPHA = src.ALPHA
+    sec.REG_WEIGHT = src.REG_WEIGHT
+    sec.N_REP_TOKENS = src.N_REP_TOKENS
+    sec.REP_LAYERS = src.REP_LAYERS
+    sec.REP_DIM = src.REP_DIM
+
+    sec.BAYES_R_ENABLED = src.BAYES_R_ENABLED
+    sec.R_SIGMA_MODE = src.R_SIGMA_MODE
+    sec.R_PRIOR_MODE = src.R_PRIOR_MODE
+    sec.R_PRIOR_STD = src.R_PRIOR_STD
+    sec.R_KL_WEIGHT = src.R_KL_WEIGHT
+
+    sec.BAYES_T_ENABLED = src.BAYES_T_ENABLED
+    sec.T_SIGMA_MODE = src.T_SIGMA_MODE
+    sec.T_PRIOR_STD = src.T_PRIOR_STD
+    sec.T_MIN_SIGMA = src.T_MIN_SIGMA
+    sec.T_KL_WEIGHT = src.T_KL_WEIGHT
+
+    sec.N_MC_TRAIN = src.N_MC_TRAIN
+    sec.N_MC_TEST = src.N_MC_TEST
+    sec.EVAL_USE_POSTERIOR_MEAN = src.EVAL_USE_POSTERIOR_MEAN
+    sec.EVAL_AGGREGATION = src.EVAL_AGGREGATION
+    sec.KL_WARMUP_EPOCHS = src.KL_WARMUP_EPOCHS
+
+    sec.NOVEL_TEXT_MEAN_ONLY = src.NOVEL_TEXT_MEAN_ONLY
+    sec.REPORT_FUSION_VARIANTS = src.REPORT_FUSION_VARIANTS
+    sec.EVAL_FUSION_VARIANT = src.EVAL_FUSION_VARIANT
 
 def _as_legacy_clipadapter(cfg):
     """
@@ -367,7 +401,36 @@ def get_refactor_defaults():
 
 
 
+    cfg.BAYESRT_MMRL = CN()
+    cfg.BAYESRT_MMRL.PREC = "amp"
+    cfg.BAYESRT_MMRL.ALPHA = 0.7
+    cfg.BAYESRT_MMRL.REG_WEIGHT = 0.5
 
+    cfg.BAYESRT_MMRL.N_REP_TOKENS = 5
+    cfg.BAYESRT_MMRL.REP_LAYERS = [6, 7, 8, 9, 10, 11, 12]
+    cfg.BAYESRT_MMRL.REP_DIM = 512
+
+    cfg.BAYESRT_MMRL.BAYES_R_ENABLED = True
+    cfg.BAYESRT_MMRL.R_SIGMA_MODE = "row"
+    cfg.BAYESRT_MMRL.R_PRIOR_MODE = "zero"
+    cfg.BAYESRT_MMRL.R_PRIOR_STD = 0.01
+    cfg.BAYESRT_MMRL.R_KL_WEIGHT = 1e-6
+
+    cfg.BAYESRT_MMRL.BAYES_T_ENABLED = True
+    cfg.BAYESRT_MMRL.T_SIGMA_MODE = "output"
+    cfg.BAYESRT_MMRL.T_PRIOR_STD = 0.003
+    cfg.BAYESRT_MMRL.T_MIN_SIGMA = 1e-6
+    cfg.BAYESRT_MMRL.T_KL_WEIGHT = 1e-2
+
+    cfg.BAYESRT_MMRL.N_MC_TRAIN = 3
+    cfg.BAYESRT_MMRL.N_MC_TEST = 30
+    cfg.BAYESRT_MMRL.EVAL_USE_POSTERIOR_MEAN = False
+    cfg.BAYESRT_MMRL.EVAL_AGGREGATION = "prob_mean"
+
+    cfg.BAYESRT_MMRL.KL_WARMUP_EPOCHS = 5
+    cfg.BAYESRT_MMRL.NOVEL_TEXT_MEAN_ONLY = True
+    cfg.BAYESRT_MMRL.REPORT_FUSION_VARIANTS = True
+    cfg.BAYESRT_MMRL.EVAL_FUSION_VARIANT = "static"
 
     cfg.BAYES_TEXT_MMRL = CN()
     cfg.BAYES_TEXT_MMRL.PREC = "amp"
@@ -582,6 +645,7 @@ def get_refactor_defaults():
     _as_legacy_vcrm_mmrl(cfg)
     _as_legacy_clipadapter(cfg)
     _as_legacy_bayes_text_mmrl(cfg)
+    _as_legacy_bayesrt_mmrl(cfg)
     return cfg
 
 
@@ -623,6 +687,7 @@ def finalize_cfg(cfg):
     _as_legacy_vcrm_mmrl(cfg)
     _as_legacy_clipadapter(cfg)
     _as_legacy_bayes_text_mmrl(cfg)
+    _as_legacy_bayesrt_mmrl(cfg)
 
     cfg.freeze()
     return cfg

@@ -33,7 +33,7 @@ import executors.online_executor  # noqa: F401
 import executors.cache_executor  # noqa: F401
 import methods.vcrm_mmrl  # noqa: F401
 import methods.bayes_text_mmrl  # noqa: F401
-
+import methods.bayesrt_mmrl  # noqa: F401
 
 @TRAINER_REGISTRY.register()
 class RefactorRunner(TrainerX):
@@ -113,11 +113,14 @@ class RefactorRunner(TrainerX):
         return (
             "representation_learner.",
             "image_encoder.proj_rep",
+            "image_encoder.visual.proj_rep",
             "image_encoder.bayes_proj_rep",
             "image_encoder.A.",
             "image_encoder.B.",
             "text_posterior.",
         )
+
+
 
     @staticmethod
     def _strip_module_prefix(key):
@@ -174,15 +177,18 @@ class RefactorRunner(TrainerX):
     def _is_expected_lightweight_missing_key(self, key):
         key = self._strip_module_prefix(key)
 
+
         trainable_prefixes = (
             "adapter.",
             "representation_learner.",
             "image_encoder.proj_rep",
+            "image_encoder.visual.proj_rep",
             "image_encoder.bayes_proj_rep",
             "image_encoder.A.",
             "image_encoder.B.",
             "text_posterior.",
         )
+
 
         if key.startswith(trainable_prefixes):
             return False
