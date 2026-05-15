@@ -109,8 +109,7 @@ def _as_legacy_clipadapter(cfg):
     sec.ENHANCED_BASE = cad.ENHANCED_BASE
     sec.TYPE = cad.TYPE
     sec.ALLOW_CACHE = cad.ALLOW_CACHE
-    sec.GRID_SEARCH = cad.GRID_SEARCH
-    sec.GRID_SEARCH_SPLIT = cad.GRID_SEARCH_SPLIT
+
     sec.CLAP_TIPA_TRAINABLE_CACHE = cad.CLAP_TIPA_TRAINABLE_CACHE
     sec.CLAP_TIPA_RAW_AFFINITY = cad.CLAP_TIPA_RAW_AFFINITY
     sec.CLAP_TIPA_ONE_EPOCH = cad.CLAP_TIPA_ONE_EPOCH
@@ -358,6 +357,43 @@ def get_refactor_defaults():
 
 
 
+
+    cfg.HPO = CN(new_allowed=True)
+    cfg.HPO.ENABLED = False
+
+    # Hyperparameter selection must use validation by default.
+    # Do not silently fall back to test, otherwise test leakage is easy.
+    cfg.HPO.SPLIT = "val"
+    cfg.HPO.METRIC = "accuracy"
+    cfg.HPO.REQUIRE_VAL = True
+
+    # Search space is declared inside each method yaml.
+    #
+    # Supported yaml schema:
+    #   HPO:
+    #     GRID:
+    #       r_prior_std:
+    #         PATH: BAYESRT_MMRL.R_PRIOR_STD
+    #         VALUES: [0.005, 0.01, 0.02]
+    #
+    # Also supported shorthand:
+    #   HPO:
+    #     GRID:
+    #       BAYESRT_MMRL.R_PRIOR_STD: [0.005, 0.01, 0.02]
+    cfg.HPO.GRID = CN(new_allowed=True)
+
+    # If true, after selecting best hyperparameters, run one final training job
+    # in the original OUTPUT_DIR with the selected hyperparameters.
+    # If false, candidate models remain under OUTPUT_DIR/hpo_candidates/.
+    cfg.HPO.TRAIN_FINAL_WITH_BEST = False
+
+    # If true and TRAIN_FINAL_WITH_BEST is false, copy the best candidate's
+    # refactor_model directory to OUTPUT_DIR/refactor_model for convenience.
+    cfg.HPO.COPY_BEST_MODEL = True
+
+    cfg.HPO.SAVE_SUMMARY = True
+
+
     # BayesMMRL C/R fusion reporting.
     #
     # EVAL_FUSION_VARIANT controls which fusion is used by select_eval_logits:
@@ -486,9 +522,6 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.ONLINE_PREFIT_REPS = 1
     cfg.CLIP_ADAPTERS.ONLINE_PREFIT_TRAIN_AUG = True
 
-    # CLAP-aligned adapter behavior
-    cfg.CLIP_ADAPTERS.GRID_SEARCH = False
-    cfg.CLIP_ADAPTERS.GRID_SEARCH_SPLIT = "val"
 
     # CLAP TipA semantics:
     # - plain TipA also uses trainable cache keys
