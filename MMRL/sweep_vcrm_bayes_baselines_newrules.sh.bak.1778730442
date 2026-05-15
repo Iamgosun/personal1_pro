@@ -388,57 +388,9 @@ if manifest.exists():
 
             if metrics_path.exists():
                 try:
-                    def _read_metrics_light(path):
-                        """
-                        Fast path for large test_metrics.json.
-
-                        The sweep summary only needs:
-                          - num_samples
-                          - metrics.accuracy/error/macro_f1/ece/nll/brier
-
-                        Avoid full json.loads(), because test_metrics.json may contain
-                        large prediction/calibration/selective curves.
-                        """
-                        import re
-
-                        decoder = json.JSONDecoder()
-                        text = ""
-                        max_fast_bytes = 16 * 1024 * 1024
-
-                        with path.open("r", encoding="utf-8") as f:
-                            while len(text) < max_fast_bytes:
-                                chunk = f.read(1024 * 1024)
-                                if not chunk:
-                                    break
-                                text += chunk
-
-                                key = text.find('"metrics"')
-                                if key < 0:
-                                    continue
-
-                                colon = text.find(":", key + len('"metrics"'))
-                                if colon < 0:
-                                    continue
-
-                                i = colon + 1
-                                while i < len(text) and text[i].isspace():
-                                    i += 1
-
-                                try:
-                                    metrics_obj, _ = decoder.raw_decode(text[i:])
-                                except json.JSONDecodeError:
-                                    continue
-
-                                if isinstance(metrics_obj, dict):
-                                    m = re.search(r'"num_samples"\\s*:\\s*([0-9]+)', text)
-                                    num_samples_fast = int(m.group(1)) if m else ""
-                                    return num_samples_fast, metrics_obj
-
-                        # Fallback: preserve original behavior if file layout changes.
-                        data = json.loads(path.read_text(encoding="utf-8"))
-                        return data.get("num_samples", ""), data.get("metrics", {}) or {}
-
-                    num_samples, metrics = _read_metrics_light(metrics_path)
+                    data = json.loads(metrics_path.read_text(encoding="utf-8"))
+                    metrics = data.get("metrics", {}) or {}
+                    num_samples = data.get("num_samples", "")
                 except Exception as exc:
                     status = f"error:{type(exc).__name__}"
 
