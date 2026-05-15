@@ -357,26 +357,49 @@ def get_refactor_defaults():
 
 
 
-
     cfg.HPO = CN(new_allowed=True)
     cfg.HPO.ENABLED = False
 
-    # Hyperparameter selection must use validation by default.
-    # Do not silently fall back to test, otherwise test leakage is easy.
+    # HPO must use validation by default.
+    # If validation does not exist and REQUIRE_VAL=True, HPO raises immediately.
     cfg.HPO.SPLIT = "val"
-    cfg.HPO.METRIC = "accuracy"
     cfg.HPO.REQUIRE_VAL = True
+
+    # HPO validation computes only lightweight in-memory metrics:
+    # accuracy / ece / aece.
+    # It does not call trainer.test(split="val") and does not generate
+    # formal val_metrics.json/csv files.
+    cfg.HPO.N_BINS = 10
+
+    # Selection function registry:
+    #   acc
+    #   ece
+    #   aece
+    #   acc_ece_window
+    #   acc_aece_window
+    #   weighted_acc_ece
+    #   weighted_acc_aece
+    cfg.HPO.SELECTOR = "acc_ece_window"
+
+    # Used by acc_ece_window / acc_aece_window.
+    # Unit is percentage points.
+    cfg.HPO.ACC_TOLERANCE = 0.5
+
+    # Used by weighted selectors.
+    cfg.HPO.ACC_WEIGHT = 1.0
+    cfg.HPO.ECE_WEIGHT = 1.0
+    cfg.HPO.AECE_WEIGHT = 1.0
 
     # Search space is declared inside each method yaml.
     #
-    # Supported yaml schema:
+    # Preferred schema:
     #   HPO:
     #     GRID:
     #       r_prior_std:
     #         PATH: BAYESRT_MMRL.R_PRIOR_STD
     #         VALUES: [0.005, 0.01, 0.02]
     #
-    # Also supported shorthand:
+    # Shorthand schema:
     #   HPO:
     #     GRID:
     #       BAYESRT_MMRL.R_PRIOR_STD: [0.005, 0.01, 0.02]
@@ -384,13 +407,13 @@ def get_refactor_defaults():
 
     # If true, after selecting best hyperparameters, run one final training job
     # in the original OUTPUT_DIR with the selected hyperparameters.
-    # If false, candidate models remain under OUTPUT_DIR/hpo_candidates/.
     cfg.HPO.TRAIN_FINAL_WITH_BEST = False
 
     # If true and TRAIN_FINAL_WITH_BEST is false, copy the best candidate's
-    # refactor_model directory to OUTPUT_DIR/refactor_model for convenience.
+    # refactor_model directory to OUTPUT_DIR/refactor_model.
     cfg.HPO.COPY_BEST_MODEL = True
 
+    # Search summary only. This is not a formal validation metric report.
     cfg.HPO.SAVE_SUMMARY = True
 
 
