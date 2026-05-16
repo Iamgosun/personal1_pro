@@ -1,7 +1,6 @@
 METHOD:
   NAME: ClipAdapters
   FAMILY: adapter
-
   TAG: TipA-f-
 
 CLIP_ADAPTERS:
@@ -17,10 +16,36 @@ CLIP_ADAPTERS:
   CLAP_TIPA_ONE_EPOCH: true
   TIPA_F_GRID_EPOCHS: 20
 
-  GRID_SEARCH: false
-  GRID_SEARCH_SPLIT: val
+  TIPA_ALPHA: 1.0
+  TIPA_BETA: 1.0
 
   CACHE_REPS: 20
   CACHE_TRAIN_AUG: true
   CACHE_AGGREGATION: pool
   CACHE_POOL_EPOCH_SUBSAMPLE: true
+
+HPO:
+  ENABLED: true
+  SPLIT: val
+  REQUIRE_VAL: true
+  SELECTOR: acc_ece_window
+  ACC_TOLERANCE: 0.5
+
+  SKIP_CANDIDATE_TEST: true
+  FINAL_TEST_BEST: true
+  TRAIN_FINAL_WITH_BEST: false
+  COPY_BEST_MODEL: true
+  SAVE_SUMMARY: true
+
+  GRID:
+    lr:
+      PATH: OPTIM.LR
+      VALUES: [0.1, 0.01]
+
+    alpha:
+      PATH: CLIP_ADAPTERS.TIPA_ALPHA
+      VALUES: [1.0, 6.0, 11.0, 16.0, 21.0, 26.0, 31.0, 36.0, 41.0, 46.0]
+
+    beta:
+      PATH: CLIP_ADAPTERS.TIPA_BETA
+      VALUES: [1.0, 3.8, 6.6, 9.4, 12.2, 15.0, 17.8, 20.6, 23.4, 26.2]

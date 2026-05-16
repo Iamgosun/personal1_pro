@@ -56,6 +56,11 @@ class TipAdapter(BaseAdapter):
             getattr(clip_cfg, "CLAP_TIPA_RAW_AFFINITY", True)
         )
 
+        if clip_cfg is not None and hasattr(clip_cfg, "TIPA_ALPHA"):
+            alpha = getattr(clip_cfg, "TIPA_ALPHA")
+        if clip_cfg is not None and hasattr(clip_cfg, "TIPA_BETA"):
+            beta = getattr(clip_cfg, "TIPA_BETA")
+
         if self.finetune_cache:
             self.grid_search_param = {
                 "lr": [1e-1, 1e-2],

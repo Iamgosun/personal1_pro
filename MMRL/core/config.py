@@ -356,7 +356,6 @@ def get_refactor_defaults():
     cfg.BAYES_MMRL.USE_MEAN_MAIN_MC_REP = True
 
 
-
     cfg.HPO = CN(new_allowed=True)
     cfg.HPO.ENABLED = False
 
@@ -364,6 +363,17 @@ def get_refactor_defaults():
     # If validation does not exist and REQUIRE_VAL=True, HPO raises immediately.
     cfg.HPO.SPLIT = "val"
     cfg.HPO.REQUIRE_VAL = True
+
+    # Candidate training is only used to select hyperparameters.
+    # Keep this True so every candidate does NOT run the formal test evaluator
+    # and does NOT write test_metrics.json.
+    cfg.HPO.SKIP_CANDIDATE_TEST = True
+
+    # After the full grid finishes and the best row is selected, load the best
+    # candidate checkpoint and run one formal test in the original OUTPUT_DIR.
+    # This writes OUTPUT_DIR/test_metrics.json, making HPO runs behave like
+    # normal run_plan.sh cases.
+    cfg.HPO.FINAL_TEST_BEST = True
 
     # HPO validation computes only lightweight in-memory metrics:
     # accuracy / ece / aece.
@@ -407,16 +417,17 @@ def get_refactor_defaults():
 
     # If true, after selecting best hyperparameters, run one final training job
     # in the original OUTPUT_DIR with the selected hyperparameters.
+    #
+    # For your requested behavior, keep this False:
+    #   train candidates -> select best -> load best candidate weights -> test.
     cfg.HPO.TRAIN_FINAL_WITH_BEST = False
 
     # If true and TRAIN_FINAL_WITH_BEST is false, copy the best candidate's
-    # refactor_model directory to OUTPUT_DIR/refactor_model.
+    # refactor_model directory to OUTPUT_DIR/refactor_model before final test.
     cfg.HPO.COPY_BEST_MODEL = True
 
     # Search summary only. This is not a formal validation metric report.
     cfg.HPO.SAVE_SUMMARY = True
-
-
     # BayesMMRL C/R fusion reporting.
     #
     # EVAL_FUSION_VARIANT controls which fusion is used by select_eval_logits:
@@ -554,6 +565,11 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.CLAP_TIPA_RAW_AFFINITY = True
     cfg.CLIP_ADAPTERS.CLAP_TIPA_ONE_EPOCH = True
     cfg.CLIP_ADAPTERS.TIPA_F_GRID_EPOCHS = 20
+
+    cfg.CLIP_ADAPTERS.TR_ALPHA = 0.5
+    cfg.CLIP_ADAPTERS.TIPA_ALPHA = 1.0
+    cfg.CLIP_ADAPTERS.TIPA_BETA = 1.0
+
 
     # CrossModal semantics:
     # - concatenate text prompt features into training feature pool

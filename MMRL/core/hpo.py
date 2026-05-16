@@ -108,6 +108,7 @@ def _make_candidate_tag(index: int, params: dict[str, Any]) -> str:
 
 def _make_candidate_args(
     base_args,
+    base_cfg,
     base_output_dir: str,
     index: int,
     tag: str,
@@ -120,6 +121,12 @@ def _make_candidate_args(
 
     # Critical: avoid recursive HPO when candidate cfg is rebuilt.
     hpo_opts.extend(["HPO.ENABLED", "False"])
+
+    # Candidate training is for HPO selection only.
+    # It should not run the formal test evaluator and should not write
+    # test_metrics.json for every hyperparameter candidate.
+    if bool(getattr(base_cfg.HPO, "SKIP_CANDIDATE_TEST", True)):
+        hpo_opts.extend(["TEST.NO_TEST", "True"])
 
     # Make candidate configs/checkpoints distinguishable.
     hpo_opts.extend(["METHOD.TAG", tag])
@@ -663,6 +670,7 @@ def _train_final_with_best_if_requested(
     base_opts = list(base_args.opts or [])
     final_opts = _flatten_params_to_opts(best_row["params"])
     final_opts.extend(["HPO.ENABLED", "False"])
+    final_opts.extend(["TEST.NO_TEST", "False"])
 
     final_args.opts = base_opts + final_opts
 
@@ -679,6 +687,54 @@ def _train_final_with_best_if_requested(
 
     trainer = build_trainer(final_cfg)
     trainer.train()
+    return trainer
+
+
+def _test_best_model_if_requested(
+    base_args,
+    base_cfg,
+    best_row: dict[str, Any] | None,
+):
+    if best_row is None:
+        return None
+
+    if bool(getattr(base_cfg.HPO, "TRAIN_FINAL_WITH_BEST", False)):
+        return None
+
+    if not bool(getattr(base_cfg.HPO, "FINAL_TEST_BEST", True)):
+        return None
+
+    test_args = copy.deepcopy(base_args)
+    test_args.output_dir = base_cfg.OUTPUT_DIR
+    test_args.model_dir = best_row["output_dir"]
+    test_args.eval_only = True
+    test_args.no_train = False
+
+    base_opts = list(base_args.opts or [])
+    best_opts = _flatten_params_to_opts(best_row["params"])
+
+    # Disable HPO recursion and force formal test to be enabled.
+    best_opts.extend(["HPO.ENABLED", "False"])
+    best_opts.extend(["TEST.NO_TEST", "False"])
+
+    test_args.opts = base_opts + best_opts
+
+    test_cfg = setup_cfg(test_args)
+
+    if test_cfg.SEED >= 0:
+        print(f"[HPO] Setting fixed seed for final best test: {test_cfg.SEED}")
+        set_random_seed(test_cfg.SEED)
+
+    setup_logger(test_cfg.OUTPUT_DIR)
+
+    print("[HPO] Final test with selected best candidate weights")
+    print(f"[HPO] best params = {best_row['params']}")
+    print(f"[HPO] loading best candidate from {best_row['output_dir']}")
+    print(f"[HPO] writing final test metrics to {test_cfg.OUTPUT_DIR}")
+
+    trainer = build_trainer(test_cfg)
+    trainer.load_model(best_row["output_dir"])
+    trainer.test(split="test")
     return trainer
 
 
@@ -704,12 +760,15 @@ def run_hpo(base_args, base_cfg):
     print(f"[HPO] require_val={require_val}")
     print(f"[HPO] n_bins={n_bins}")
     print(f"[HPO] selector={selector}")
+    print(f"[HPO] skip_candidate_test={bool(getattr(base_cfg.HPO, 'SKIP_CANDIDATE_TEST', True))}")
+    print(f"[HPO] final_test_best={bool(getattr(base_cfg.HPO, 'FINAL_TEST_BEST', True))}")
     print(f"[HPO] grid={grid}")
 
     for index, params in enumerate(_iter_grid(grid), start=1):
         tag = _make_candidate_tag(index, params)
         cand_args = _make_candidate_args(
             base_args=base_args,
+            base_cfg=base_cfg,
             base_output_dir=base_output_dir,
             index=index,
             tag=tag,
@@ -778,7 +837,19 @@ def run_hpo(base_args, base_cfg):
         _write_hpo_summary(base_output_dir, rows, best_row)
 
     _copy_best_model_if_requested(base_cfg, best_row)
-    final_trainer = _train_final_with_best_if_requested(base_args, base_cfg, best_row)
+
+    final_trainer = _train_final_with_best_if_requested(
+        base_args=base_args,
+        base_cfg=base_cfg,
+        best_row=best_row,
+    )
+
+    if final_trainer is None:
+        final_trainer = _test_best_model_if_requested(
+            base_args=base_args,
+            base_cfg=base_cfg,
+            best_row=best_row,
+        )
 
     return {
         "best": best_row,

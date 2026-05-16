@@ -13,6 +13,10 @@ class TaskResidualAdapter(BaseAdapter):
         super().__init__(cfg, clip_model, base_text_features)
         print("Using TaskRes-Adapter")
 
+        clip_cfg = getattr(cfg, "CLIP_ADAPTERS", None)
+        if clip_cfg is not None and hasattr(clip_cfg, "TR_ALPHA"):
+            alpha = getattr(clip_cfg, "TR_ALPHA")
+
         self.alpha = float(alpha)
         self.grid_search_param = {
             "lr": [1e-1, 1e-2, 1e-3],
