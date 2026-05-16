@@ -5,7 +5,7 @@ set -euo pipefail
 #   GPU_IDS="0 1" bash run_plan.sh FS "BayesRTMMRL 
 # BayesTextMMRL VCRMMMRL MMRL BayesMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
 #   GPU_IDS="0 1" bash run_plan.sh FS " SBEA_ARD DEBA_J HBA_LR DREAM_BAYES_ADAPTER PP_PROKER_ONEHOT ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
-#   online cache
+#   online cache TR
 # Notes:clip_adapters_dream_bayes.yaml
 #   - Normal methods use their normal method config.
 #   - Adapter aliases map to specific configs/methods/clip_adapters_*.yaml.
@@ -13,10 +13,10 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 # caltech101 oxford_pets dtd       fgvc_aircraft stanford_cars ucf101
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-   BayesRTMMRL MMRL}
+METHODS_ARG=${2:-   TR }
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-" caltech101 dtd eurosat fgvc_aircraft   oxford_pets  stanford_cars ucf101"}
-SHOTS_ARG=${5:-"1 2 4 8  16 32"}
+DATASETS_ARG=${4:-" caltech101"}
+SHOTS_ARG=${5:-"16 "}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
 EVAL_ONLY=${EVAL_ONLY:-0}
