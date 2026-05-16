@@ -425,7 +425,7 @@ def get_refactor_defaults():
     # If true and TRAIN_FINAL_WITH_BEST is false, copy the best candidate's
     # refactor_model directory to OUTPUT_DIR/refactor_model before final test.
     cfg.HPO.COPY_BEST_MODEL = True
-
+    cfg.HPO.DELETE_NON_BEST_CANDIDATE_MODELS = True
     # Search summary only. This is not a formal validation metric report.
     cfg.HPO.SAVE_SUMMARY = True
     # BayesMMRL C/R fusion reporting.

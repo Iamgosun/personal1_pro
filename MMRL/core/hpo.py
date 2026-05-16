@@ -653,6 +653,48 @@ def _copy_best_model_if_requested(base_cfg, best_row: dict[str, Any] | None):
     print(f"[HPO] copied best model directory: {src} -> {dst}")
 
 
+def _delete_non_best_candidate_models_if_requested(
+    base_cfg,
+    rows: list[dict[str, Any]],
+    best_row: dict[str, Any] | None,
+):
+    if best_row is None:
+        return
+
+    if not bool(getattr(base_cfg.HPO, "DELETE_NON_BEST_CANDIDATE_MODELS", True)):
+        return
+
+    best_output_dir = osp.abspath(str(best_row["output_dir"]))
+
+    deleted = 0
+    skipped = 0
+
+    for row in rows:
+        output_dir = osp.abspath(str(row.get("output_dir", "")))
+
+        # Never delete the selected best candidate here, because
+        # _test_best_model_if_requested() currently loads from best_row["output_dir"].
+        if output_dir == best_output_dir:
+            skipped += 1
+            continue
+
+        model_dir = osp.join(output_dir, "refactor_model")
+
+        if not osp.isdir(model_dir):
+            continue
+
+        shutil.rmtree(model_dir)
+        deleted += 1
+        print(f"[HPO] deleted non-best candidate model dir: {model_dir}")
+
+    print(
+        "[HPO] cleanup candidate models: "
+        f"deleted={deleted}, kept_best={skipped}"
+    )
+
+
+
+
 def _train_final_with_best_if_requested(
     base_args,
     base_cfg,
@@ -837,6 +879,12 @@ def run_hpo(base_args, base_cfg):
         _write_hpo_summary(base_output_dir, rows, best_row)
 
     _copy_best_model_if_requested(base_cfg, best_row)
+
+    _delete_non_best_candidate_models_if_requested(
+        base_cfg=base_cfg,
+        rows=rows,
+        best_row=best_row,
+    )
 
     final_trainer = _train_final_with_best_if_requested(
         base_args=base_args,
