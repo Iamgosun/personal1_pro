@@ -39,7 +39,7 @@ class UCF101(DatasetBase):
             train, val = OxfordPets.split_trainval(trainval)
             OxfordPets.save_split(train, val, test, self.split_path, self.image_dir)
 
-        full_val = val
+
 
         num_shots = cfg.DATASET.NUM_SHOTS
         if num_shots >= 1:
@@ -65,28 +65,19 @@ class UCF101(DatasetBase):
                 with open(preprocessed, "wb") as file:
                     pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
-        use_full_val_for_calibration = (
-            hasattr(cfg, "CALIBRATION")
-            and getattr(cfg.CALIBRATION, "USE_FULL_VAL", False)
-        )
+   
 
-        val_for_loader = full_val if use_full_val_for_calibration else val
 
         subsample = cfg.DATASET.SUBSAMPLE_CLASSES
-        train, val_for_loader, test = OxfordPets.subsample_classes(
+        train, val, test = OxfordPets.subsample_classes(
             train,
-            val_for_loader,
+            val,
             test,
             subsample=subsample,
         )
 
-        if use_full_val_for_calibration:
-            print(
-                "[calibration] USE_FULL_VAL=True: "
-                f"using full validation set with {len(val_for_loader)} samples"
-            )
-
-        super().__init__(train_x=train, val=val_for_loader, test=test)
+ 
+        super().__init__(train_x=train, val=val, test=test)
 
     def read_data(self, cname2lab, text_file):
         text_file = os.path.join(self.dataset_dir, text_file)

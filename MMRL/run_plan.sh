@@ -13,11 +13,11 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 # caltech101 oxford_pets dtd       fgvc_aircraft stanford_cars ucf101
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-  BayesRTMMRL  }
+METHODS_ARG=${2:-  TR }
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-" caltech101 oxford_pets dtd eurosat  fgvc_aircraft  "}
-SHOTS_ARG=${5:-"1 2 4 8 16 32"}
-SEEDS_ARG=${6:-${SEEDS:-"1  2  3"}}
+DATASETS_ARG=${4:-" caltech101  "}
+SHOTS_ARG=${5:-" 1  "}
+SEEDS_ARG=${6:-${SEEDS:-"1 2  3  "}}
 
 EVAL_ONLY=${EVAL_ONLY:-0}
 
@@ -353,9 +353,12 @@ case_is_complete() {
   local train_outdir
   train_outdir="$(build_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
 
-  if [[ ! -f "${train_outdir}/test_metrics.json" && ! -f "${train_outdir}/grid_search_summary.json" ]]; then
+
+
+  if [[ ! -f "${train_outdir}/test_report.json" && ! -f "${train_outdir}/grid_search_summary.json" ]]; then
     return 1
   fi
+
 
   if [[ "$PROTOCOL" != "B2N" ]]; then
     return 0
@@ -364,7 +367,7 @@ case_is_complete() {
   local eval_outdir
   eval_outdir="$(build_b2n_new_eval_outdir "$method" "$dataset" "$shot" "$seed" "$run_tag")"
 
-  [[ -f "${eval_outdir}/test_metrics.json" ]]
+  [[ -f "${eval_outdir}/test_report.json" ]]
 }
 
 write_log_header() {
@@ -465,10 +468,12 @@ launch_b2n_new_eval() {
 
   mkdir -p "$eval_outdir"
 
-  if [[ "$SKIP_EXISTING" == "1" && -f "${eval_outdir}/test_metrics.json" ]]; then
+
+  if [[ "$SKIP_EXISTING" == "1" && -f "${eval_outdir}/test_report.json" ]]; then
     echo "SKIP" > "$statusfile"
     return 0
   fi
+
 
   : > "$eval_log"
   write_b2n_new_eval_log_header "$eval_log" "$gpu_id" "$method" "$dataset" "$shot" "$seed" "$train_outdir"
@@ -600,7 +605,7 @@ launch_one_case() {
     return 0
   fi
 
-  local train_metrics="${outdir}/test_metrics.json"
+  local train_metrics="${outdir}/test_report.json"
   local grid_metrics="${outdir}/grid_search_summary.json"
   local train_already_done=0
 
@@ -692,9 +697,9 @@ summarize_case() {
   launch_method="$(resolve_launch_method "$method")"
 
   if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
-    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}" --split test >/dev/null 2>&1 || true
+    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}" --split test
   else
-    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}" --split test >/dev/null 2>&1 || true
+    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}" --split test
   fi
 }
 

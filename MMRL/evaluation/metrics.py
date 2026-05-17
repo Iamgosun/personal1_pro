@@ -121,11 +121,17 @@ def apply_temperature(logits: torch.Tensor, temperature: float) -> torch.Tensor:
     return logits / temperature
 
 
-def calibration_bins(
+def fixed_calibration_bins(
     logits: torch.Tensor,
     labels: torch.Tensor,
-    n_bins: int = 15,
+    n_bins: int = 10,
 ) -> Tuple[float, List[Dict[str, float]]]:
+    """Fixed-width ECE bins.
+
+    Units:
+        avg_confidence, avg_accuracy, gap, weighted_gap, and returned ECE are
+        percentage points, matching the rest of this repository's metrics.
+    """
     probs = F.softmax(logits, dim=1)
     confidences, preds = probs.max(dim=1)
     correctness = (preds == labels).float()
@@ -170,6 +176,7 @@ def calibration_bins(
         bins.append(
             {
                 "bin_index": idx,
+                "bin_type": "fixed_width",
                 "range_left": left,
                 "range_right": right,
                 "count": count,
@@ -183,6 +190,171 @@ def calibration_bins(
         )
 
     return float(ece), bins
+
+
+def adaptive_calibration_bins(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    n_bins: int = 10,
+) -> Tuple[float, List[Dict[str, float]]]:
+    """Adaptive ECE bins using confidence quantiles.
+
+    This implements AECE with the same gap formula as ECE, but bin boundaries
+    are confidence quantiles rather than fixed-width intervals.
+
+    Units:
+        avg_confidence, avg_accuracy, gap, weighted_gap, and returned AECE are
+        percentage points, matching the rest of this repository's metrics.
+    """
+    probs = F.softmax(logits, dim=1)
+    confidences, preds = probs.max(dim=1)
+    correctness = (preds == labels).float()
+
+    total = int(labels.numel())
+    if total == 0:
+        return float("nan"), []
+
+    quantiles = torch.linspace(0.0, 1.0, steps=n_bins + 1, device=logits.device)
+    bin_edges = torch.quantile(confidences, quantiles)
+
+    bins: List[Dict[str, float]] = []
+    aece = 0.0
+
+    for idx in range(n_bins):
+        left_t = bin_edges[idx]
+        right_t = bin_edges[idx + 1]
+
+        # Include the left edge in the first bin so confidence==min is not lost.
+        if idx == 0:
+            in_bin = (confidences >= left_t) & (confidences <= right_t)
+        else:
+            in_bin = (confidences > left_t) & (confidences <= right_t)
+
+        count = int(in_bin.sum().item())
+        fraction = float(count / total) if total > 0 else 0.0
+
+        if count > 0:
+            bin_conf = float(confidences[in_bin].mean().item() * 100.0)
+            bin_acc = float(correctness[in_bin].mean().item() * 100.0)
+            gap = abs(bin_acc - bin_conf)
+            weighted_gap = gap * fraction
+            correct_count = int(correctness[in_bin].sum().item())
+        else:
+            bin_conf = 0.0
+            bin_acc = 0.0
+            gap = 0.0
+            weighted_gap = 0.0
+            correct_count = 0
+
+        aece += weighted_gap
+
+        bins.append(
+            {
+                "bin_index": idx,
+                "bin_type": "adaptive_quantile",
+                "range_left": float(left_t.item()),
+                "range_right": float(right_t.item()),
+                "count": count,
+                "fraction": fraction,
+                "correct_count": correct_count,
+                "avg_confidence": bin_conf,
+                "avg_accuracy": bin_acc,
+                "gap": gap,
+                "weighted_gap": weighted_gap,
+            }
+        )
+
+    return float(aece), bins
+
+
+def calibration_bins(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    n_bins: int = 10,
+) -> Tuple[float, List[Dict[str, float]]]:
+    """Backward-compatible alias for the repository's previous ECE function."""
+    return fixed_calibration_bins(logits=logits, labels=labels, n_bins=n_bins)
+
+
+def confidence_threshold_coverage_report(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    thresholds: List[float] | None = None,
+) -> Dict[str, object]:
+    """Confidence-threshold coverage used by the high-confidence experiments.
+
+    Definition:
+        S_tau = {i | max_c p_i,c > tau}
+        coverage_tau = |S_tau| / N
+        accuracy_tau = accuracy on S_tau
+        valid_coverage_tau = coverage_tau if accuracy_tau >= tau else 0
+
+    This is intentionally separate from risk-coverage / AURC selective
+    prediction. It follows the experiment definition based on confidence
+    thresholds 99 / 95 / 90 / 85 / 80%.
+    """
+    if thresholds is None:
+        thresholds = [0.99, 0.95, 0.90, 0.85, 0.80]
+
+    logits = logits.detach().cpu().float()
+    labels = labels.detach().cpu().long()
+
+    probs = F.softmax(logits, dim=1)
+    confidences, preds = probs.max(dim=1)
+    correctness = (preds == labels).float()
+
+    total = int(labels.numel())
+    rows: List[Dict[str, object]] = []
+    metrics: Dict[str, object] = {}
+
+    for tau in thresholds:
+        tau = float(tau)
+        tau_pct = tau * 100.0
+        tau_key = str(int(round(tau_pct)))
+
+        selected = confidences > tau
+        count = int(selected.sum().item())
+        coverage = float(count / total) if total > 0 else 0.0
+
+        if count > 0:
+            selected_accuracy = float(correctness[selected].mean().item())
+            selected_accuracy_pct = selected_accuracy * 100.0
+            valid = bool(selected_accuracy >= tau)
+        else:
+            selected_accuracy_pct = None
+            valid = False
+
+        valid_coverage = coverage if valid else 0.0
+
+        # Flat scalar metrics for result_parser aggregation.
+        metrics[f"confthr_{tau_key}_coverage"] = coverage * 100.0
+        metrics[f"confthr_{tau_key}_accuracy"] = selected_accuracy_pct
+        metrics[f"confthr_{tau_key}_valid"] = float(valid)
+        metrics[f"confthr_{tau_key}_valid_coverage"] = valid_coverage * 100.0
+        metrics[f"confthr_{tau_key}_count"] = count
+
+        rows.append(
+            {
+                "threshold": tau,
+                "threshold_pct": tau_pct,
+                "count": count,
+                "total": total,
+                "coverage": coverage * 100.0,
+                "accuracy": selected_accuracy_pct,
+                "valid": valid,
+                "valid_coverage": valid_coverage * 100.0,
+            }
+        )
+
+    return {
+        "type": "confidence_threshold_coverage",
+        "comparison": "max_softmax_confidence > threshold",
+        "valid_rule": "accuracy_on_selected_samples >= threshold",
+        "units": "percentage_points_for_coverage_and_accuracy",
+        "thresholds": thresholds,
+        "metrics": metrics,
+        "rows": rows,
+    }
 
 
 def _binary_auroc(scores: torch.Tensor, targets: torch.Tensor) -> float:
@@ -329,23 +501,12 @@ def selective_prediction_report(
     labels: torch.Tensor,
 ) -> Dict[str, object]:
     """
-    Build selective prediction metrics from logits only.
+    Build risk-coverage selective prediction metrics from logits.
 
-    This intentionally does not depend on DEBA-specific fields, so it can compare
-    BayesAdapter, DEBA, HBA, CLAP, and other adapters fairly.
-
-    Positive class for error detection AUROC:
-        error = 1 if prediction is wrong, else 0
-
-    Uncertainty scores:
-        least_confidence:
-            1 - max softmax probability
-
-        entropy:
-            predictive entropy
-
-        margin_uncertainty:
-            1 - (top1 probability - top2 probability)
+    Note:
+        This is NOT the confidence-threshold coverage used in the main
+        high-confidence coverage experiment. That experiment is implemented by
+        confidence_threshold_coverage_report().
     """
     logits = logits.detach().cpu().float()
     labels = labels.detach().cpu().long()
@@ -390,6 +551,11 @@ def selective_prediction_report(
         coverage_summary[score_name] = _coverage_summary_from_curve(curve)
 
     return {
+        "type": "risk_coverage_selective_prediction",
+        "note": (
+            "These are AURC/EAURC and error-detection metrics. "
+            "They are distinct from confidence-threshold coverage."
+        ),
         "metrics": metrics,
         "curves": curves,
         "coverage_summary": coverage_summary,
@@ -402,7 +568,7 @@ def selective_prediction_report(
 def build_classification_calibration_report(
     logits: torch.Tensor,
     labels: torch.Tensor,
-    n_bins: int = 15,
+    n_bins: int = 10,
 ) -> Dict[str, object]:
     logits = logits.detach().cpu()
     labels = labels.detach().cpu()
@@ -412,26 +578,35 @@ def build_classification_calibration_report(
     mf1 = macro_f1(logits, labels)
     nll = negative_log_likelihood(logits, labels)
     brier = brier_score(logits, labels)
-    ece, bins = calibration_bins(logits, labels, n_bins=n_bins)
 
+    ece, fixed_bins = fixed_calibration_bins(logits, labels, n_bins=n_bins)
+    aece, adaptive_bins = adaptive_calibration_bins(logits, labels, n_bins=n_bins)
+
+    confthr = confidence_threshold_coverage_report(logits, labels)
     selective = selective_prediction_report(logits, labels)
 
-    metrics = {
+    metrics: Dict[str, object] = {
         "accuracy": acc,
         "error": err,
         "macro_f1": mf1,
         "nll": nll,
         "brier": brier,
         "ece": ece,
+        "aece": aece,
     }
 
-    # Flatten selective metrics into top-level metrics CSV so result_parser can
-    # compare methods without opening JSON.
+    # Flatten confidence-threshold coverage first because these are part of the
+    # formal experiment protocol.
+    for key, value in confthr["metrics"].items():
+        metrics[key] = value
+
+    # Keep risk-coverage metrics for supplementary analysis. They should not be
+    # interpreted as confidence-threshold coverage.
     for key, value in selective["metrics"].items():
         metrics[key] = value
 
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "num_samples": int(labels.numel()),
         "metrics": metrics,
         "prediction": {
@@ -443,9 +618,14 @@ def build_classification_calibration_report(
         },
         "calibration": {
             "ece": ece,
+            "aece": aece,
             "n_bins": int(n_bins),
-            "bins": bins,
+            "fixed_bins": fixed_bins,
+            # Backward-compatible key for old code expecting calibration["bins"].
+            "bins": fixed_bins,
+            "adaptive_bins": adaptive_bins,
         },
+        "confidence_threshold_coverage": confthr,
         "selective_prediction": selective,
         "ood": {},
     }
@@ -478,6 +658,7 @@ def _write_metrics_csv(path: Path, metrics: Dict[str, object], num_samples: int)
 def _write_bins_csv(path: Path, bins: List[Dict[str, object]]):
     default_fields = [
         "bin_index",
+        "bin_type",
         "range_left",
         "range_right",
         "count",
@@ -553,15 +734,31 @@ def save_metric_report(
     outdir = Path(output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    json_path = outdir / f"{split}_metrics.json"
+    # New canonical JSON name.
+    report_json_path = outdir / f"{split}_report.json"
+
     metrics_csv_path = outdir / f"{split}_metrics.csv"
-    bins_csv_path = outdir / f"{split}_calibration_bins.csv"
+
+    fixed_bins_csv_path = outdir / f"{split}_calibration_fixed_bins.csv"
+    adaptive_bins_csv_path = outdir / f"{split}_calibration_adaptive_bins.csv"
+
+    # Backward-compatible fixed-bin filename.
+    legacy_bins_csv_path = outdir / f"{split}_calibration_bins.csv"
+
+    confthr_csv_path = outdir / f"{split}_confidence_threshold_coverage.csv"
 
     selective_curve_csv_path = outdir / f"{split}_risk_coverage_curve.csv"
     selective_summary_csv_path = outdir / f"{split}_selective_summary.csv"
 
     calibrated_metrics_csv_path = outdir / f"{split}_metrics_calibrated.csv"
-    calibrated_bins_csv_path = outdir / f"{split}_calibration_bins_calibrated.csv"
+    calibrated_fixed_bins_csv_path = outdir / f"{split}_calibration_fixed_bins_calibrated.csv"
+    calibrated_adaptive_bins_csv_path = (
+        outdir / f"{split}_calibration_adaptive_bins_calibrated.csv"
+    )
+    calibrated_legacy_bins_csv_path = outdir / f"{split}_calibration_bins_calibrated.csv"
+    calibrated_confthr_csv_path = (
+        outdir / f"{split}_confidence_threshold_coverage_calibrated.csv"
+    )
     calibrated_selective_curve_csv_path = (
         outdir / f"{split}_risk_coverage_curve_calibrated.csv"
     )
@@ -571,7 +768,7 @@ def save_metric_report(
 
     report = _to_builtin(report)
 
-    with json_path.open("w", encoding="utf-8") as f:
+    with report_json_path.open("w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
 
     num_samples = int(report.get("num_samples", 0))
@@ -582,10 +779,21 @@ def save_metric_report(
         num_samples=num_samples,
     )
 
-    _write_bins_csv(
-        bins_csv_path,
-        list(report.get("calibration", {}).get("bins", [])),
+    calibration = report.get("calibration", {})
+    if not isinstance(calibration, dict):
+        calibration = {}
+
+    fixed_bins = list(calibration.get("fixed_bins", calibration.get("bins", [])))
+    adaptive_bins = list(calibration.get("adaptive_bins", []))
+
+    _write_bins_csv(fixed_bins_csv_path, fixed_bins)
+    _write_bins_csv(adaptive_bins_csv_path, adaptive_bins)
+    _write_bins_csv(legacy_bins_csv_path, fixed_bins)
+
+    confthr_rows = list(
+        report.get("confidence_threshold_coverage", {}).get("rows", [])
     )
+    _write_generic_rows_csv(confthr_csv_path, confthr_rows)
 
     selective_curve_rows = _flatten_selective_curves(report)
     selective_summary_rows = _flatten_selective_summary(report)
@@ -594,15 +802,19 @@ def save_metric_report(
     _write_generic_rows_csv(selective_summary_csv_path, selective_summary_rows)
 
     saved_paths = {
-        "json": str(json_path),
+        "json": str(report_json_path),
         "metrics_csv": str(metrics_csv_path),
-        "bins_csv": str(bins_csv_path),
+        "bins_csv": str(legacy_bins_csv_path),
+        "fixed_bins_csv": str(fixed_bins_csv_path),
+        "adaptive_bins_csv": str(adaptive_bins_csv_path),
+        "confidence_threshold_coverage_csv": str(confthr_csv_path),
         "risk_coverage_curve_csv": str(selective_curve_csv_path),
         "selective_summary_csv": str(selective_summary_csv_path),
     }
 
     metrics_calibrated = report.get("metrics_calibrated")
     calibration_calibrated = report.get("calibration_calibrated")
+    confthr_calibrated = report.get("confidence_threshold_coverage_calibrated")
     selective_calibrated = report.get("selective_prediction_calibrated")
 
     if metrics_calibrated is not None:
@@ -620,11 +832,26 @@ def save_metric_report(
         saved_paths["metrics_calibrated_csv"] = str(calibrated_metrics_csv_path)
 
     if calibration_calibrated is not None:
-        _write_bins_csv(
-            calibrated_bins_csv_path,
-            list(calibration_calibrated.get("bins", [])),
+        cal_cal = calibration_calibrated if isinstance(calibration_calibrated, dict) else {}
+        fixed_cal = list(cal_cal.get("fixed_bins", cal_cal.get("bins", [])))
+        adaptive_cal = list(cal_cal.get("adaptive_bins", []))
+
+        _write_bins_csv(calibrated_fixed_bins_csv_path, fixed_cal)
+        _write_bins_csv(calibrated_adaptive_bins_csv_path, adaptive_cal)
+        _write_bins_csv(calibrated_legacy_bins_csv_path, fixed_cal)
+
+        saved_paths["bins_calibrated_csv"] = str(calibrated_legacy_bins_csv_path)
+        saved_paths["fixed_bins_calibrated_csv"] = str(calibrated_fixed_bins_csv_path)
+        saved_paths["adaptive_bins_calibrated_csv"] = str(
+            calibrated_adaptive_bins_csv_path
         )
-        saved_paths["bins_calibrated_csv"] = str(calibrated_bins_csv_path)
+
+    if confthr_calibrated is not None:
+        calibrated_confthr_rows = list(confthr_calibrated.get("rows", []))
+        _write_generic_rows_csv(calibrated_confthr_csv_path, calibrated_confthr_rows)
+        saved_paths["confidence_threshold_coverage_calibrated_csv"] = str(
+            calibrated_confthr_csv_path
+        )
 
     if selective_calibrated is not None:
         calibrated_tmp_report = {
