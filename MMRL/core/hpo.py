@@ -10,6 +10,12 @@ import os.path as osp
 import shutil
 from typing import Any
 
+
+import sys
+from contextlib import contextmanager
+
+
+
 import torch
 import torch.nn.functional as F
 from dassl.engine import build_trainer
@@ -630,6 +636,22 @@ def _write_hpo_summary(
     if best_row is not None:
         print(f"[HPO] saved best opts to {best_path}")
 
+@contextmanager
+def _redirect_output_to_file(log_path: str):
+    os.makedirs(osp.dirname(log_path), exist_ok=True)
+
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+
+    with open(log_path, "a", encoding="utf-8", buffering=1) as f:
+        sys.stdout = f
+        sys.stderr = f
+        try:
+            yield
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+
 
 def _copy_best_model_if_requested(base_cfg, best_row: dict[str, Any] | None):
     if best_row is None:
@@ -824,21 +846,29 @@ def run_hpo(base_args, base_cfg):
         print(f"[HPO] params={params}")
         print(f"[HPO] output_dir={cand_cfg.OUTPUT_DIR}")
 
+        candidate_log_path = osp.join(cand_cfg.OUTPUT_DIR, "candidate.log")
+        print(f"[HPO] candidate {index} log={candidate_log_path}")
+
         if cand_cfg.SEED >= 0:
             print(f"[HPO] Setting fixed seed: {cand_cfg.SEED}")
             set_random_seed(cand_cfg.SEED)
 
-        setup_logger(cand_cfg.OUTPUT_DIR)
+        with _redirect_output_to_file(candidate_log_path):
+            print("=" * 80)
+            print(f"[HPO-CANDIDATE] candidate={index}")
+            print(f"[HPO-CANDIDATE] tag={tag}")
+            print(f"[HPO-CANDIDATE] params={params}")
+            print(f"[HPO-CANDIDATE] output_dir={cand_cfg.OUTPUT_DIR}")
 
-        trainer = build_trainer(cand_cfg)
-        trainer.train()
+            trainer = build_trainer(cand_cfg)
+            trainer.train()
 
-        metrics = _evaluate_candidate_for_hpo(
-            trainer=trainer,
-            split=split,
-            require_val=require_val,
-            n_bins=n_bins,
-        )
+            metrics = _evaluate_candidate_for_hpo(
+                trainer=trainer,
+                split=split,
+                require_val=require_val,
+                n_bins=n_bins,
+            )
 
         row = {
             "candidate": index,
@@ -856,13 +886,15 @@ def run_hpo(base_args, base_cfg):
 
         rows.append(row)
 
+     
         print(
             "[HPO] candidate "
             f"{index} "
             f"ACC={row['accuracy']:.4f} "
             f"ECE={row['ece']:.4f} "
-            f"AECE={row['aece']:.4f}"
-        )
+            f"AECE={row['aece']:.4f} "
+            f"log={candidate_log_path}"
+        )        
 
         del trainer
         if torch.cuda.is_available():
