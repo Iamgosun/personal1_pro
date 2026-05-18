@@ -83,6 +83,7 @@ class BaseExecutor:
         eval_ctx,
         process_evaluator: bool = False,
         collect_fusion_variants: bool = False,
+        keep_on_device: bool = False,
     ):
         """
         Efficient collection path.
@@ -93,6 +94,15 @@ class BaseExecutor:
             3. optional fusion-variant logits for reporting
 
         No second evaluation pass is performed.
+
+        Args:
+            keep_on_device:
+                False keeps the original behavior: collected logits/labels are
+                moved to CPU before concatenation. This is used by the formal
+                report path, whose metric/report builders are CPU-oriented.
+                True keeps collected logits/labels on trainer.device. This is
+                useful for HPO candidate evaluation, where only ACC/ECE/AECE
+                are needed and can be computed directly on GPU.
 
         Returns:
             if collect_fusion_variants is False:
@@ -122,8 +132,8 @@ class BaseExecutor:
 
         with torch.no_grad():
             for batch in data_loader:
-                image = batch["img"].to(trainer.device)
-                label = batch["label"].to(trainer.device)
+                image = batch["img"].to(trainer.device, non_blocking=True)
+                label = batch["label"].to(trainer.device, non_blocking=True)
 
                 outputs = self.method.forward_eval(
                     {
@@ -138,8 +148,12 @@ class BaseExecutor:
                 if process_evaluator:
                     trainer.evaluator.process(routed, label)
 
-                all_logits.append(routed.detach().cpu())
-                all_labels.append(label.detach().cpu())
+                if keep_on_device:
+                    all_logits.append(routed.detach())
+                    all_labels.append(label.detach())
+                else:
+                    all_logits.append(routed.detach().cpu())
+                    all_labels.append(label.detach().cpu())
 
                 if collect_fusion_variants:
                     for key in variant_keys:
@@ -149,7 +163,12 @@ class BaseExecutor:
                             logits_v = outputs.aux_logits.get(key)
 
                         if logits_v is not None:
-                            all_variant_logits[key].append(logits_v.detach().cpu())
+                            if keep_on_device:
+                                all_variant_logits[key].append(logits_v.detach())
+                            else:
+                                all_variant_logits[key].append(
+                                    logits_v.detach().cpu()
+                                )
 
         if len(all_logits) == 0:
             raise RuntimeError("No batches were found during evaluation.")

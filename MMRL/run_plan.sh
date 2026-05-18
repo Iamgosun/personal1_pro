@@ -11,13 +11,13 @@ set -euo pipefail
 #   - Adapter aliases map to specific configs/methods/clip_adapters_*.yaml.
 #   - For adapter aliases, launch method is always ClipAdapters.
 #   - B2N automatically runs test_new after train_base.
-# caltech101 oxford_pets dtd       fgvc_aircraft stanford_cars ucf101
+#  caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-  TR }
+METHODS_ARG=${2:-   TR }
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-" caltech101  "}
-SHOTS_ARG=${5:-" 1  "}
-SEEDS_ARG=${6:-${SEEDS:-"1 2  3  "}}
+DATASETS_ARG=${4:-" dtd "}
+SHOTS_ARG=${5:-" 8 "}
+SEEDS_ARG=${6:-${SEEDS:-"1 "}}
 
 EVAL_ONLY=${EVAL_ONLY:-0}
 
@@ -26,9 +26,9 @@ OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-1}
-GPU_IDS=${GPU_IDS:-0 }
-JOBS_PER_GPU=${JOBS_PER_GPU:-3}
+NGPU=${NGPU:-5}
+GPU_IDS=${GPU_IDS:-0 1 2 3 4 }
+JOBS_PER_GPU=${JOBS_PER_GPU:-2}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}

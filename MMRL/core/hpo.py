@@ -158,31 +158,64 @@ def _set_eval_seed(seed: int):
         torch.cuda.manual_seed_all(eval_seed)
 
 
+def _resolve_trainer_device(trainer) -> torch.device:
+    device = getattr(trainer, "device", "cpu")
+    if isinstance(device, torch.device):
+        return device
+
+    try:
+        return torch.device(device)
+    except Exception:
+        return torch.device("cpu")
+
+
+def _hpo_should_keep_logits_on_device(trainer) -> bool:
+    device = _resolve_trainer_device(trainer)
+    return device.type == "cuda" and torch.cuda.is_available()
+
+
+def _labels_on_logits_device(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    return labels.detach().to(
+        device=logits.device,
+        dtype=torch.long,
+        non_blocking=True,
+    )
+
+
+@torch.no_grad()
 def _hpo_accuracy(logits: torch.Tensor, labels: torch.Tensor) -> float:
-    logits = logits.detach().cpu()
-    labels = labels.detach().cpu().long()
+    logits = logits.detach().float()
+    labels = _labels_on_logits_device(logits, labels)
 
     preds = logits.argmax(dim=1)
-    return float((preds == labels).float().mean().item() * 100.0)
+    acc = (preds == labels).float().mean() * 100.0
+    return float(acc.item())
 
 
+@torch.no_grad()
 def _hpo_ece(
     logits: torch.Tensor,
     labels: torch.Tensor,
     n_bins: int = 10,
 ) -> float:
-    logits = logits.detach().cpu().float()
-    labels = labels.detach().cpu().long()
+    logits = logits.detach().float()
+    labels = _labels_on_logits_device(logits, labels)
 
     probs = F.softmax(logits, dim=1)
     confs, preds = probs.max(dim=1)
     correct = (preds == labels).float()
 
     n_bins = max(1, int(n_bins))
-    edges = torch.linspace(0.0, 1.0, steps=n_bins + 1)
+    edges = torch.linspace(
+        0.0,
+        1.0,
+        steps=n_bins + 1,
+        device=logits.device,
+        dtype=confs.dtype,
+    )
     total = max(int(labels.numel()), 1)
 
-    ece = 0.0
+    ece = torch.zeros((), device=logits.device, dtype=confs.dtype)
 
     for i in range(n_bins):
         left = edges[i]
@@ -193,17 +226,18 @@ def _hpo_ece(
         else:
             mask = (confs > left) & (confs <= right)
 
-        count = int(mask.sum().item())
-        if count == 0:
+        count = mask.sum()
+        if int(count.item()) == 0:
             continue
 
-        bin_acc = float(correct[mask].mean().item() * 100.0)
-        bin_conf = float(confs[mask].mean().item() * 100.0)
-        ece += abs(bin_acc - bin_conf) * (count / total)
+        bin_acc = correct[mask].mean() * 100.0
+        bin_conf = confs[mask].mean() * 100.0
+        ece = ece + torch.abs(bin_acc - bin_conf) * (count.float() / total)
 
-    return float(ece)
+    return float(ece.item())
 
 
+@torch.no_grad()
 def _hpo_aece(
     logits: torch.Tensor,
     labels: torch.Tensor,
@@ -214,8 +248,8 @@ def _hpo_aece(
 
     Unit: percentage points, same as ECE.
     """
-    logits = logits.detach().cpu().float()
-    labels = labels.detach().cpu().long()
+    logits = logits.detach().float()
+    labels = _labels_on_logits_device(logits, labels)
 
     probs = F.softmax(logits, dim=1)
     confs, preds = probs.max(dim=1)
@@ -231,21 +265,22 @@ def _hpo_aece(
     confs = confs[order]
     correct = correct[order]
 
-    chunks = torch.chunk(torch.arange(n), chunks=n_bins)
+    idxs_all = torch.arange(n, device=logits.device)
+    chunks = torch.chunk(idxs_all, chunks=n_bins)
 
-    aece = 0.0
+    aece = torch.zeros((), device=logits.device, dtype=confs.dtype)
 
     for idxs in chunks:
         if idxs.numel() == 0:
             continue
 
-        bin_acc = float(correct[idxs].mean().item() * 100.0)
-        bin_conf = float(confs[idxs].mean().item() * 100.0)
-        frac = float(idxs.numel() / n)
+        bin_acc = correct[idxs].mean() * 100.0
+        bin_conf = confs[idxs].mean() * 100.0
+        frac = idxs.numel() / float(n)
 
-        aece += abs(bin_acc - bin_conf) * frac
+        aece = aece + torch.abs(bin_acc - bin_conf) * frac
 
-    return float(aece)
+    return float(aece.item())
 
 
 def _hpo_basic_metrics(
@@ -292,6 +327,7 @@ def _evaluate_candidate_for_hpo(
     _set_eval_seed(getattr(trainer.cfg, "SEED", -1))
 
     eval_ctx = trainer.executor.build_eval_context(trainer, actual_split)
+    keep_on_device = _hpo_should_keep_logits_on_device(trainer)
 
     logits, labels = trainer.executor._collect_logits_and_labels(
         trainer=trainer,
@@ -299,6 +335,7 @@ def _evaluate_candidate_for_hpo(
         eval_ctx=eval_ctx,
         process_evaluator=False,
         collect_fusion_variants=False,
+        keep_on_device=keep_on_device,
     )
 
     metrics = _hpo_basic_metrics(
@@ -886,7 +923,7 @@ def run_hpo(base_args, base_cfg):
 
         rows.append(row)
 
-     
+
         print(
             "[HPO] candidate "
             f"{index} "
