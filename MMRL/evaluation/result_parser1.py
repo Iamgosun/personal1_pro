@@ -195,76 +195,6 @@ def _aggregate_calibration_bins(
     return aggregated
 
 
-def _aggregate_selective_coverage_summary(
-    reports: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
-
-    for report in reports:
-        selective = report.get("selective_prediction", {})
-        if not isinstance(selective, dict):
-            continue
-
-        coverage_summary = selective.get("coverage_summary", {})
-        if not isinstance(coverage_summary, dict):
-            continue
-
-        for _score_name, rows in coverage_summary.items():
-            if not isinstance(rows, list):
-                continue
-
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-
-                group = (
-                    row.get("score_name"),
-                    row.get("requested_coverage"),
-                )
-                grouped.setdefault(group, []).append(row)
-
-    aggregated: list[dict[str, Any]] = []
-
-    for group, rows in sorted(grouped.items(), key=lambda x: str(x[0])):
-        out = {
-            "score_name": group[0],
-            "requested_coverage": group[1],
-            "num_seeds": len(rows),
-        }
-
-        numeric_keys: list[str] = []
-        for row in rows:
-            for key, value in row.items():
-                if key in {"score_name", "requested_coverage"}:
-                    continue
-                if _to_float(value) is not None and key not in numeric_keys:
-                    numeric_keys.append(key)
-
-        for key in numeric_keys:
-            values = []
-            for row in rows:
-                value = _to_float(row.get(key))
-                if value is not None:
-                    values.append(value)
-            out[f"{key}_mean"] = _safe_mean(values)
-            out[f"{key}_std"] = _safe_std(values)
-
-        aggregated.append(out)
-
-    return aggregated
-
-
-def _aggregate_selective_risk_curve(
-    reports: list[dict[str, Any]],
-    score_name: str = "least_confidence",
-) -> list[dict[str, Any]]:
-    return _aggregate_rows(
-        reports,
-        ["selective_prediction", "curves", score_name],
-        ["score_name", "rank"],
-    )
-
-
 def _flatten_summary_row(case_root: Path, split: str, summary: dict[str, Any]) -> dict[str, Any]:
     row: dict[str, Any] = {
         "case_root": str(case_root),
@@ -319,12 +249,7 @@ def _write_summary_files(case_root: Path, split: str, summary: dict[str, Any]) -
     risk_curve_csv = case_root / f"{split}_risk_coverage_curve_summary.csv"
 
     with json_path.open("w", encoding="utf-8") as f:
-        json.dump(
-            summary,
-            f,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+        json.dump(summary, f, indent=2, ensure_ascii=False)
 
     _write_rows_csv(csv_path, [_flatten_summary_row(case_root, split, summary)])
     _write_rows_csv(fixed_bins_csv, summary.get("calibration", {}).get("fixed_bins", []))
@@ -393,10 +318,15 @@ def aggregate_case(case_root: Path, report_files: list[Path], split: str) -> tup
             )
         },
         "selective_prediction": {
-            "coverage_summary": _aggregate_selective_coverage_summary(reports),
-            "risk_coverage_curve": _aggregate_selective_risk_curve(
+            "coverage_summary": _aggregate_rows(
                 reports,
-                score_name="least_confidence",
+                ["selective_prediction", "coverage_summary"],
+                ["score_name", "requested_coverage"],
+            ),
+            "risk_coverage_curve": _aggregate_rows(
+                reports,
+                ["selective_prediction", "curves", "least_confidence"],
+                ["score_name", "rank"],
             ),
         },
         "ood": {},

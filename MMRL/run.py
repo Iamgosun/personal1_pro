@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import os
 
+
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
-os.environ.setdefault("TORCH_NUM_THREADS", "1")
-os.environ.setdefault("TORCH_NUM_INTEROP_THREADS", "1")
+os.environ.setdefault("TORCH_NUM_THREADS", "12")
+os.environ.setdefault("TORCH_NUM_INTEROP_THREADS", "2")
 
 import torch
 

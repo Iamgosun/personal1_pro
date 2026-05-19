@@ -8,6 +8,7 @@ from evaluation.metrics import (
     build_classification_calibration_report,
     fit_temperature,
     save_metric_report,
+    selective_prediction_report,
 )
 from evaluation.protocol_router import select_eval_logits as legacy_select_eval_logits
 
@@ -42,24 +43,6 @@ class BaseExecutor:
             outputs,
             eval_ctx,
         )
-
-    @staticmethod
-    def _metrics_keep_on_device(trainer) -> bool:
-        """
-        Keep formal report logits/labels on CUDA when possible.
-
-        This does not change any metric definition. It only avoids moving the
-        full ImageNet logits tensor to CPU before computing tensor-heavy
-        metrics such as softmax, topk, quantile, sort, AURC, and AUROC.
-        """
-        device = getattr(trainer, "device", None)
-        if device is None:
-            return False
-
-        if isinstance(device, torch.device):
-            return device.type == "cuda"
-
-        return str(device).startswith("cuda")
 
     def _should_report_fusion_variants(self, trainer) -> bool:
         """
@@ -114,9 +97,12 @@ class BaseExecutor:
 
         Args:
             keep_on_device:
-                False moves collected logits/labels to CPU before concatenation.
-                True keeps collected logits/labels on trainer.device so the
-                metric builder can compute tensor-heavy metrics on GPU.
+                False keeps the original behavior: collected logits/labels are
+                moved to CPU before concatenation. This is used by the formal
+                report path, whose metric/report builders are CPU-oriented.
+                True keeps collected logits/labels on trainer.device. This is
+                useful for HPO candidate evaluation, where only ACC/ECE/AECE
+                are needed and can be computed directly on GPU.
 
         Returns:
             if collect_fusion_variants is False:
@@ -248,7 +234,6 @@ class BaseExecutor:
             eval_ctx=val_ctx,
             process_evaluator=False,
             collect_fusion_variants=False,
-            keep_on_device=self._metrics_keep_on_device(trainer),
         )
 
         temperature = fit_temperature(
@@ -347,7 +332,6 @@ class BaseExecutor:
             eval_ctx=eval_ctx,
             process_evaluator=True,
             collect_fusion_variants=collect_fusion_variants,
-            keep_on_device=self._metrics_keep_on_device(trainer),
         )
 
         if collect_fusion_variants:

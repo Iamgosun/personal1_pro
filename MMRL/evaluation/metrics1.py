@@ -9,70 +9,41 @@ import torch
 import torch.nn.functional as F
 
 
-def _prepare_logits_labels(logits: torch.Tensor, labels: torch.Tensor):
-    logits = logits.detach().float()
-    labels = labels.detach().long().to(logits.device)
-    return logits, labels
-
-
 def accuracy(logits: torch.Tensor, labels: torch.Tensor) -> float:
-    logits, labels = _prepare_logits_labels(logits, labels)
     preds = logits.argmax(dim=1)
     return float((preds == labels).float().mean().item() * 100.0)
 
 
-def _macro_f1_from_preds(
-    preds: torch.Tensor,
-    labels: torch.Tensor,
-    num_classes: int,
-) -> float:
-    preds = preds.detach().long()
-    labels = labels.detach().long().to(preds.device)
-
-    idx = labels * num_classes + preds
-    cm = torch.bincount(
-        idx,
-        minlength=num_classes * num_classes,
-    ).reshape(num_classes, num_classes).float()
-
-    tp = cm.diag()
-    fp = cm.sum(dim=0) - tp
-    fn = cm.sum(dim=1) - tp
-
-    denom = 2.0 * tp + fp + fn
-    f1 = torch.where(
-        denom > 0,
-        2.0 * tp / denom,
-        torch.zeros_like(denom),
-    )
-
-    return float(f1.mean().item() * 100.0)
-
-
 def macro_f1(logits: torch.Tensor, labels: torch.Tensor) -> float:
-    logits, labels = _prepare_logits_labels(logits, labels)
     preds = logits.argmax(dim=1)
-    return _macro_f1_from_preds(
-        preds=preds,
-        labels=labels,
-        num_classes=int(logits.shape[1]),
-    )
+    num_classes = int(logits.shape[1])
+    f1_scores = []
+
+    for cls_idx in range(num_classes):
+        pred_pos = preds == cls_idx
+        true_pos = labels == cls_idx
+
+        tp = (pred_pos & true_pos).sum().item()
+        fp = (pred_pos & ~true_pos).sum().item()
+        fn = (~pred_pos & true_pos).sum().item()
+
+        denom = 2 * tp + fp + fn
+        f1 = 0.0 if denom == 0 else (2.0 * tp / denom)
+        f1_scores.append(f1)
+
+    return float(sum(f1_scores) / max(len(f1_scores), 1) * 100.0)
 
 
 def negative_log_likelihood(logits: torch.Tensor, labels: torch.Tensor) -> float:
-    logits, labels = _prepare_logits_labels(logits, labels)
-    return float(F.cross_entropy(logits, labels, reduction="mean").item())
+    log_probs = F.log_softmax(logits, dim=1)
+    return float(F.nll_loss(log_probs, labels, reduction="mean").item())
 
 
 def brier_score(logits: torch.Tensor, labels: torch.Tensor) -> float:
-    logits, labels = _prepare_logits_labels(logits, labels)
     probs = F.softmax(logits, dim=1)
-
-    # Equivalent to ((probs - one_hot(labels)) ** 2).sum(dim=1).mean(),
-    # but avoids constructing the full [N, C] one-hot matrix.
-    p_true = probs.gather(1, labels.view(-1, 1)).squeeze(1)
-    score = probs.square().sum(dim=1) - 2.0 * p_true + 1.0
-    return float(score.mean().item())
+    one_hot = F.one_hot(labels, num_classes=logits.shape[1]).float()
+    score = ((probs - one_hot) ** 2).sum(dim=1).mean()
+    return float(score.item())
 
 
 class TemperatureScaler(torch.nn.Module):
@@ -150,33 +121,39 @@ def apply_temperature(logits: torch.Tensor, temperature: float) -> torch.Tensor:
     return logits / temperature
 
 
-def _fixed_calibration_bins_from_confidence(
-    confidences: torch.Tensor,
-    correctness: torch.Tensor,
+def fixed_calibration_bins(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
     n_bins: int = 10,
 ) -> Tuple[float, List[Dict[str, float]]]:
-    confidences = confidences.detach().float()
-    correctness = correctness.detach().float().to(confidences.device)
+    """Fixed-width ECE bins.
 
-    bin_edges = torch.linspace(
-        0.0,
-        1.0,
-        steps=n_bins + 1,
-        device=confidences.device,
-    )
+    Units:
+        avg_confidence, avg_accuracy, gap, weighted_gap, and returned ECE are
+        percentage points, matching the rest of this repository's metrics.
+    """
+    probs = F.softmax(logits, dim=1)
+    confidences, preds = probs.max(dim=1)
+    correctness = (preds == labels).float()
+
+    bin_edges = torch.linspace(0.0, 1.0, steps=n_bins + 1, device=logits.device)
 
     bins: List[Dict[str, float]] = []
     ece = 0.0
-    total = int(confidences.numel())
+    total = int(labels.numel())
 
     for idx in range(n_bins):
-        left_t = bin_edges[idx]
-        right_t = bin_edges[idx + 1]
+        left = float(bin_edges[idx].item())
+        right = float(bin_edges[idx + 1].item())
 
         if idx == 0:
-            in_bin = (confidences >= left_t) & (confidences <= right_t)
+            in_bin = (confidences >= bin_edges[idx]) & (
+                confidences <= bin_edges[idx + 1]
+            )
         else:
-            in_bin = (confidences > left_t) & (confidences <= right_t)
+            in_bin = (confidences > bin_edges[idx]) & (
+                confidences <= bin_edges[idx + 1]
+            )
 
         count = int(in_bin.sum().item())
         fraction = float(count / total) if total > 0 else 0.0
@@ -200,8 +177,8 @@ def _fixed_calibration_bins_from_confidence(
             {
                 "bin_index": idx,
                 "bin_type": "fixed_width",
-                "range_left": float(left_t.item()),
-                "range_right": float(right_t.item()),
+                "range_left": left,
+                "range_right": right,
                 "count": count,
                 "fraction": fraction,
                 "correct_count": correct_count,
@@ -215,41 +192,29 @@ def _fixed_calibration_bins_from_confidence(
     return float(ece), bins
 
 
-def fixed_calibration_bins(
+def adaptive_calibration_bins(
     logits: torch.Tensor,
     labels: torch.Tensor,
     n_bins: int = 10,
 ) -> Tuple[float, List[Dict[str, float]]]:
-    logits, labels = _prepare_logits_labels(logits, labels)
+    """Adaptive ECE bins using confidence quantiles.
+
+    This implements AECE with the same gap formula as ECE, but bin boundaries
+    are confidence quantiles rather than fixed-width intervals.
+
+    Units:
+        avg_confidence, avg_accuracy, gap, weighted_gap, and returned AECE are
+        percentage points, matching the rest of this repository's metrics.
+    """
     probs = F.softmax(logits, dim=1)
     confidences, preds = probs.max(dim=1)
     correctness = (preds == labels).float()
 
-    return _fixed_calibration_bins_from_confidence(
-        confidences=confidences,
-        correctness=correctness,
-        n_bins=n_bins,
-    )
-
-
-def _adaptive_calibration_bins_from_confidence(
-    confidences: torch.Tensor,
-    correctness: torch.Tensor,
-    n_bins: int = 10,
-) -> Tuple[float, List[Dict[str, float]]]:
-    confidences = confidences.detach().float()
-    correctness = correctness.detach().float().to(confidences.device)
-
-    total = int(confidences.numel())
+    total = int(labels.numel())
     if total == 0:
         return float("nan"), []
 
-    quantiles = torch.linspace(
-        0.0,
-        1.0,
-        steps=n_bins + 1,
-        device=confidences.device,
-    )
+    quantiles = torch.linspace(0.0, 1.0, steps=n_bins + 1, device=logits.device)
     bin_edges = torch.quantile(confidences, quantiles)
 
     bins: List[Dict[str, float]] = []
@@ -259,6 +224,7 @@ def _adaptive_calibration_bins_from_confidence(
         left_t = bin_edges[idx]
         right_t = bin_edges[idx + 1]
 
+        # Include the left edge in the first bin so confidence==min is not lost.
         if idx == 0:
             in_bin = (confidences >= left_t) & (confidences <= right_t)
         else:
@@ -301,23 +267,6 @@ def _adaptive_calibration_bins_from_confidence(
     return float(aece), bins
 
 
-def adaptive_calibration_bins(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
-    n_bins: int = 10,
-) -> Tuple[float, List[Dict[str, float]]]:
-    logits, labels = _prepare_logits_labels(logits, labels)
-    probs = F.softmax(logits, dim=1)
-    confidences, preds = probs.max(dim=1)
-    correctness = (preds == labels).float()
-
-    return _adaptive_calibration_bins_from_confidence(
-        confidences=confidences,
-        correctness=correctness,
-        n_bins=n_bins,
-    )
-
-
 def calibration_bins(
     logits: torch.Tensor,
     labels: torch.Tensor,
@@ -331,10 +280,6 @@ def confidence_threshold_coverage_report(
     logits: torch.Tensor,
     labels: torch.Tensor,
     thresholds: List[float] | None = None,
-    probs: torch.Tensor | None = None,
-    preds: torch.Tensor | None = None,
-    confidences: torch.Tensor | None = None,
-    correctness: torch.Tensor | None = None,
 ) -> Dict[str, object]:
     """Confidence-threshold coverage used by the high-confidence experiments.
 
@@ -351,14 +296,12 @@ def confidence_threshold_coverage_report(
     if thresholds is None:
         thresholds = [0.99, 0.95, 0.90, 0.85, 0.80]
 
-    if probs is None or preds is None or confidences is None or correctness is None:
-        logits, labels = _prepare_logits_labels(logits, labels)
-        probs = F.softmax(logits, dim=1)
-        confidences, preds = probs.max(dim=1)
-        correctness = (preds == labels).float()
-    else:
-        labels = labels.detach().long().to(confidences.device)
-        correctness = correctness.detach().float().to(confidences.device)
+    logits = logits.detach().cpu().float()
+    labels = labels.detach().cpu().long()
+
+    probs = F.softmax(logits, dim=1)
+    confidences, preds = probs.max(dim=1)
+    correctness = (preds == labels).float()
 
     total = int(labels.numel())
     rows: List[Dict[str, object]] = []
@@ -383,6 +326,7 @@ def confidence_threshold_coverage_report(
 
         valid_coverage = coverage if valid else 0.0
 
+        # Flat scalar metrics for result_parser aggregation.
         metrics[f"confthr_{tau_key}_coverage"] = coverage * 100.0
         metrics[f"confthr_{tau_key}_accuracy"] = selected_accuracy_pct
         metrics[f"confthr_{tau_key}_valid"] = float(valid)
@@ -415,7 +359,7 @@ def confidence_threshold_coverage_report(
 
 def _binary_auroc(scores: torch.Tensor, targets: torch.Tensor) -> float:
     """
-    AUROC for binary targets, with average ranks for ties.
+    AUROC for binary targets.
 
     Args:
         scores: Higher means more likely positive.
@@ -425,40 +369,38 @@ def _binary_auroc(scores: torch.Tensor, targets: torch.Tensor) -> float:
         AUROC in [0, 1]. Returns NaN if only one class is present.
     """
     scores = scores.detach().float().reshape(-1)
-    targets = targets.detach().long().reshape(-1).to(scores.device)
+    targets = targets.detach().long().reshape(-1)
 
     n = int(scores.numel())
     if n == 0:
         return float("nan")
 
-    n_pos = int((targets == 1).sum().item())
-    n_neg = int((targets == 0).sum().item())
+    positives = targets == 1
+    negatives = targets == 0
+    n_pos = int(positives.sum().item())
+    n_neg = int(negatives.sum().item())
 
     if n_pos == 0 or n_neg == 0:
         return float("nan")
 
     order = torch.argsort(scores, stable=True)
     sorted_scores = scores[order]
-    sorted_targets = targets[order]
 
-    new_group = torch.ones(n, dtype=torch.bool, device=scores.device)
-    if n > 1:
-        new_group[1:] = sorted_scores[1:] != sorted_scores[:-1]
+    ranks = torch.empty(n, dtype=torch.float64, device=scores.device)
 
-    group_ids = torch.cumsum(new_group.long(), dim=0) - 1
-    counts = torch.bincount(group_ids)
+    # Average ranks for ties. Ranks are 1-based.
+    start = 0
+    while start < n:
+        end = start + 1
+        while end < n and sorted_scores[end] == sorted_scores[start]:
+            end += 1
 
-    rank_end = torch.cumsum(counts, dim=0).double()
-    rank_start = rank_end - counts.double() + 1.0
-    avg_rank = 0.5 * (rank_start + rank_end)
+        avg_rank = 0.5 * (float(start + 1) + float(end))
+        ranks[order[start:end]] = avg_rank
+        start = end
 
-    ranks_sorted = avg_rank[group_ids]
-    sum_pos_ranks = ranks_sorted[sorted_targets == 1].sum()
-
-    auc = (
-        sum_pos_ranks
-        - float(n_pos) * float(n_pos + 1) / 2.0
-    ) / (float(n_pos) * float(n_neg))
+    sum_pos_ranks = ranks[positives].sum()
+    auc = (sum_pos_ranks - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg)
 
     return float(auc.detach().cpu().item())
 
@@ -485,7 +427,7 @@ def _risk_coverage_curve_from_uncertainty(
         AURC minus optimal AURC for the same number of errors.
     """
     uncertainty = uncertainty.detach().float().reshape(-1)
-    errors = errors.detach().float().reshape(-1).to(uncertainty.device)
+    errors = errors.detach().float().reshape(-1)
 
     n = int(errors.numel())
     if n == 0:
@@ -494,32 +436,20 @@ def _risk_coverage_curve_from_uncertainty(
     order = torch.argsort(uncertainty, descending=False, stable=True)
     sorted_errors = errors[order]
 
-    counts = torch.arange(
-        1,
-        n + 1,
-        device=errors.device,
-        dtype=torch.float32,
-    )
-    coverage = counts / float(n)
     cum_errors = torch.cumsum(sorted_errors, dim=0)
+    counts = torch.arange(1, n + 1, device=errors.device, dtype=torch.float32)
+    coverage = counts / float(n)
     risk = cum_errors / counts
     selective_accuracy = 1.0 - risk
 
     aurc = float(risk.mean().item())
 
+    # Optimal curve keeps all correct samples before all wrong samples.
     optimal_errors = torch.sort(errors, descending=False).values
     optimal_cum_errors = torch.cumsum(optimal_errors, dim=0)
     optimal_risk = optimal_cum_errors / counts
     optimal_aurc = float(optimal_risk.mean().item())
     eaurc = aurc - optimal_aurc
-
-    # Preserve the exact curve schema used by save_metric_report/result_parser.
-    # Scalar metrics are tensorized; only output materialization remains Python.
-    coverage_l = coverage.detach().cpu().tolist()
-    risk_l = risk.detach().cpu().tolist()
-    selective_accuracy_l = selective_accuracy.detach().cpu().tolist()
-    cum_errors_l = cum_errors.detach().cpu().tolist()
-    threshold_l = uncertainty[order].detach().cpu().tolist()
 
     curve: List[Dict[str, float]] = []
     for idx in range(n):
@@ -528,13 +458,13 @@ def _risk_coverage_curve_from_uncertainty(
             {
                 "score_name": score_name,
                 "rank": kept_index,
-                "coverage": float(coverage_l[idx]),
-                "risk": float(risk_l[idx]),
-                "selective_accuracy": float(selective_accuracy_l[idx]),
+                "coverage": float(coverage[idx].item()),
+                "risk": float(risk[idx].item()),
+                "selective_accuracy": float(selective_accuracy[idx].item()),
                 "num_kept": kept_index,
                 "num_total": n,
-                "num_errors_kept": float(cum_errors_l[idx]),
-                "threshold_uncertainty": float(threshold_l[idx]),
+                "num_errors_kept": float(cum_errors[idx].item()),
+                "threshold_uncertainty": float(uncertainty[order[idx]].item()),
             }
         )
 
@@ -569,9 +499,6 @@ def _coverage_summary_from_curve(
 def selective_prediction_report(
     logits: torch.Tensor,
     labels: torch.Tensor,
-    probs: torch.Tensor | None = None,
-    preds: torch.Tensor | None = None,
-    confidences: torch.Tensor | None = None,
 ) -> Dict[str, object]:
     """
     Build risk-coverage selective prediction metrics from logits.
@@ -581,26 +508,22 @@ def selective_prediction_report(
         high-confidence coverage experiment. That experiment is implemented by
         confidence_threshold_coverage_report().
     """
-    if probs is None or preds is None or confidences is None:
-        logits, labels = _prepare_logits_labels(logits, labels)
-        probs = F.softmax(logits, dim=1)
-        confidences, preds = probs.max(dim=1)
-    else:
-        labels = labels.detach().long().to(probs.device)
-        probs = probs.detach().float()
-        preds = preds.detach().long().to(probs.device)
-        confidences = confidences.detach().float().to(probs.device)
+    logits = logits.detach().cpu().float()
+    labels = labels.detach().cpu().long()
 
+    probs = F.softmax(logits, dim=1)
+    preds = probs.argmax(dim=1)
     errors = (preds != labels).long()
 
+    confidences, _ = probs.max(dim=1)
     top2 = torch.topk(probs, k=min(2, probs.shape[1]), dim=1).values
+
     if top2.shape[1] == 1:
         margin = torch.ones_like(confidences)
     else:
         margin = top2[:, 0] - top2[:, 1]
 
-    probs_safe = probs.clamp_min(1.0e-12)
-    entropy = -(probs_safe * probs_safe.log()).sum(dim=1)
+    entropy = -(probs.clamp_min(1.0e-12) * probs.clamp_min(1.0e-12).log()).sum(dim=1)
 
     uncertainty_scores = {
         "least_confidence": 1.0 - confidences,
@@ -647,65 +570,20 @@ def build_classification_calibration_report(
     labels: torch.Tensor,
     n_bins: int = 10,
 ) -> Dict[str, object]:
-    logits, labels = _prepare_logits_labels(logits, labels)
+    logits = logits.detach().cpu()
+    labels = labels.detach().cpu()
 
-    num_samples = int(labels.numel())
-
-    probs = F.softmax(logits, dim=1)
-    log_probs = F.log_softmax(logits, dim=1)
-    confidences, preds = probs.max(dim=1)
-    correctness = (preds == labels).float()
-
-    acc = float(correctness.mean().item() * 100.0)
+    acc = accuracy(logits, labels)
     err = 100.0 - acc
+    mf1 = macro_f1(logits, labels)
+    nll = negative_log_likelihood(logits, labels)
+    brier = brier_score(logits, labels)
 
-    mf1 = _macro_f1_from_preds(
-        preds=preds,
-        labels=labels,
-        num_classes=int(logits.shape[1]),
-    )
+    ece, fixed_bins = fixed_calibration_bins(logits, labels, n_bins=n_bins)
+    aece, adaptive_bins = adaptive_calibration_bins(logits, labels, n_bins=n_bins)
 
-    nll = float(
-        F.nll_loss(
-            log_probs,
-            labels,
-            reduction="mean",
-        ).item()
-    )
-
-    p_true = probs.gather(1, labels.view(-1, 1)).squeeze(1)
-    brier = float(
-        (probs.square().sum(dim=1) - 2.0 * p_true + 1.0).mean().item()
-    )
-
-    ece, fixed_bins = _fixed_calibration_bins_from_confidence(
-        confidences=confidences,
-        correctness=correctness,
-        n_bins=n_bins,
-    )
-
-    aece, adaptive_bins = _adaptive_calibration_bins_from_confidence(
-        confidences=confidences,
-        correctness=correctness,
-        n_bins=n_bins,
-    )
-
-    confthr = confidence_threshold_coverage_report(
-        logits=logits,
-        labels=labels,
-        probs=probs,
-        preds=preds,
-        confidences=confidences,
-        correctness=correctness,
-    )
-
-    selective = selective_prediction_report(
-        logits=logits,
-        labels=labels,
-        probs=probs,
-        preds=preds,
-        confidences=confidences,
-    )
+    confthr = confidence_threshold_coverage_report(logits, labels)
+    selective = selective_prediction_report(logits, labels)
 
     metrics: Dict[str, object] = {
         "accuracy": acc,
@@ -717,15 +595,19 @@ def build_classification_calibration_report(
         "aece": aece,
     }
 
+    # Flatten confidence-threshold coverage first because these are part of the
+    # formal experiment protocol.
     for key, value in confthr["metrics"].items():
         metrics[key] = value
 
+    # Keep risk-coverage metrics for supplementary analysis. They should not be
+    # interpreted as confidence-threshold coverage.
     for key, value in selective["metrics"].items():
         metrics[key] = value
 
     return {
         "schema_version": 3,
-        "num_samples": num_samples,
+        "num_samples": int(labels.numel()),
         "metrics": metrics,
         "prediction": {
             "accuracy": acc,
@@ -739,6 +621,7 @@ def build_classification_calibration_report(
             "aece": aece,
             "n_bins": int(n_bins),
             "fixed_bins": fixed_bins,
+            # Backward-compatible key for old code expecting calibration["bins"].
             "bins": fixed_bins,
             "adaptive_bins": adaptive_bins,
         },
@@ -757,7 +640,7 @@ def _to_builtin(obj):
         return [_to_builtin(v) for v in obj]
     if isinstance(obj, torch.Tensor):
         if obj.numel() == 1:
-            return obj.detach().cpu().item()
+            return obj.item()
         return obj.detach().cpu().tolist()
     return obj
 
@@ -851,6 +734,7 @@ def save_metric_report(
     outdir = Path(output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
 
+    # New canonical JSON name.
     report_json_path = outdir / f"{split}_report.json"
 
     metrics_csv_path = outdir / f"{split}_metrics.csv"
@@ -858,6 +742,7 @@ def save_metric_report(
     fixed_bins_csv_path = outdir / f"{split}_calibration_fixed_bins.csv"
     adaptive_bins_csv_path = outdir / f"{split}_calibration_adaptive_bins.csv"
 
+    # Backward-compatible fixed-bin filename.
     legacy_bins_csv_path = outdir / f"{split}_calibration_bins.csv"
 
     confthr_csv_path = outdir / f"{split}_confidence_threshold_coverage.csv"
@@ -883,14 +768,8 @@ def save_metric_report(
 
     report = _to_builtin(report)
 
-    # Compact JSON: same content/schema, less disk I/O than indent=2.
     with report_json_path.open("w", encoding="utf-8") as f:
-        json.dump(
-            report,
-            f,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+        json.dump(report, f, indent=2, ensure_ascii=False)
 
     num_samples = int(report.get("num_samples", 0))
 

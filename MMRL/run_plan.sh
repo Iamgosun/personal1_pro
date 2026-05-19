@@ -13,11 +13,11 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 #  caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-   TR }
+METHODS_ARG=${2:-  BayesRTMMRL  BayesAdapter MMRL }
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-" dtd "}
-SHOTS_ARG=${5:-" 8 "}
-SEEDS_ARG=${6:-${SEEDS:-"1 "}}
+DATASETS_ARG=${4:-"  caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101    "}
+SHOTS_ARG=${5:-"1 2 4  8  16 32"}
+SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 
 EVAL_ONLY=${EVAL_ONLY:-0}
 
@@ -525,6 +525,11 @@ launch_one_case() {
   local shot=$4
   local seed=$5
 
+  local -a dataset_extra_opts=()
+  if [[ "$dataset" == "imagenet" ]]; then
+    dataset_extra_opts+=(OPTIM.MAX_EPOCH 5)
+  fi
+
   local phase subsample
   read -r phase subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
 
@@ -573,6 +578,7 @@ launch_one_case() {
         DATASET.NUM_SHOTS "${shot}" \
         DATASET.SUBSAMPLE_CLASSES "${subsample}" \
         MODEL.BACKBONE.NAME "${BACKBONE}" \
+        "${dataset_extra_opts[@]}" \
         >> "$logfile" 2>&1; then
       {
         echo
@@ -631,6 +637,7 @@ launch_one_case() {
         DATASET.NUM_SHOTS "${shot}" \
         DATASET.SUBSAMPLE_CLASSES "${subsample}" \
         MODEL.BACKBONE.NAME "${BACKBONE}" \
+        "${dataset_extra_opts[@]}" \
         >> "$logfile" 2>&1; then
       {
         echo
