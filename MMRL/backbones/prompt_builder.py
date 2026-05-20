@@ -18,6 +18,7 @@ CUSTOM_TEMPLATES = {
     'ImageNetV2': 'a photo of a {}.',
     'ImageNetA': 'a photo of a {}.',
     'ImageNetR': 'a photo of a {}.',
+    'CIFAR_10': 'a photo of a {}.',
 }
 
 
