@@ -100,15 +100,44 @@ def detection_accuracy(id_scores: torch.Tensor, ood_scores: torch.Tensor) -> flo
         ]
     )
 
-    thresholds = torch.unique(scores)
-    best = 0.0
+    if scores.numel() == 0:
+        raise RuntimeError("Empty scores for OOD metric computation.")
 
-    for tau in thresholds:
-        pred = (scores > tau).long()
-        acc = (pred == y_true).float().mean()
-        best = max(best, float(acc.item()))
+    # 原定义：对 tau in unique(scores)，pred = scores > tau
+    # 排序后，每个 unique score 的 group_start 前面的样本才满足 scores > tau。
+    order = torch.argsort(scores, descending=True, stable=True)
+    scores_sorted = scores[order]
+    y_sorted = y_true[order]
 
-    return 100.0 * best
+    group_start = torch.ones(
+        scores_sorted.numel(),
+        dtype=torch.bool,
+        device=scores_sorted.device,
+    )
+    group_start[1:] = scores_sorted[1:] != scores_sorted[:-1]
+    group_starts = torch.where(group_start)[0]
+
+    is_id = (y_sorted == 1).float()
+    is_ood = (y_sorted == 0).float()
+
+    cum_id = torch.cumsum(is_id, dim=0)
+    cum_ood = torch.cumsum(is_ood, dim=0)
+
+    before = group_starts - 1
+
+    zeros = torch.zeros_like(group_starts, dtype=torch.float32)
+    idx = before.clamp_min(0)
+
+    tp = torch.where(before >= 0, cum_id[idx], zeros)
+    fp = torch.where(before >= 0, cum_ood[idx], zeros)
+
+    n_ood = is_ood.sum()
+    total = float(scores.numel())
+
+    tn = n_ood - fp
+    acc = (tp + tn) / total
+
+    return 100.0 * float(acc.max().item())
 
 
 def aupr(id_scores: torch.Tensor, ood_scores: torch.Tensor, positive: str) -> float:
@@ -164,8 +193,8 @@ def compute_ood_metrics(
     id_scores: torch.Tensor,
     ood_scores: torch.Tensor,
 ) -> Dict[str, float]:
-    id_scores = id_scores.detach().float().cpu()
-    ood_scores = ood_scores.detach().float().cpu()
+    id_scores = id_scores.detach().float()
+    ood_scores = ood_scores.detach().float()
 
     return {
         "TNR95": tnr_at_tpr95(id_scores, ood_scores),

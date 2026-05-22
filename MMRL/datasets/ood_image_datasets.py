@@ -36,13 +36,7 @@ def _list_images(root):
 
 
 class OODImageFolderBase(DatasetBase):
-    """OOD-only image-folder dataset.
-
-    This class intentionally exposes only a test split. It is for OOD datasets
-    that do not already have a project-specific DatasetBase implementation.
-    Existing project datasets such as DTD, OxfordFlowers, and SUN397 should keep
-    using their normal dataset classes and their original test split.
-    """
+    """OOD-only image-folder dataset."""
 
     dataset_name = None
     candidate_dirs = None
@@ -69,6 +63,11 @@ class OODImageFolderBase(DatasetBase):
 
         super().__init__(train_x=[], val=[], test=test)
 
+    def get_num_classes(self, data_source):
+        if len(data_source) == 0:
+            return 1
+        return super().get_num_classes(data_source)
+
     def resolve_image_root(self, root):
         candidates = [Path(root) / rel for rel in self.candidate_dirs]
 
@@ -79,17 +78,18 @@ class OODImageFolderBase(DatasetBase):
         return candidates[0]
 
 
+
 @DATASET_REGISTRY.register()
 class TinyImageNetOOD(OODImageFolderBase):
     dataset_name = "TinyImageNet"
     candidate_dirs = [
-        "tiny-imagenet-200/val/images",
-        "tiny-imagenet-200/val",
-        "tinyimagenet/val/images",
-        "tinyimagenet/val",
-        "tinyimagenet",
+        "tiny-imagenet-200/test/images",
+        "tiny-imagenet-200/test",
+        "tinyimagenet/test/images",
+        "tinyimagenet/test",
+        "tiny-imagenet/test/images",
+        "tiny-imagenet/test",
     ]
-
 
 @DATASET_REGISTRY.register()
 class LSUNOOD(OODImageFolderBase):

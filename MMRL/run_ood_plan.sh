@@ -14,9 +14,9 @@ set -euo pipefail
 #   7: SEEDS          "1 2 3"
 
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-"BayesAdapter"}
-EXEC_MODE=${3:-auto}
-ID_DATASET=${4:-cifar10}
+METHODS_ARG=${2:-"MMRL BayesRTMMRL BayesAdapter"}
+EXEC_MODE=${3:-online}
+ID_DATASET=${4:-cifar_10}
 OOD_DATASETS_ARG=${5:-"dtd tinyimagenet oxford_flowers sun397"}
 SHOTS_ARG=${6:-"1 2 4 8 16 32"}
 SEEDS_ARG=${7:-${SEEDS:-"1 2 3"}}
@@ -26,11 +26,11 @@ OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-1}
-GPU_IDS=${GPU_IDS:-0}
-JOBS_PER_GPU=${JOBS_PER_GPU:-1}
+NGPU=${NGPU:-2}
+GPU_IDS=${GPU_IDS:-0 1}
+JOBS_PER_GPU=${JOBS_PER_GPU:-3}
 
-SKIP_EXISTING=${SKIP_EXISTING:-1}
+SKIP_EXISTING=${SKIP_EXISTING:-0}
 TRAIN_IF_MISSING=${TRAIN_IF_MISSING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}
 
@@ -509,6 +509,24 @@ launch_one_case() {
 }
 
 
+summarize_case() {
+  local method=$1
+
+  local method_cfg protocol_cfg runtime_cfg
+  read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
+
+  local run_tag launch_method
+  run_tag="$(resolve_run_tag "$method" "$method_cfg")"
+  launch_method="$(resolve_launch_method "$method")"
+
+  if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
+    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}" --split ood
+  else
+    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}" --split ood
+  fi
+}
+
+
 cleanup_children() {
   local p
   for p in "${RUNNING_PIDS[@]:-}"; do
@@ -680,6 +698,10 @@ main() {
 
   wait_all_jobs
 
+  for method in "${METHODS[@]}"; do
+    summarize_case "$method"
+  done
+
   if [[ "$FAILED_JOBS" -gt 0 ]]; then
     echo "[DONE] finished with ${FAILED_JOBS} failed job(s)."
     exit 1
@@ -687,6 +709,14 @@ main() {
 
   echo "[DONE] all OOD jobs finished successfully."
 }
+
+
+if [[ "${SUMMARY_ONLY:-0}" == "1" ]]; then
+  for method in "${METHODS[@]}"; do
+    summarize_case "$method"
+  done
+  exit 0
+fi
 
 
 main "$@"

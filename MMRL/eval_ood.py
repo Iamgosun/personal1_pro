@@ -22,7 +22,7 @@ from evaluation.ood_detection import compute_ood_metrics, msp_from_logits
 
 def _import_runtime_modules():
     import_optional_modules([
-        "datasets.cifar10",
+        "datasets.cifar_10",
         "datasets.ood_image_datasets",
         "datasets.oxford_pets",
         "datasets.oxford_flowers",
@@ -111,8 +111,8 @@ def build_ood_loader(
         is_train=False,
     )
 
-    loader = DataLoader(
-        dataset,
+    loader_kwargs = dict(
+        dataset=dataset,
         batch_size=batch_size,
         sampler=SequentialSampler(dataset),
         num_workers=num_workers,
@@ -120,7 +120,18 @@ def build_ood_loader(
         drop_last=False,
     )
 
+    if num_workers > 0:
+        loader_kwargs.update(
+            persistent_workers=True,
+            prefetch_factor=4,
+        )
+
+    loader = DataLoader(**loader_kwargs)
+
     return registry_name, loader
+
+
+
 
 
 @torch.no_grad()
@@ -133,7 +144,7 @@ def collect_logits(trainer, loader, split_name: str):
         eval_ctx=eval_ctx,
         process_evaluator=False,
         collect_fusion_variants=False,
-        keep_on_device=False,
+        keep_on_device=torch.cuda.is_available(),
     )
 
     return logits, labels
