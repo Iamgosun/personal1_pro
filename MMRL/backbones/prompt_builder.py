@@ -19,6 +19,13 @@ CUSTOM_TEMPLATES = {
     'ImageNetA': 'a photo of a {}.',
     'ImageNetR': 'a photo of a {}.',
     'CIFAR_10': 'a photo of a {}.',
+    # Retina/fundus datasets
+    'FIVES4': 'a fundus photograph of {}.',
+    'Fundus1000x39': 'a fundus photograph of {}.',
+    'ODIR5KSingle': 'a fundus photograph of {}.',
+    'DeepDRiD5': 'a fundus photograph of {}.',
+    'MESIDORDR5': 'a fundus photograph of {}.',
+    'MMAC5': 'a fundus photograph of {}.',
 }
 
 

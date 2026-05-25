@@ -13,22 +13,27 @@ set -euo pipefail
 #   - B2N automatically runs test_new after train_base.
 #  caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-   MMRL }
+METHODS_ARG=${2:- BayesRTMMRL  MMRL BayesAdapter }
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-"  imagenet  "}
-SHOTS_ARG=${5:-"1 2 4 8 16 32"}
+DATASETS_ARG=${4:-"  fives4 fundus1000x39 odir5k_single deepdrid5 mesidor_dr5   "}
+SHOTS_ARG=${5:-"1 2 4 8 16 32 "}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 
 EVAL_ONLY=${EVAL_ONLY:-0}
+# SUMMARY_SCOPE controls the automatic summary after normal runs:
+#   current: summarize only method+dataset pairs that were actually launched in this run.
+#   all:     original behavior; summarize all results under every requested method.
+#   none:    skip automatic summary.
+SUMMARY_SCOPE=${SUMMARY_SCOPE:-current}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
 OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-2}
-GPU_IDS=${GPU_IDS:-0 1}
-JOBS_PER_GPU=${JOBS_PER_GPU:-1}
+NGPU=${NGPU:-1}
+GPU_IDS=${GPU_IDS:-0 }
+JOBS_PER_GPU=${JOBS_PER_GPU:-3}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}
@@ -701,17 +706,90 @@ launch_one_case() {
 
 summarize_case() {
   local method=$1
+  local dataset=${2:-}
+
   read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
 
-  local run_tag launch_method
+  local run_tag launch_method base_root
   run_tag="$(resolve_run_tag "$method" "$method_cfg")"
   launch_method="$(resolve_launch_method "$method")"
 
   if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
-    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}" --split test
+    base_root="${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}"
   else
-    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}" --split test
+    base_root="${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}"
   fi
+
+  # No dataset means original full-summary behavior.
+  if [[ -z "$dataset" ]]; then
+    python evaluation/result_parser.py "$base_root" --split test
+    return 0
+  fi
+
+  # Dataset-scoped summary: only summarize the current method+dataset pair.
+  if [[ "$PROTOCOL" == "B2N" ]]; then
+    local b2n_root
+    for b2n_root in "${base_root}/train_base/${dataset}" "${base_root}/test_new/${dataset}"; do
+      if [[ -d "$b2n_root" ]]; then
+        python evaluation/result_parser.py "$b2n_root" --split test
+      else
+        echo "[SUMMARY_SKIP] missing root=${b2n_root}" >&2
+      fi
+    done
+  else
+    local phase subsample summary_root
+    read -r phase subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
+    summary_root="${base_root}/${phase}/${dataset}"
+
+    if [[ -d "$summary_root" ]]; then
+      python evaluation/result_parser.py "$summary_root" --split test
+    else
+      echo "[SUMMARY_SKIP] missing root=${summary_root}" >&2
+    fi
+  fi
+}
+
+record_summary_target() {
+  local method=$1
+  local dataset=$2
+  local key="${method}__${dataset}"
+  local existing
+
+  for existing in "${SUMMARY_TARGET_KEYS[@]:-}"; do
+    if [[ "$existing" == "$key" ]]; then
+      return 0
+    fi
+  done
+
+  SUMMARY_TARGET_KEYS+=("$key")
+  SUMMARY_METHODS+=("$method")
+  SUMMARY_DATASETS+=("$dataset")
+}
+
+run_automatic_summary() {
+  local i method
+
+  case "$SUMMARY_SCOPE" in
+    all)
+      # Original behavior: summarize every requested method from the method root.
+      for method in "${METHODS[@]}"; do
+        summarize_case "$method"
+      done
+      ;;
+    current)
+      # New default behavior: summarize only method+dataset pairs launched in this run.
+      for i in "${!SUMMARY_METHODS[@]}"; do
+        summarize_case "${SUMMARY_METHODS[$i]}" "${SUMMARY_DATASETS[$i]}"
+      done
+      ;;
+    none)
+      echo "[SUMMARY] skipped because SUMMARY_SCOPE=none"
+      ;;
+    *)
+      echo "Unknown SUMMARY_SCOPE=${SUMMARY_SCOPE}; use current, all, or none." >&2
+      exit 2
+      ;;
+  esac
 }
 
 cleanup_children() {
@@ -839,8 +917,14 @@ main() {
   declare -ga SLOT_SHOT
   declare -ga SLOT_SEED
   declare -ga SLOT_LOG
+  declare -ga SUMMARY_TARGET_KEYS
+  declare -ga SUMMARY_METHODS
+  declare -ga SUMMARY_DATASETS
 
   FAILED_JOBS=0
+  SUMMARY_TARGET_KEYS=()
+  SUMMARY_METHODS=()
+  SUMMARY_DATASETS=()
 
   local nslots=${#GPU_LIST[@]}
   local i
@@ -884,6 +968,8 @@ main() {
           local slot="$READY_SLOT"
           local gpu_id="${GPU_LIST[$slot]}"
 
+          record_summary_target "$method" "$dataset"
+
           (
             launch_one_case "$gpu_id" "$method" "$dataset" "$shot" "$seed"
           ) &
@@ -904,9 +990,7 @@ main() {
 
   wait_all_jobs
 
-  for method in "${METHODS[@]}"; do
-    summarize_case "$method"
-  done
+  run_automatic_summary
 
   if [[ "$FAILED_JOBS" -gt 0 ]]; then
     echo "[DONE] finished with ${FAILED_JOBS} failed job(s)."
@@ -917,6 +1001,7 @@ main() {
 }
 
 if [[ "${SUMMARY_ONLY:-0}" == "1" ]]; then
+  # Explicit summary-only mode keeps the original full-summary behavior.
   for method in "${METHODS[@]}"; do
     summarize_case "$method"
   done

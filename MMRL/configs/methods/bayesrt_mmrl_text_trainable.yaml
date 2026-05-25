@@ -1,0 +1,63 @@
+METHOD:
+  NAME: "BayesRTMMRL"
+  FAMILY: internal_adaptation
+  EXEC_MODE: online
+
+BAYESRT_MMRL:
+  PREC: amp
+  ALPHA: 0.7
+  REG_WEIGHT: 0.5
+
+  N_REP_TOKENS: 5
+  REP_LAYERS: [6, 7, 8, 9, 10, 11, 12]
+  REP_DIM: 512
+
+  # R side
+  BAYES_R_ENABLED: True
+  R_SIGMA_MODE: "output"
+  R_PRIOR_MODE: "zero"
+  R_PRIOR_STD: 0.001
+  R_KL_WEIGHT: 1.0e-4
+
+  # T side: Bayesian + trainable mean
+  BAYES_T_ENABLED: True
+  T_SIGMA_MODE: "output"
+  T_PRIOR_STD: 0.001
+  T_MIN_SIGMA: 1.0e-6
+  T_KL_WEIGHT: 5.0e-2
+  T_TRAIN_MEAN: True
+
+  N_MC_TRAIN: 3
+  N_MC_TEST: 30
+  EVAL_USE_POSTERIOR_MEAN: False
+  KL_WARMUP_EPOCHS: 5
+
+  NOVEL_TEXT_MEAN_ONLY: True
+  REPORT_FUSION_VARIANTS: True
+  EVAL_FUSION_VARIANT: "static_prob"
+
+HPO:
+  ENABLED: true
+  SPLIT: val
+  REQUIRE_VAL: true
+  SELECTOR: acc_ece_window
+  ACC_TOLERANCE: 4.0
+
+  SKIP_CANDIDATE_TEST: true
+  FINAL_TEST_BEST: true
+  TRAIN_FINAL_WITH_BEST: false
+  COPY_BEST_MODEL: true
+  SAVE_SUMMARY: true
+
+  GRID:
+    r_prior_std:
+      PATH: BAYESRT_MMRL.R_PRIOR_STD
+      VALUES: [0.001, 0.1]
+
+    t_prior_std:
+      PATH: BAYESRT_MMRL.T_PRIOR_STD
+      VALUES: [0.001, 0.1]
+
+    eval_fusion_variant:
+      PATH: BAYESRT_MMRL.EVAL_FUSION_VARIANT
+      VALUES: ["static_prob", "static_logit"]

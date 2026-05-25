@@ -9,7 +9,7 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
 os.environ.setdefault("TORCH_NUM_THREADS", "12")
-os.environ.setdefault("TORCH_NUM_INTEROP_THREADS", "4")
+os.environ.setdefault("TORCH_NUM_INTEROP_THREADS", "2")
 
 import torch
 
@@ -58,6 +58,7 @@ def _import_runtime_modules():
         "datasets.imagenet_a",
         "datasets.imagenet_r",
         "datasets.cifar_10",
+        "datasets.retina_fundus",
 
     ])
 

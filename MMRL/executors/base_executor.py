@@ -11,6 +11,18 @@ from evaluation.metrics import (
 )
 from evaluation.protocol_router import select_eval_logits as legacy_select_eval_logits
 
+import math
+from numbers import Real
+
+
+def _is_finite_scalar(value) -> bool:
+    if isinstance(value, bool):
+        return False
+
+    if not isinstance(value, Real):
+        return False
+
+    return math.isfinite(float(value))
 
 class BaseExecutor:
     exec_mode = "base"
@@ -389,7 +401,8 @@ class BaseExecutor:
         saved_paths = save_metric_report(trainer.cfg.OUTPUT_DIR, split, report)
 
         for k, v in report["metrics"].items():
-            trainer.write_scalar(f"{split}/{k}", v, trainer.epoch)
+            if _is_finite_scalar(v):
+                trainer.write_scalar(f"{split}/{k}", float(v), trainer.epoch)
 
         if "fusion_variants" in report:
             for variant_name, variant_report in report["fusion_variants"].items():
@@ -404,7 +417,15 @@ class BaseExecutor:
 
         if "metrics_calibrated" in report:
             for k, v in report["metrics_calibrated"].items():
-                trainer.write_scalar(f"{split}/{k}_calibrated", v, trainer.epoch)
+
+
+                if _is_finite_scalar(v):
+                    trainer.write_scalar(
+                        f"{split}/{k}_calibrated",
+                        float(v),
+                        trainer.epoch,
+                    )
+
 
         print("=> structured result")
         for k, v in report["metrics"].items():

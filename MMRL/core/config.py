@@ -69,6 +69,7 @@ def _as_legacy_bayesrt_mmrl(cfg):
     sec.T_PRIOR_STD = src.T_PRIOR_STD
     sec.T_MIN_SIGMA = src.T_MIN_SIGMA
     sec.T_KL_WEIGHT = src.T_KL_WEIGHT
+    sec.T_TRAIN_MEAN = src.T_TRAIN_MEAN
 
     sec.N_MC_TRAIN = src.N_MC_TRAIN
     sec.N_MC_TEST = src.N_MC_TEST
@@ -491,6 +492,7 @@ def get_refactor_defaults():
     cfg.BAYESRT_MMRL.T_PRIOR_STD = 0.003
     cfg.BAYESRT_MMRL.T_MIN_SIGMA = 1e-6
     cfg.BAYESRT_MMRL.T_KL_WEIGHT = 1e-2
+    cfg.BAYESRT_MMRL.T_TRAIN_MEAN = False
 
     cfg.BAYESRT_MMRL.N_MC_TRAIN = 3
     cfg.BAYESRT_MMRL.N_MC_TEST = 30

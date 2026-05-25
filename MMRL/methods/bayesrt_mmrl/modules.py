@@ -387,9 +387,10 @@ class BayesRTMMRLModel(nn.Module):
                 mean=text_projection,
                 sigma_mode=str(method_cfg.T_SIGMA_MODE),
                 prior_std=float(method_cfg.T_PRIOR_STD),
-                train_mean=False,
+                train_mean=bool(getattr(method_cfg, "T_TRAIN_MEAN", False)),
                 min_sigma=float(method_cfg.T_MIN_SIGMA),
             )
+
         else:
             self.text_posterior = None
             self.register_buffer("text_projection", text_projection)
