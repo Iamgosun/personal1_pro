@@ -33,6 +33,8 @@ import executors.cache_executor  # noqa: F401
 import methods.vcrm_mmrl  # noqa: F401
 import methods.bayes_text_mmrl  # noqa: F401
 import methods.bayesrt_mmrl  # noqa: F401
+import methods.det_bayesrt_mmrl  # noqa: F401
+
 
 @TRAINER_REGISTRY.register()
 class RefactorRunner(TrainerX):

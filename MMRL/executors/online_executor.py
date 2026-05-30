@@ -72,13 +72,28 @@ class OnlineExecutor(BaseExecutor):
                 "loss_capel_pc",
                 "loss_constraint",
                 "data_term",
+
                 "raw_kl_rep",
                 "raw_kl_proj_rep",
                 "kl_rep_term",
                 "kl_proj_rep_term",
                 "kl_term",
+
+                # BayesRT / DetBayesRT KL diagnostics
+                "raw_kl_r",
+                "raw_kl_t",
+                "kl_r_term",
+                "kl_t_term",
+
+                # Det-Jensen variance diagnostics
+                "det_var_main_mean",
+                "det_var_main_max",
+                "det_var_rep_mean",
+                "det_var_rep_max",
+
                 "kl_normalizer",
                 "kl_beta",
+
             ]:
                 if key in outputs.losses:
                     value = outputs.losses[key]
