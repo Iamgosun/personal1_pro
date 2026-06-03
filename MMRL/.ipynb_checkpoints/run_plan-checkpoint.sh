@@ -12,12 +12,13 @@ set -euo pipefail
 #   - For adapter aliases, launch method is always ClipAdapters.
 #   - B2N automatically runs test_new after train_base.
 #  caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   
+# DTD + EuroSAT + Aircraft + SUN397 + UCF101
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-   BayesRTMMRL  MMRL }
+METHODS_ARG=${2:-   DetBayesRTMMRL   }
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-"  fives4 fundus1000x39 odir5k_single  mesidor_dr5 deepdrid5  "}
-SHOTS_ARG=${5:-"0 1 2 4 8 16 32 "}
-SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
+DATASETS_ARG=${4:-" caltech101  dtd    ucf101  "}
+SHOTS_ARG=${5:-"1 2 4 8 16 32"}
+SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
 EVAL_ONLY=${EVAL_ONLY:-0}
 # SUMMARY_SCOPE controls the automatic summary after normal runs:
@@ -32,7 +33,7 @@ BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
 NGPU=${NGPU:-2}
-GPU_IDS=${GPU_IDS:-0 1}
+GPU_IDS=${GPU_IDS:-0 1 }
 JOBS_PER_GPU=${JOBS_PER_GPU:-3}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
@@ -101,6 +102,11 @@ resolve_method_cfg() {
       echo "configs/methods/bayesrt_mmrl.yaml"
       return 0
       ;;
+    DetBayesRTMMRL)
+      echo "configs/methods/det_bayesrt_mmrl.yaml"
+      return 0
+      ;;
+
     VCRMMMRL)
       echo "configs/methods/vcrm_mmrl.yaml"
       return 0
@@ -204,7 +210,7 @@ resolve_runtime_cfg() {
   method_cfg="$(resolve_method_cfg "$method")"
 
   case "$method" in
-    MMRL|MMRLMix|BayesMMRL|BayesRTMMRL|BayesTextMMRL|VCRMMMRL|MMRLpp|MMRLPP)
+    MMRL|MMRLMix|BayesMMRL|BayesRTMMRL|DetBayesRTMMRL|BayesTextMMRL|VCRMMMRL|MMRLpp|MMRLPP)
       echo "configs/runtime/mmrl_family.yaml"
       return 0
       ;;
@@ -533,7 +539,7 @@ launch_one_case() {
   local -a dataset_extra_opts=()
   if [[ "$dataset" == "imagenet" ]]; then
     case "$method" in
-      MMRL|BayesRTMMRL)
+      MMRL|BayesRTMMRL|DetBayesRTMMRL)
         dataset_extra_opts+=(OPTIM.MAX_EPOCH 5)
         ;;
     esac

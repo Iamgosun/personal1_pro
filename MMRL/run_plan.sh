@@ -16,9 +16,9 @@ set -euo pipefail
 PROTOCOL=${1:-FS}
 METHODS_ARG=${2:-   DetBayesRTMMRL   }
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-"dtd "}
-SHOTS_ARG=${5:-"16  "}
-SEEDS_ARG=${6:-${SEEDS:-"1 "}}
+DATASETS_ARG=${4:-" caltech101  dtd    ucf101  "}
+SHOTS_ARG=${5:-"1 2 4 8 16 32"}
+SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
 EVAL_ONLY=${EVAL_ONLY:-0}
 # SUMMARY_SCOPE controls the automatic summary after normal runs:
@@ -32,8 +32,8 @@ OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-1}
-GPU_IDS=${GPU_IDS:-0 1}
+NGPU=${NGPU:-2}
+GPU_IDS=${GPU_IDS:-0 1 }
 JOBS_PER_GPU=${JOBS_PER_GPU:-3}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}

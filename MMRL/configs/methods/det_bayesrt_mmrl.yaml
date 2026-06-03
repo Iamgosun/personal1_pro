@@ -17,14 +17,14 @@ BAYESRT_MMRL:
   R_SIGMA_MODE: "output"      # global | input | output | diagonal
   R_PRIOR_MODE: "random_mmrl"        # zero | self_proj_rep
   R_PRIOR_STD: 0.001
-  R_KL_WEIGHT: 1.0e-4
+  R_KL_WEIGHT: 1.0e-5
 
   # T side: text projection P_t
   BAYES_T_ENABLED: True
   T_SIGMA_MODE: "output"      # global | output | input | diagonal
   T_PRIOR_STD: 0.001
   T_MIN_SIGMA: 1.0e-6
-  T_KL_WEIGHT: 5.0e-2
+  T_KL_WEIGHT: 1.0e-3
   T_TRAIN_MEAN: False
 
   # MC is still used for evaluation. Training is sampling-free in DetBayesRTMMRL.
@@ -56,7 +56,7 @@ BAYESRT_MMRL:
   EVAL_FUSION_VARIANT: "static_logit"
 
 HPO:
-  ENABLED: false
+  ENABLED: true
   SPLIT: val
   REQUIRE_VAL: true
   SELECTOR: acc_ece_window
@@ -71,18 +71,13 @@ HPO:
   GRID:
     r_prior_std:
       PATH: BAYESRT_MMRL.R_PRIOR_STD
-      VALUES: [0.001, 0.1]
+      VALUES: [0.01, 0.1]
 
     t_prior_std:
       PATH: BAYESRT_MMRL.T_PRIOR_STD
-      VALUES: [0.001, 0.1]
-
-
-    t_prior_std:
-      PATH: BAYESRT_MMRL.T_PRIOR_STD
-      VALUES: [0.001, 0.1]
+      VALUES: [0.001,0.01]
 
 
     eval_fusion_variant:
       PATH: BAYESRT_MMRL.EVAL_FUSION_VARIANT
-      VALUES: ["static_prob", "static_logit"]
+      VALUES: ["static_logit"]
