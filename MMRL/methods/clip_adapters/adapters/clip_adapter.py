@@ -13,6 +13,10 @@ class ClipAdapterResidual(BaseAdapter):
         super().__init__(cfg, clip_model, base_text_features)
         print("Using CLIP-Adapter")
 
+        clip_cfg = getattr(cfg, "CLIP_ADAPTERS", None)
+        if clip_cfg is not None and hasattr(clip_cfg, "CLIPA_RATIO"):
+            ratio = getattr(clip_cfg, "CLIPA_RATIO")
+
         self.feat_dim = int(base_text_features.shape[-1])
         self.hidden_dim = max(1, self.feat_dim // 4)
 
@@ -42,6 +46,8 @@ class ClipAdapterResidual(BaseAdapter):
     def reset_hparams(self, params):
         if "ratio" in params:
             self.ratio = float(params["ratio"])
+        if "CLIPA_RATIO" in params:
+            self.ratio = float(params["CLIPA_RATIO"])
 
     def reset_for_grid(self, params, features_train=None, labels_train=None):
         self.reset_hparams(params)

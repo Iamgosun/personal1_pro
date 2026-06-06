@@ -1,9 +1,12 @@
 #!/bin/bash
 set -euo pipefail
+# SUMMARY_ONLY=1 bash run_plan.sh FS "DetBayesRTMMRL" 汇总实验
+
+
 
 # Usage:
 #   GPU_IDS="0 1" bash run_plan.sh FS "BayesRTMMRL 
-# BayesTextMMRL VCRMMMRL MMRL BayesMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
+# BayesTextMMRL VCRMMMRL MMRL BayesMMRL DetBayesRTMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
 #   GPU_IDS="0 1" bash run_plan.sh FS " SBEA_ARD DEBA_J HBA_LR DREAM_BAYES_ADAPTER PP_PROKER_ONEHOT ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
 #   online cache TR
 # Notes:clip_adapters_dream_bayes.yaml
@@ -11,14 +14,21 @@ set -euo pipefail
 #   - Adapter aliases map to specific configs/methods/clip_adapters_*.yaml.
 #   - For adapter aliases, launch method is always ClipAdapters.
 #   - B2N automatically runs test_new after train_base.
-#  caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   
-# DTD + EuroSAT + Aircraft + SUN397 + UCF101
+#  caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   cifar_10
+# DipA TipA TipA-f- CrossModal  }
+# EXEC_MODE=${3:-online}TD + EuroSAT + Aircraft + SUN397 + UCF101
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-   DetBayesRTMMRL   }
+METHODS_ARG=${2:-  FusedDetBayesRTMMRL  }
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-" caltech101  dtd    ucf101  "}
+DATASETS_ARG=${4:-" dtd  food101 eurosat  "}
 SHOTS_ARG=${5:-"1 2 4 8 16 32"}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
+
+# METHODS_ARG=${2:- DetBayesRTMMRL TR ClipA TipA TipA-f- CrossModal
+# DATASETS_ARG=${4:-"caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   "}
+# SHOTS_ARG=${5:-"1 2 4 8 16 32"}
+# SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
+
 
 EVAL_ONLY=${EVAL_ONLY:-0}
 # SUMMARY_SCOPE controls the automatic summary after normal runs:
@@ -32,8 +42,8 @@ OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-2}
-GPU_IDS=${GPU_IDS:-0 1 }
+NGPU=${NGPU:-3}
+GPU_IDS=${GPU_IDS:-0  1 2}
 JOBS_PER_GPU=${JOBS_PER_GPU:-3}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
@@ -106,6 +116,12 @@ resolve_method_cfg() {
       echo "configs/methods/det_bayesrt_mmrl.yaml"
       return 0
       ;;
+
+    FusedDetBayesRTMMRL)
+      echo "configs/methods/fused_det_bayesrt_mmrl.yaml"
+      return 0
+      ;;
+
 
     VCRMMMRL)
       echo "configs/methods/vcrm_mmrl.yaml"
@@ -210,7 +226,7 @@ resolve_runtime_cfg() {
   method_cfg="$(resolve_method_cfg "$method")"
 
   case "$method" in
-    MMRL|MMRLMix|BayesMMRL|BayesRTMMRL|DetBayesRTMMRL|BayesTextMMRL|VCRMMMRL|MMRLpp|MMRLPP)
+    MMRL|MMRLMix|BayesMMRL|BayesRTMMRL|DetBayesRTMMRL|FusedDetBayesRTMMRL|BayesTextMMRL|VCRMMMRL|MMRLpp|MMRLPP)
       echo "configs/runtime/mmrl_family.yaml"
       return 0
       ;;
@@ -539,7 +555,7 @@ launch_one_case() {
   local -a dataset_extra_opts=()
   if [[ "$dataset" == "imagenet" ]]; then
     case "$method" in
-      MMRL|BayesRTMMRL|DetBayesRTMMRL)
+      MMRL|BayesRTMMRL|DetBayesRTMMRL|FusedDetBayesRTMMRL)
         dataset_extra_opts+=(OPTIM.MAX_EPOCH 5)
         ;;
     esac

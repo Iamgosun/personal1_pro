@@ -11,24 +11,34 @@ CLIP_ADAPTERS:
   ENHANCED_BASE: none
   ALLOW_CACHE: true
 
+  # CLAP-aligned TipA-f switches.
   CLAP_TIPA_TRAINABLE_CACHE: true
   CLAP_TIPA_RAW_AFFINITY: true
   CLAP_TIPA_ONE_EPOCH: true
   TIPA_F_GRID_EPOCHS: 20
 
+  # Values overwritten by HPO candidates.
   TIPA_ALPHA: 1.0
   TIPA_BETA: 1.0
 
+  # Keep the support cache CLAP-compatible: average repeated augmentations into
+  # one cache key per support image, rather than using a 20N enlarged cache bank.
   CACHE_REPS: 20
   CACHE_TRAIN_AUG: true
-  CACHE_AGGREGATION: pool
-  CACHE_POOL_EPOCH_SUBSAMPLE: true
+  CACHE_AGGREGATION: mean
+  CACHE_POOL_EPOCH_SUBSAMPLE: false
+
+# Tip-Adapter-F in CLAP-style baselines is trained for 20 epochs.
+# This is required for the repository-wide HPO path, because TIPA_F_GRID_EPOCHS
+# is only used by the older internal grid-search runner, not by core/hpo.py.
+OPTIM:
+  MAX_EPOCH: 20
 
 HPO:
   ENABLED: true
   SPLIT: val
   REQUIRE_VAL: true
-  SELECTOR: acc_ece_window
+  SELECTOR: acc
   ACC_TOLERANCE: 0.5
 
   SKIP_CANDIDATE_TEST: true

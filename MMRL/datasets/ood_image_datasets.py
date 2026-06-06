@@ -95,9 +95,7 @@ class TinyImageNetOOD(OODImageFolderBase):
 class LSUNOOD(OODImageFolderBase):
     dataset_name = "LSUN"
     candidate_dirs = [
-        "lsun",
         "LSUN",
-        "lsun_resize",
         "LSUN_resize",
     ]
 
@@ -106,8 +104,6 @@ class LSUNOOD(OODImageFolderBase):
 class iNaturalistOOD(OODImageFolderBase):
     dataset_name = "iNaturalist"
     candidate_dirs = [
-        "inaturalist",
-        "iNaturalist",
-        "inat",
-        "iNat",
+        "iNaturalist/val",
+        "inaturalist/val"
     ]

@@ -11,10 +11,33 @@ CLIP_ADAPTERS:
   ENHANCED_BASE: none
   ALLOW_CACHE: true
 
-  GRID_SEARCH: false
-  GRID_SEARCH_SPLIT: val
+  # CLAP CLIP-Adapter residual interpolation coefficient.
+  # forward: x' = ratio * MLP(x) + (1 - ratio) * x
+  CLIPA_RATIO: 0.2
 
   CACHE_REPS: 20
   CACHE_TRAIN_AUG: true
   CACHE_AGGREGATION: pool
   CACHE_POOL_EPOCH_SUBSAMPLE: true
+
+HPO:
+  ENABLED: true
+  SPLIT: val
+  REQUIRE_VAL: true
+  SELECTOR: acc
+  ACC_TOLERANCE: 0.5
+
+  SKIP_CANDIDATE_TEST: true
+  FINAL_TEST_BEST: true
+  TRAIN_FINAL_WITH_BEST: false
+  COPY_BEST_MODEL: true
+  SAVE_SUMMARY: true
+
+  GRID:
+    lr:
+      PATH: OPTIM.LR
+      VALUES: [0.1, 0.01, 0.001]
+
+    ratio:
+      PATH: CLIP_ADAPTERS.CLIPA_RATIO
+      VALUES: [0.2, 0.4, 0.6, 0.8]
