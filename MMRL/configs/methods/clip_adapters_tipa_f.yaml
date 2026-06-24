@@ -3,6 +3,12 @@ METHOD:
   FAMILY: adapter
   TAG: TipA-f-
 
+DATASET:
+  MERGE_VAL_TO_TRAIN: false
+  DROP_VAL_AFTER_MERGE: false
+
+
+
 CLIP_ADAPTERS:
   PREC: amp
   TYPE: MP
@@ -11,28 +17,35 @@ CLIP_ADAPTERS:
   ENHANCED_BASE: none
   ALLOW_CACHE: true
 
-  # CLAP-aligned TipA-f switches.
+  # Official Tip-Adapter-F behavior:
+  # - train cache keys
+  # - use normalized query-cache affinity
+  # - keep train-time alpha/beta fixed
   CLAP_TIPA_TRAINABLE_CACHE: true
-  CLAP_TIPA_RAW_AFFINITY: true
+  CLAP_TIPA_RAW_AFFINITY: false
   CLAP_TIPA_ONE_EPOCH: true
   TIPA_F_GRID_EPOCHS: 20
 
-  # Values overwritten by HPO candidates.
   TIPA_ALPHA: 1.0
   TIPA_BETA: 1.0
+  TIPA_TRAIN_ALPHA: 1.0
+  TIPA_TRAIN_BETA: 1.0
+  TIPA_CACHE_VALUES_FP16: true
 
-  # Keep the support cache CLAP-compatible: average repeated augmentations into
-  # one cache key per support image, rather than using a 20N enlarged cache bank.
+  # Use cache mode to make these effective.
   CACHE_REPS: 20
   CACHE_TRAIN_AUG: true
   CACHE_AGGREGATION: mean
   CACHE_POOL_EPOCH_SUBSAMPLE: false
 
-# Tip-Adapter-F in CLAP-style baselines is trained for 20 epochs.
-# This is required for the repository-wide HPO path, because TIPA_F_GRID_EPOCHS
-# is only used by the older internal grid-search runner, not by core/hpo.py.
+# Use adam for broad Dassl compatibility. Official implementation uses AdamW.
 OPTIM:
+  NAME: "adam"
+  LR: 0.001
   MAX_EPOCH: 20
+  LR_SCHEDULER: "cosine"
+  WARMUP_EPOCH: 0
+  WEIGHT_DECAY: 0.0
 
 HPO:
   ENABLED: true
@@ -46,16 +59,17 @@ HPO:
   TRAIN_FINAL_WITH_BEST: false
   COPY_BEST_MODEL: true
   SAVE_SUMMARY: true
+  DELETE_NON_BEST_CANDIDATE_MODELS: true
 
   GRID:
     lr:
       PATH: OPTIM.LR
-      VALUES: [0.1, 0.01]
+      VALUES: [0.001]
 
     alpha:
       PATH: CLIP_ADAPTERS.TIPA_ALPHA
-      VALUES: [1.0, 6.0, 11.0, 16.0, 21.0, 26.0, 31.0, 36.0, 41.0, 46.0]
+      VALUES: [1.0,11.0, 21.0,  31.0,  41.0]
 
     beta:
       PATH: CLIP_ADAPTERS.TIPA_BETA
-      VALUES: [1.0, 3.8, 6.6, 9.4, 12.2, 15.0, 17.8, 20.6, 23.4, 26.2]
+      VALUES: [1.0, 6.6,  12.2,  17.8,  23.4]

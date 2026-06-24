@@ -66,6 +66,8 @@ def _to_float(value: Any):
             return None
     return None
 
+# 因为TipA这东西为NAN，不能汇总
+SKIP_METRIC_KEYS = {"nll", "brier"}
 
 def _aggregate_scalar_block(
     reports: list[dict[str, Any]],
@@ -79,6 +81,9 @@ def _aggregate_scalar_block(
 
     out: dict[str, dict[str, Any]] = {}
     for name in sorted(names):
+        if key in {"metrics", "metrics_calibrated"} and name in SKIP_METRIC_KEYS:
+            continue
+
         values: list[float] = []
         for report in reports:
             block = report.get(key, {})
@@ -96,6 +101,8 @@ def _aggregate_scalar_block(
             }
 
     return out
+
+
 
 
 def _aggregate_rows(

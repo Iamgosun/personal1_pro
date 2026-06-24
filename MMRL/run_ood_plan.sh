@@ -6,20 +6,20 @@ set -euo pipefail
 #
 # Args:
 #   1: PROTOCOL       FS
-#   2: METHODS        "BayesAdapter MMRL BayesRTMMRL"
+#   2: METHODS        "BayesAdapter MMRL DetBayesRTMMRL CrossModal"
 #   3: EXEC_MODE      auto | online | cache
 #   4: ID_DATASET     cifar10
 #   5: OOD_DATASETS   "dtd tinyimagenet lsun"
 #   6: SHOTS          "1 2 4 8 16 32"
 #   7: SEEDS          "1 2 3"
 
-# 
+# dtd tinyimagenet oxford_flowers sun397 inaturalist lsun
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-" DetBayesRTMMRL BayesAdapter "}
+METHODS_ARG=${2:-"  DetBayesRTMMRL_CLAMP  "}
 EXEC_MODE=${3:-online}
 ID_DATASET=${4:-cifar_10}
-OOD_DATASETS_ARG=${5:-"dtd tinyimagenet oxford_flowers sun397  inaturalist   lsun"}
-SHOTS_ARG=${6:-" 8 "}
+OOD_DATASETS_ARG=${5:-"    dtd tinyimagenet oxford_flowers sun397 inaturalist lsun  "}
+SHOTS_ARG=${6:-"16 "}
 SEEDS_ARG=${7:-${SEEDS:-"1 2 3"}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
@@ -27,9 +27,9 @@ OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-3}
-GPU_IDS=${GPU_IDS:-0 1 2}
-JOBS_PER_GPU=${JOBS_PER_GPU:-2}
+NGPU=${NGPU:-1}
+GPU_IDS=${GPU_IDS:-0  }
+JOBS_PER_GPU=${JOBS_PER_GPU:-6}
 
 SKIP_EXISTING=${SKIP_EXISTING:-0}
 TRAIN_IF_MISSING=${TRAIN_IF_MISSING:-1}
@@ -96,6 +96,11 @@ resolve_method_cfg() {
       ;;
     DetBayesRTMMRL)
       echo "configs/methods/det_bayesrt_mmrl.yaml"
+      return 0
+      ;;
+      
+    DetBayesRTMMRL_CLAMP)
+      echo "configs/methods/det_bayesrt_mmrl_clamp.yaml"
       return 0
       ;;
     BayesTextMMRL)
@@ -192,7 +197,7 @@ resolve_runtime_cfg() {
   method_cfg="$(resolve_method_cfg "$method")"
 
   case "$method" in
-    MMRL|MMRLMix|BayesMMRL|BayesRTMMRL|BayesTextMMRL|VCRMMMRL|MMRLpp|MMRLPP)
+    MMRL|MMRLMix|BayesMMRL|BayesRTMMRL|DetBayesRTMMRL|DetBayesRTMMRL_CLAMP|BayesTextMMRL|VCRMMMRL|MMRLpp|MMRLPP)
       echo "configs/runtime/mmrl_family.yaml"
       return 0
       ;;
@@ -212,6 +217,13 @@ resolve_launch_method() {
   local method_cfg
   method_cfg="$(resolve_method_cfg "$method")"
 
+  case "$method" in
+    DetBayesRTMMRLtheory|DetBayesRTMMRL_CLAMP)
+      echo "DetBayesRTMMRL"
+      return 0
+      ;;
+  esac
+
   if is_clip_adapter_cfg "$method_cfg"; then
     echo "ClipAdapters"
   else
@@ -219,6 +231,21 @@ resolve_launch_method() {
   fi
 }
 
+resolve_output_method() {
+  local method=$1
+
+  case "$method" in
+    DetBayesRTMMRLtheory)
+      echo "DetBayesRTMMRLtheory"
+      ;;
+    DetBayesRTMMRL_CLAMP)
+      echo "DetBayesRTMMRL_CLAMP"
+      ;;
+    *)
+      resolve_launch_method "$method"
+      ;;
+  esac
+}
 
 resolve_launch_exec_mode() {
   local method=$1
@@ -282,10 +309,18 @@ build_outdir() {
   local seed=$4
   local run_tag=$5
 
-  local launch_method
+  local launch_method output_method
   launch_method="$(resolve_launch_method "$method")"
+  output_method="$(resolve_output_method "$method")"
 
   read -r phase _subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
+
+  case "$method" in
+    DetBayesRTMMRLtheory|DetBayesRTMMRL_CLAMP)
+      echo "${OUTPUT_ROOT}/${output_method}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/seed${seed}"
+      return 0
+      ;;
+  esac
 
   if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
     echo "${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/seed${seed}"
@@ -520,15 +555,30 @@ summarize_case() {
   local method_cfg protocol_cfg runtime_cfg
   read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
 
-  local run_tag launch_method
+  local run_tag launch_method output_method
   run_tag="$(resolve_run_tag "$method" "$method_cfg")"
   launch_method="$(resolve_launch_method "$method")"
+  output_method="$(resolve_output_method "$method")"
 
-  if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
-    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}" --split ood
-  else
-    python evaluation/result_parser.py "${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}" --split ood
-  fi
+  case "$method" in
+    DetBayesRTMMRLtheory|DetBayesRTMMRL_CLAMP)
+      python evaluation/result_parser.py \
+        "${OUTPUT_ROOT}/${output_method}/${PROTOCOL}" \
+        --split ood
+      ;;
+
+    *)
+      if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
+        python evaluation/result_parser.py \
+          "${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}" \
+          --split ood
+      else
+        python evaluation/result_parser.py \
+          "${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}" \
+          --split ood
+      fi
+      ;;
+  esac
 }
 
 

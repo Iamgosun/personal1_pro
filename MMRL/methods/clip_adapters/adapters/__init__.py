@@ -5,6 +5,7 @@ from .task_residual import TaskResidualAdapter
 from .clip_adapter import ClipAdapterResidual
 from .tip_adapter import TipAdapter
 from .cross_modal import CrossModalProbeAdapter
+from .lp_plus_plus import LPPlusPlusAdapter
 from .bayes_adapter import BayesAdapter
 from .capel_adapter import CapelAdapter
 from .vnccapel_adapter import VncCapelAdapter

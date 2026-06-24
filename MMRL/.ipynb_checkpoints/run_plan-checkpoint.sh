@@ -1,9 +1,12 @@
 #!/bin/bash
 set -euo pipefail
+# SUMMARY_ONLY=1 bash run_plan.sh FS "DetBayesRTMMRL" 汇总实验
+
+
 
 # Usage:
 #   GPU_IDS="0 1" bash run_plan.sh FS "BayesRTMMRL 
-# BayesTextMMRL VCRMMMRL MMRL BayesMMRL DetBayesRTMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
+# BayesTextMMRL LPPLUSPLUS   VCRMMMRL MMRL BayesMMRL DetBayesRTMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
 #   GPU_IDS="0 1" bash run_plan.sh FS " SBEA_ARD DEBA_J HBA_LR DREAM_BAYES_ADAPTER PP_PROKER_ONEHOT ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
 #   online cache TR
 # Notes:clip_adapters_dream_bayes.yaml
@@ -11,19 +14,20 @@ set -euo pipefail
 #   - Adapter aliases map to specific configs/methods/clip_adapters_*.yaml.
 #   - For adapter aliases, launch method is always ClipAdapters.
 #   - B2N automatically runs test_new after train_base.
-#  caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   
+#  caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   cifar_10
 # DipA TipA TipA-f- CrossModal  }
 # EXEC_MODE=${3:-online}TD + EuroSAT + Aircraft + SUN397 + UCF101
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:- BayesRTMMRL   }
+METHODS_ARG=${2:-  DetBayesRTMMRL_CLAMP }
 EXEC_MODE=${3:-online}
-DATASETS_ARG=${4:-"caltech101  dtd  food101 eurosat  fgvc_aircraft  ucf101   "}
-SHOTS_ARG=${5:-"1 2 4 8 16 32"}
-SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
-# METHODS_ARG=${2:- DetBayesRTMMRL TR ClipA TipA TipA-f- CrossModal
-# DATASETS_ARG=${4:-"caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   "}
-# SHOTS_ARG=${5:-"1 2 4 8 16 32"}
+DATASETS_ARG=${4:-"dtd   "}
+SHOTS_ARG=${5:-"1"}
+SEEDS_ARG=${6:-${SEEDS:-"1 "}}
+
+# METHODS_ARG=${2:-  TipA }
+# DATASETS_ARG=${4:-" caltech101 "}
+# SHOTS_ARG=${5:-"1"}
 # SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
 
@@ -39,9 +43,9 @@ OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-3}
-GPU_IDS=${GPU_IDS:-0  1 2}
-JOBS_PER_GPU=${JOBS_PER_GPU:-3}
+NGPU=${NGPU:-2}
+GPU_IDS=${GPU_IDS:-0  1 }
+JOBS_PER_GPU=${JOBS_PER_GPU:-4}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}
@@ -114,6 +118,16 @@ resolve_method_cfg() {
       return 0
       ;;
 
+    DetBayesRTMMRLtheory)
+      echo "configs/methods/det_bayesrt_mmrl_theory.yaml"
+      return 0
+      ;;
+    DetBayesRTMMRL_CLAMP)
+      echo "configs/methods/det_bayesrt_mmrl_clamp.yaml"
+      return 0
+      ;;
+      
+      
     FusedDetBayesRTMMRL)
       echo "configs/methods/fused_det_bayesrt_mmrl.yaml"
       return 0
@@ -154,6 +168,9 @@ resolve_method_cfg() {
       return 0
       ;;
 
+
+
+
     dream_bayes_adapter|dreambayes|dream_ba)
       echo "configs/methods/clip_adapters_dream_bayes.yaml"
       return 0
@@ -188,6 +205,13 @@ resolve_method_cfg() {
       echo "configs/methods/clip_adapters_crossmodal.yaml"
       return 0
       ;;
+
+    lpplusplus|lp_plus_plus|linearprobe_p2|linear_probe_p2|lp_p2)
+      echo "configs/methods/clip_adapters_lpplusplus.yaml"
+      return 0
+      ;;
+
+
   esac
 
   # Generic discovery rule.
@@ -223,7 +247,7 @@ resolve_runtime_cfg() {
   method_cfg="$(resolve_method_cfg "$method")"
 
   case "$method" in
-    MMRL|MMRLMix|BayesMMRL|BayesRTMMRL|DetBayesRTMMRL|FusedDetBayesRTMMRL|BayesTextMMRL|VCRMMMRL|MMRLpp|MMRLPP)
+    MMRL|MMRLMix|BayesMMRL|BayesRTMMRL|DetBayesRTMMRL|DetBayesRTMMRLtheory|DetBayesRTMMRL_CLAMP|FusedDetBayesRTMMRL|BayesTextMMRL|VCRMMMRL|MMRLpp|MMRLPP)
       echo "configs/runtime/mmrl_family.yaml"
       return 0
       ;;
@@ -254,12 +278,33 @@ resolve_launch_method() {
 
   method_cfg="$(resolve_method_cfg "$method")"
 
+  case "$method" in
+    DetBayesRTMMRLtheory|DetBayesRTMMRL_CLAMP)
+      echo "DetBayesRTMMRL"
+      return 0
+      ;;
+  esac
+
   if is_clip_adapter_cfg "$method_cfg"; then
     echo "ClipAdapters"
   else
     echo "$method"
   fi
 }
+
+resolve_output_method() {
+  local method=$1
+
+  case "$method" in
+    DetBayesRTMMRL_CLAMP|DetBayesRTMMRLtheory)
+      echo "$method"
+      ;;
+    *)
+      resolve_launch_method "$method"
+      ;;
+  esac
+}
+
 
 resolve_launch_exec_mode() {
   # Keep the old behavior: respect the third CLI argument for all methods.
@@ -309,8 +354,13 @@ init_gpu_list() {
 
   GPU_LIST=()
   local gpu_id rep
-  for gpu_id in "${BASE_GPU_LIST[@]}"; do
-    for ((rep=0; rep<JOBS_PER_GPU; rep++)); do
+
+  # Horizontal allocation:
+  #   GPU_IDS="0 1 2" JOBS_PER_GPU=3 -> 0 1 2 0 1 2 0 1 2
+  # This fills the first concurrent slot on each GPU before assigning the
+  # second slot, avoiding grouped launches like 0 0 0 1 1 1 2 2 2.
+  for ((rep=0; rep<JOBS_PER_GPU; rep++)); do
+    for gpu_id in "${BASE_GPU_LIST[@]}"; do
       GPU_LIST+=("$gpu_id")
     done
   done
@@ -323,11 +373,21 @@ build_outdir() {
   local seed=$4
   local run_tag=$5
 
-  local launch_method
+  local launch_method output_method
   launch_method="$(resolve_launch_method "$method")"
+  output_method="$(resolve_output_method "$method")"
 
   read -r phase _subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"
 
+  # 两个 DetBayesRTMMRL 变体各自使用独立的顶层方法目录。
+  case "$method" in
+    DetBayesRTMMRL_CLAMP|DetBayesRTMMRLtheory)
+      echo "${OUTPUT_ROOT}/${output_method}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/seed${seed}"
+      return 0
+      ;;
+  esac
+
+  # 保留其他方法原来的目录规则。
   if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
     echo "${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}/${phase}/${dataset}/shots_${shot}/${BACKBONE//\//-}/seed${seed}"
   else
@@ -552,7 +612,7 @@ launch_one_case() {
   local -a dataset_extra_opts=()
   if [[ "$dataset" == "imagenet" ]]; then
     case "$method" in
-      MMRL|BayesRTMMRL|DetBayesRTMMRL|FusedDetBayesRTMMRL)
+      MMRL|BayesRTMMRL|DetBayesRTMMRL|DetBayesRTMMRLtheory|DetBayesRTMMRL_CLAMP|FusedDetBayesRTMMRL)
         dataset_extra_opts+=(OPTIM.MAX_EPOCH 5)
         ;;
     esac
@@ -729,15 +789,23 @@ summarize_case() {
 
   read -r method_cfg protocol_cfg runtime_cfg <<< "$(resolve_configs "$method")"
 
-  local run_tag launch_method base_root
+  local run_tag launch_method output_method base_root
   run_tag="$(resolve_run_tag "$method" "$method_cfg")"
   launch_method="$(resolve_launch_method "$method")"
+  output_method="$(resolve_output_method "$method")"
 
-  if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
-    base_root="${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}"
-  else
-    base_root="${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}"
-  fi
+  case "$method" in
+    DetBayesRTMMRL_CLAMP|DetBayesRTMMRLtheory)
+      base_root="${OUTPUT_ROOT}/${output_method}/${PROTOCOL}"
+      ;;
+    *)
+      if [[ "$launch_method" == "ClipAdapters" || "$launch_method" == "ClipADAPTER" ]]; then
+        base_root="${OUTPUT_ROOT}/${launch_method}/${run_tag}/${PROTOCOL}"
+      else
+        base_root="${OUTPUT_ROOT}/${launch_method}/${PROTOCOL}"
+      fi
+      ;;
+  esac
 
   # No dataset means original full-summary behavior.
   if [[ -z "$dataset" ]]; then

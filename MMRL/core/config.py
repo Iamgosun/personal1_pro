@@ -80,6 +80,9 @@ def _as_legacy_bayesrt_mmrl(cfg):
     sec.NOVEL_TEXT_MEAN_ONLY = src.NOVEL_TEXT_MEAN_ONLY
     sec.REPORT_FUSION_VARIANTS = src.REPORT_FUSION_VARIANTS
     sec.EVAL_FUSION_VARIANT = src.EVAL_FUSION_VARIANT
+    
+    sec.DET_VAR_SCALE = src.DET_VAR_SCALE
+    sec.DET_VAR_CLAMP = src.DET_VAR_CLAMP
 
 def _as_legacy_clipadapter(cfg):
     """
@@ -503,6 +506,8 @@ def get_refactor_defaults():
     cfg.BAYESRT_MMRL.NOVEL_TEXT_MEAN_ONLY = True
     cfg.BAYESRT_MMRL.REPORT_FUSION_VARIANTS = True
     cfg.BAYESRT_MMRL.EVAL_FUSION_VARIANT = "static"
+    cfg.BAYESRT_MMRL.DET_VAR_SCALE = 1.0
+    cfg.BAYESRT_MMRL.DET_VAR_CLAMP = 0.0
 
     cfg.BAYES_TEXT_MMRL = CN()
     cfg.BAYES_TEXT_MMRL.PREC = "amp"
@@ -705,6 +710,8 @@ def get_refactor_defaults():
     cfg.CLIP_ADAPTERS.PP_PROKER_MEAN_RESIDUAL_SCALE = 1.0
 
     cfg.DATASET.SUBSAMPLE_CLASSES = "all"
+    cfg.DATASET.MERGE_VAL_TO_TRAIN = False
+    cfg.DATASET.DROP_VAL_AFTER_MERGE = False
 
     cfg.CALIBRATION = CN()
     cfg.CALIBRATION.USE_FULL_VAL = False

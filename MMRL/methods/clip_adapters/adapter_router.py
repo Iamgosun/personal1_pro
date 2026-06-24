@@ -9,6 +9,7 @@ from .adapters import (
     DEBAAdapter,
     DreamBayesAdapter,
     HbaLrAdapter,
+    LPPlusPlusAdapter,
     RandomProbeAdapter,
     TaskResidualAdapter,
     TipAdapter,
@@ -25,6 +26,16 @@ def build_adapter(cfg, clip_model, base_text_features, classnames=None):
         if classnames is None:
             raise ValueError("CapelAdapter requires classnames.")
         return CapelAdapter(cfg, clip_model, base_text_features, classnames)
+
+    if init_upper in {
+        "LP++",
+        "LP_PLUS_PLUS",
+        "LPPLUSPLUS",
+        "LINEARPROBE_P2",
+        "LINEAR_PROBE_P2",
+        "LP_P2",
+    }:
+        return LPPlusPlusAdapter(cfg, clip_model, base_text_features)
 
     if init_upper == "RANDOM":
         return RandomProbeAdapter(cfg, clip_model, base_text_features)

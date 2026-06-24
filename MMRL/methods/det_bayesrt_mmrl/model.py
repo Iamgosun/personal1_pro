@@ -35,8 +35,8 @@ class DetBayesRTMMRLMethod(BayesRTMMRLMethod):
 
         # These are optional. They are read with defaults so core/config.py does
         # not need to be changed to run this new method.
-        self.det_var_scale = float(getattr(method_cfg, "DET_VAR_SCALE", 0.5))
-        self.det_var_clamp = float(getattr(method_cfg, "DET_VAR_CLAMP", 20.0))
+        self.det_var_scale = float(getattr(method_cfg, "DET_VAR_SCALE", 1.0))
+        self.det_var_clamp = float(getattr(method_cfg, "DET_VAR_CLAMP", 0.0))
 
         return self
 

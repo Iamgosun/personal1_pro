@@ -1,6 +1,7 @@
 import os
 import pickle
-from collections import OrderedDict
+import random
+from collections import OrderedDict, defaultdict
 
 from dassl.data.datasets import DATASET_REGISTRY, Datum, DatasetBase
 from dassl.utils import listdir_nohidden, mkdir_if_missing
@@ -10,6 +11,17 @@ from .oxford_pets import OxfordPets
 
 @DATASET_REGISTRY.register()
 class ImageNet(DatasetBase):
+    """
+    ImageNet few-shot split with an independent validation support set.
+
+    Few-shot mode:
+        train_x = K samples/class from ImageNet/train
+        val     = min(K, 4) samples/class from ImageNet/train, disjoint from train_x
+        test    = ImageNet/val
+
+    This avoids the old behavior:
+        val = test = ImageNet/val
+    """
 
     dataset_dir = "imagenet"
 
@@ -24,47 +36,79 @@ class ImageNet(DatasetBase):
         if os.path.exists(self.preprocessed):
             with open(self.preprocessed, "rb") as f:
                 preprocessed = pickle.load(f)
-                train = preprocessed["train"]
+                train_full = preprocessed["train"]
                 test = preprocessed["test"]
         else:
             text_file = os.path.join(self.dataset_dir, "classnames.txt")
             classnames = self.read_classnames(text_file)
-            train = self.read_data(classnames, "train")
-            # Follow standard practice to perform evaluation on the val set
-            # Also used as the val set (so evaluate the last-step model)
+            train_full = self.read_data(classnames, "train")
             test = self.read_data(classnames, "val")
 
-            preprocessed = {"train": train, "test": test}
+            preprocessed = {"train": train_full, "test": test}
             with open(self.preprocessed, "wb") as f:
                 pickle.dump(preprocessed, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-        num_shots = cfg.DATASET.NUM_SHOTS
+        train = train_full
+        val = []
+
+        num_shots = int(cfg.DATASET.NUM_SHOTS)
         if num_shots >= 1:
-            seed = cfg.SEED
-            preprocessed = os.path.join(self.split_fewshot_dir, f"shot_{num_shots}-seed_{seed}.pkl")
-            
-            if os.path.exists(preprocessed):
-                print(f"Loading preprocessed few-shot data from {preprocessed}")
-                with open(preprocessed, "rb") as file:
+            seed = int(cfg.SEED)
+            num_val_shots = min(num_shots, 4)
+
+            fewshot_cache = os.path.join(
+                self.split_fewshot_dir,
+                f"shot_{num_shots}-val_{num_val_shots}-seed_{seed}.pkl",
+            )
+
+            if os.path.exists(fewshot_cache):
+                print(f"Loading preprocessed ImageNet few-shot train/val from {fewshot_cache}")
+                with open(fewshot_cache, "rb") as file:
                     data = pickle.load(file)
-                    train = data["train"]
+                    train, val = data["train"], data["val"]
             else:
-                train = self.generate_fewshot_dataset(train, num_shots=num_shots)
-                data = {"train": train}
-                print(f"Saving preprocessed few-shot data to {preprocessed}")
-                with open(preprocessed, "wb") as file:
+                train, val = self.generate_fewshot_train_val_from_train_split(
+                    train_full,
+                    num_train_shots=num_shots,
+                    num_val_shots=num_val_shots,
+                    seed=seed,
+                )
+
+                data = {
+                    "train": train,
+                    "val": val,
+                    "meta": {
+                        "source": "ImageNet/train",
+                        "train_shots_per_class": num_shots,
+                        "val_shots_per_class": num_val_shots,
+                        "seed": seed,
+                        "disjoint_train_val": True,
+                        "test_source": "ImageNet/val",
+                    },
+                }
+                print(f"Saving preprocessed ImageNet few-shot train/val to {fewshot_cache}")
+                with open(fewshot_cache, "wb") as file:
                     pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
         subsample = cfg.DATASET.SUBSAMPLE_CLASSES
-        train, test = OxfordPets.subsample_classes(train, test, subsample=subsample)
+        train, val, test = OxfordPets.subsample_classes(
+            train,
+            val,
+            test,
+            subsample=subsample,
+        )
 
-        super().__init__(train_x=train, val=test, test=test)
+        print(
+            "[ImageNetFewShotSplit] "
+            f"train_x={len(train)}, val={len(val)}, test={len(test)}, "
+            f"num_shots={num_shots}, val_shots={min(num_shots, 4) if num_shots >= 1 else 0}"
+        )
+
+        super().__init__(train_x=train, val=val, test=test)
 
     @staticmethod
     def read_classnames(text_file):
-        """Return a dictionary containing
-        key-value pairs of <folder name>: <class name>.
-        """
+        """Return a dictionary with <folder name>: <class name>."""
         classnames = OrderedDict()
         with open(text_file, "r") as f:
             lines = f.readlines()
@@ -89,3 +133,36 @@ class ImageNet(DatasetBase):
                 items.append(item)
 
         return items
+
+    @staticmethod
+    def generate_fewshot_train_val_from_train_split(
+        dataset,
+        num_train_shots,
+        num_val_shots,
+        seed,
+    ):
+        tracker = defaultdict(list)
+        for item in dataset:
+            tracker[int(item.label)].append(item)
+
+        rng = random.Random(seed)
+
+        train = []
+        val = []
+
+        for label in sorted(tracker.keys()):
+            items = list(tracker[label])
+            rng.shuffle(items)
+
+            required = int(num_train_shots) + int(num_val_shots)
+            if len(items) < required:
+                raise RuntimeError(
+                    "Not enough ImageNet/train samples for few-shot train/val split: "
+                    f"label={label}, available={len(items)}, required={required}, "
+                    f"train_shots={num_train_shots}, val_shots={num_val_shots}"
+                )
+
+            train.extend(items[:num_train_shots])
+            val.extend(items[num_train_shots:num_train_shots + num_val_shots])
+
+        return train, val

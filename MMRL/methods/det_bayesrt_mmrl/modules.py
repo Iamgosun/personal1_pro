@@ -217,8 +217,8 @@ class DetBayesRTMMRLModel(BayesRTMMRLModel):
 
         super().__init__(cfg, cfg_for_super, classnames, clip_model)
 
-        # Replace zero-initialized R posterior with explicit MMRL-style random init.
-        # q_r and p_r share the same random mean at initialization, so raw_kl_r starts at 0.
+        # Randomly initialize the variational mean q(P_r), while keeping
+        # the prior mean of p(P_r) fixed at zero.
         if bool(getattr(method_cfg, "BAYES_R_ENABLED", False)) and requested_r_prior_mode in random_r_modes:
             random_mean = _make_mmrl_random_proj_rep_mean(clip_model.visual)
 
@@ -229,6 +229,8 @@ class DetBayesRTMMRLModel(BayesRTMMRLModel):
                 train_mean=True,
                 min_sigma=1.0e-6,
             )
+
+            self.image_encoder.bayes_proj_rep.prior_mean.zero_()
 
         self.det_r_prior_mode = requested_r_prior_mode
         self.det_moment_eps = float(getattr(method_cfg, "DET_MOMENT_EPS", 1.0e-6))

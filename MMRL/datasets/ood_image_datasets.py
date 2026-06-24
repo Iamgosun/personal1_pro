@@ -104,6 +104,5 @@ class LSUNOOD(OODImageFolderBase):
 class iNaturalistOOD(OODImageFolderBase):
     dataset_name = "iNaturalist"
     candidate_dirs = [
-        "iNaturalist/val",
-        "inaturalist/val"
+        "iNaturalist/"
     ]

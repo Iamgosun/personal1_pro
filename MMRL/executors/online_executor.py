@@ -104,4 +104,12 @@ class OnlineExecutor(BaseExecutor):
         if (trainer.batch_idx + 1) == trainer.num_batches:
             trainer.update_lr()
 
+        if hasattr(outputs, "extras") and outputs.extras is not None:
+            for key in ["r_sigma_mean", "t_sigma_mean"]:
+                if key in outputs.extras:
+                    value = outputs.extras[key]
+                    if torch.is_tensor(value):
+                        value = value.detach().item()
+                    loss_summary[key] = float(value)    
+            
         return loss_summary

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -15,6 +16,19 @@ class CacheSpec:
     tensor_path: str
     manifest_path: str
     metadata: Dict
+
+
+def _truthy(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
 
 
 class FeatureCacheManager:
@@ -55,8 +69,6 @@ class FeatureCacheManager:
             return default
         return getattr(cfg, name, default)
 
-
-
     def build_metadata(
         self,
         split: str,
@@ -73,17 +85,26 @@ class FeatureCacheManager:
             self._cfg_get(clip_cfg, "CACHE_FEATURE_ONLY_KEY", True)
         )
 
+        merge_val_to_train = _truthy(os.environ.get("MMRL_MERGE_VAL_TO_TRAIN"), False)
+        drop_val_after_merge = _truthy(os.environ.get("MMRL_DROP_VAL_AFTER_MERGE"), True)
+
+        dataset_name = str(self.cfg.DATASET.NAME).lower()
+        imagenet_internal_train_val = dataset_name == "imagenet"
+
         metadata = {
-            # schema v6:
-            # cache key is adapter-independent when CACHE_FEATURE_ONLY_KEY=True.
-            # Cached payload stores CLIP image features + labels only;
-            # adapter-specific logits are recomputed after loading.
-            "schema_version": 6,
+            # schema v10:
+            # Method-config-driven K+Val protocol + ImageNet internal train-derived val.
+            "schema_version": 10,
 
             "dataset": self.cfg.DATASET.NAME,
             "split": str(split),
             "seed": int(self.cfg.SEED),
             "shots": int(self.cfg.DATASET.NUM_SHOTS),
+
+            "merge_val_to_train": bool(merge_val_to_train),
+            "drop_val_after_merge": bool(drop_val_after_merge),
+            "imagenet_internal_train_val": bool(imagenet_internal_train_val),
+
             "subsample_classes": self._jsonable(
                 getattr(self.cfg.DATASET, "SUBSAMPLE_CLASSES", "all")
             ),
@@ -99,7 +120,6 @@ class FeatureCacheManager:
             "protocol": self.cfg.PROTOCOL.NAME,
             "phase": self._jsonable(getattr(self.cfg.PROTOCOL, "PHASE", None)),
 
-            # Image preprocessing affects CLIP image features.
             "input_size": self._jsonable(self._cfg_get(input_cfg, "SIZE", None)),
             "input_interpolation": self._jsonable(
                 self._cfg_get(input_cfg, "INTERPOLATION", None)
@@ -125,7 +145,6 @@ class FeatureCacheManager:
         }
 
         if not feature_only_key:
-            # Legacy strict key: keep adapter/logit-affecting fields.
             metadata.update(
                 {
                     "method_name": self.cfg.METHOD.NAME,
@@ -168,13 +187,9 @@ class FeatureCacheManager:
 
         return metadata
 
-
-
     def build_cache_id(self, metadata: Dict) -> str:
         payload = json.dumps(metadata, ensure_ascii=False, sort_keys=True).encode("utf-8")
         return hashlib.sha1(payload).hexdigest()[:16]
-
-
 
     def build_spec(
         self,
@@ -199,7 +214,6 @@ class FeatureCacheManager:
             manifest_path=str(self.manifest_dir / f"{cache_id}.json"),
             metadata=metadata,
         )
-
 
     def validate_cache(self, metadata: Dict, manifest: Dict) -> bool:
         return manifest.get("metadata") == metadata

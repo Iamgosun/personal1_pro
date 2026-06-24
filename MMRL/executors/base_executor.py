@@ -226,6 +226,79 @@ class BaseExecutor:
         }
         return report
 
+
+    # def _maybe_add_temperature_scaling(
+    #     self,
+    #     report,
+    #     trainer,
+    #     split,
+    #     logits,
+    #     labels,
+    # ):
+    #     """Fit T on val split and report calibrated metrics on test split.
+
+    #     Temperature is learned only from validation logits. The test logits are
+    #     never used to fit T, avoiding test-set leakage.
+    #     """
+    #     if split != "test":
+    #         report["temperature_scaling"] = {
+    #             "enabled": False,
+    #             "reason": "Temperature is only fitted when evaluating the test split.",
+    #         }
+    #         return report
+
+    #     if trainer.val_loader is None:
+    #         report["temperature_scaling"] = {
+    #             "enabled": False,
+    #             "reason": "trainer.val_loader is None.",
+    #         }
+    #         return report
+
+    #     val_ctx = self.build_eval_context(trainer, "val")
+    #     val_logits, val_labels = self._collect_logits_and_labels(
+    #         trainer=trainer,
+    #         data_loader=trainer.val_loader,
+    #         eval_ctx=val_ctx,
+    #         process_evaluator=False,
+    #         collect_fusion_variants=False,
+    #         keep_on_device=self._metrics_keep_on_device(trainer),
+    #     )
+
+    #     temperature = fit_temperature(
+    #         logits=val_logits,
+    #         labels=val_labels,
+    #         device=trainer.device,
+    #     )
+
+    #     calibrated_logits = apply_temperature(logits, temperature)
+
+    #     calibrated_report = build_classification_calibration_report(
+    #         logits=calibrated_logits,
+    #         labels=labels,
+    #         n_bins=10,
+    #     )
+
+    #     report["temperature_scaling"] = {
+    #         "enabled": True,
+    #         "temperature": temperature,
+    #         "fit_split": "val",
+    #         "eval_split": split,
+    #         "metrics_before": report["metrics"],
+    #         "metrics_after": calibrated_report["metrics"],
+    #     }
+    #     report["metrics_calibrated"] = calibrated_report["metrics"]
+    #     report["prediction_calibrated"] = calibrated_report["prediction"]
+    #     report["calibration_calibrated"] = calibrated_report["calibration"]
+    #     report["selective_prediction_calibrated"] = calibrated_report[
+    #         "selective_prediction"
+    #     ]
+
+    #     return report
+
+
+
+
+
     def _maybe_add_temperature_scaling(
         self,
         report,
@@ -234,65 +307,12 @@ class BaseExecutor:
         logits,
         labels,
     ):
-        """Fit T on val split and report calibrated metrics on test split.
-
-        Temperature is learned only from validation logits. The test logits are
-        never used to fit T, avoiding test-set leakage.
-        """
-        if split != "test":
-            report["temperature_scaling"] = {
-                "enabled": False,
-                "reason": "Temperature is only fitted when evaluating the test split.",
-            }
-            return report
-
-        if trainer.val_loader is None:
-            report["temperature_scaling"] = {
-                "enabled": False,
-                "reason": "trainer.val_loader is None.",
-            }
-            return report
-
-        val_ctx = self.build_eval_context(trainer, "val")
-        val_logits, val_labels = self._collect_logits_and_labels(
-            trainer=trainer,
-            data_loader=trainer.val_loader,
-            eval_ctx=val_ctx,
-            process_evaluator=False,
-            collect_fusion_variants=False,
-            keep_on_device=self._metrics_keep_on_device(trainer),
-        )
-
-        temperature = fit_temperature(
-            logits=val_logits,
-            labels=val_labels,
-            device=trainer.device,
-        )
-
-        calibrated_logits = apply_temperature(logits, temperature)
-
-        calibrated_report = build_classification_calibration_report(
-            logits=calibrated_logits,
-            labels=labels,
-            n_bins=10,
-        )
-
         report["temperature_scaling"] = {
-            "enabled": True,
-            "temperature": temperature,
-            "fit_split": "val",
-            "eval_split": split,
-            "metrics_before": report["metrics"],
-            "metrics_after": calibrated_report["metrics"],
+            "enabled": False,
+            "reason": "disabled manually due to LBFGS overflow",
         }
-        report["metrics_calibrated"] = calibrated_report["metrics"]
-        report["prediction_calibrated"] = calibrated_report["prediction"]
-        report["calibration_calibrated"] = calibrated_report["calibration"]
-        report["selective_prediction_calibrated"] = calibrated_report[
-            "selective_prediction"
-        ]
-
         return report
+
 
     @staticmethod
     def _add_fusion_variant_reports(report, variant_logits, labels):
