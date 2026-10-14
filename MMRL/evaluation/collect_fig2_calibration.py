@@ -8,10 +8,10 @@ from pathlib import Path
 
 METHOD_ROOTS = {
     #"MMRL": Path("output_refactor/MMRL/FS"),
-    "CrossModal": Path("output_refactor/ClipAdapters/CrossModal/FS"),
+    "CrossModal": Path("output_refactor/ClipAdapters/CrossModal训练加上验证集/FS"),
     "TR": Path("output_refactor/ClipAdapters/TR/FS"),
-    "BayesAdapter": Path("output_refactor/ClipAdapters/BAYES_ADAPTER_无验证集训练/FS"),
-    "DetBayesRTMMRL": Path("output_refactor/DetBayesRTMMRL_验证集找参数结果/FS"),
+    "BayesAdapter": Path("output_refactor/ClipAdapters/BAYES_ADAPTER验证集找超参数/FS"),
+    "DetBayesRTMMRL": Path("output_refactor/DetBayesRTMMRL_CLAMP/FS"),
 }
 
 
