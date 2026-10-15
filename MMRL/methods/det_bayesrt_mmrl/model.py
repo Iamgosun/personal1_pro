@@ -99,12 +99,23 @@ class DetBayesRTMMRLMethod(BayesRTMMRLMethod):
         kl_normalizer = float(getattr(self, "kl_normalizer", 1.0))
         kl_normalizer = max(1.0, kl_normalizer)
 
+        r_normalizer = float(
+            self.model.image_encoder.bayes_proj_rep.prior_mean.numel()
+        )
+
+
         kl_r_term = (
-            kl_beta
-            * self.r_kl_weight
-            * raw_kl_r
+            kl_beta * self.r_kl_weight
+            * raw_kl_r / r_normalizer
             / kl_normalizer
         )
+        # 原结果
+        # kl_r_term = (
+        #     kl_beta
+        #     * self.r_kl_weight
+        #     * raw_kl_r
+        #     / kl_normalizer
+        # )
 
         t_normalizer = 1.0
         if getattr(self.model, "text_posterior", None) is not None:

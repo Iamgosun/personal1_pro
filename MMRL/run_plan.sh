@@ -21,9 +21,9 @@ PROTOCOL=${1:-FS}
 METHODS_ARG=${2:-  DetBayesRTMMRL_CLAMP }
 EXEC_MODE=${3:-online}
 
-DATASETS_ARG=${4:-"dtd   "}
+DATASETS_ARG=${4:-"dtd  caltech101 fgvc_aircraft eurosat stanford_cars"}
 SHOTS_ARG=${5:-"1"}
-SEEDS_ARG=${6:-${SEEDS:-"1 "}}
+SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
 # METHODS_ARG=${2:-  TipA }
 # DATASETS_ARG=${4:-" caltech101 "}
@@ -43,8 +43,8 @@ OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}
 BACKBONE=${BACKBONE:-ViT-B/16}
 TAG=${TAG:-}
 
-NGPU=${NGPU:-2}
-GPU_IDS=${GPU_IDS:-0  1 }
+NGPU=${NGPU:-1}
+GPU_IDS=${GPU_IDS:-0 }
 JOBS_PER_GPU=${JOBS_PER_GPU:-4}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
