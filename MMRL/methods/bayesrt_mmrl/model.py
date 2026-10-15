@@ -444,13 +444,19 @@ class BayesRTMMRLMethod(BaseMethod):
         kl_normalizer = max(1.0, kl_normalizer)
 
  
-        r_normalizer = float(
-            self.model.image_encoder.bayes_proj_rep.prior_mean.numel()
+
+        r_posterior = self.model.image_encoder.bayes_proj_rep
+        r_normalizer = (
+            float(r_posterior.prior_mean.numel())
+            if r_posterior is not None else 1.0
         )
 
         kl_r_term = (
-            kl_beta * self.r_kl_weight
-            * raw_kl_r / r_normalizer / kl_normalizer
+            kl_beta 
+            * self.r_kl_weight
+            * raw_kl_r 
+            / r_normalizer 
+            / kl_normalizer
         )
 
 

@@ -8,26 +8,37 @@ import torch.nn.functional as F
 from methods.bayesrt_mmrl.modules import BayesRTMMRLModel, FactorizedGaussianMatrix
 
 
+
 def _factorized_project_moments(posterior, x: torch.Tensor):
-    """
-    Deterministic moment propagation through an existing FactorizedGaussianMatrix.
+    """Gaussian projection moments without expanding sigma to full W shape."""
+    with torch.autocast(device_type=x.device.type, enabled=False):
+        x_f = x.float()
+        mean_w = posterior.posterior_mean.float().to(x.device)
+        mean = x_f @ mean_w
 
-    Args:
-        posterior: methods.bayesrt_mmrl.modules.FactorizedGaussianMatrix
-        x: [..., input_dim]
+        sigma2 = posterior.posterior_sigma().float().square().to(x.device)
+        mode = str(posterior.sigma_mode)
+        x2 = x_f.square()
 
-    Returns:
-        mean: [..., output_dim]
-        var:  [..., output_dim], diagonal variance of x @ W
-    """
-    x_f = x.float()
-    mean_w = posterior.posterior_mean.float().to(x.device)
-    sigma2_w = posterior.expanded_posterior_sigma().pow(2).float().to(x.device)
-
-    mean = x_f @ mean_w
-    var = x_f.pow(2) @ sigma2_w
+        if mode == "output":
+            # sigma2: [1, O]
+            var = x2.sum(dim=-1, keepdim=True) * sigma2
+        elif mode == "global":
+            # sigma2: scalar
+            var = (
+                x2.sum(dim=-1, keepdim=True) * sigma2
+            ).expand_as(mean)
+        elif mode == "input":
+            # sigma2: [I, 1]
+            var = (x2 @ sigma2).expand_as(mean)
+        elif mode == "diagonal":
+            # sigma2: [I, O]
+            var = x2 @ sigma2
+        else:
+            raise ValueError(f"Unsupported sigma mode: {mode!r}")
 
     return mean.to(x.dtype), var.to(x.dtype)
+
 
 
 def _normalize_moments(
@@ -63,31 +74,22 @@ def _norm_directional_var(
     rho: torch.Tensor,
     eps: float = 1.0e-6,
 ):
-    """
-    Compute q^T Cov(normalize(a)) q without materializing Cov.
+    """Directional variance without constructing [B, C, D] tensors."""
+    with torch.autocast(device_type=query.device.type, enabled=False):
+        q = query.float()
+        y = y_mean.float()
+        v = pre_var.float().clamp_min(0.0)
+        r = rho.float().clamp_min(float(eps))
 
-    Args:
-        query:   [B, D]
-        y_mean:  [C, D]
-        pre_var: [C, D]
-        rho:     [C]
+        dot = q @ y.t()
 
-    Returns:
-        directional variance: [B, C]
-    """
-    q = query.float()
-    y = y_mean.float()
-    v = pre_var.float().clamp_min(0.0)
-    r = rho.float().clamp_min(float(eps))
+        a = q.square() @ v.t()
+        b = q @ (v * y).t()
+        c = (v * y.square()).sum(dim=-1).unsqueeze(0)
 
-    dot = q @ y.t()  # [B, C]
+        numerator = a - 2.0 * dot * b + dot.square() * c
+        out = numerator.clamp_min(0.0) / r.square().unsqueeze(0)
 
-    direction = (
-        q[:, None, :]
-        - dot[:, :, None] * y[None, :, :]
-    ) / r[None, :, None]
-
-    out = (direction.pow(2) * v[None, :, :]).sum(dim=-1)
     return out.to(query.dtype)
 
 
@@ -101,46 +103,40 @@ def _rep_logit_var(
     tau: float = 100.0,
     eps: float = 1.0e-6,
 ):
-    """
-    First-order logit variance for:
-        z = tau * normalize(g P_r)^T normalize(h P_t)
+    """Two-sided logit variance without [B, C, D] intermediates."""
+    with torch.autocast(device_type=r_mean.device.type, enabled=False):
+        r = r_mean.float()
+        t = t_mean.float()
+        rv = r_pre_var.float().clamp_min(0.0)
+        tv = t_pre_var.float().clamp_min(0.0)
+        rrho = r_rho.float().clamp_min(float(eps))
+        trho = t_rho.float().clamp_min(float(eps))
 
-    Args:
-        r_mean:    [B, D]
-        r_pre_var: [B, D]
-        r_rho:     [B]
-        t_mean:    [C, D]
-        t_pre_var: [C, D]
-        t_rho:     [C]
+        dot = r @ t.t()
+        dot2 = dot.square()
 
-    Returns:
-        var: [B, C]
-    """
-    r = r_mean.float()
-    t = t_mean.float()
-    rv = r_pre_var.float().clamp_min(0.0)
-    tv = t_pre_var.float().clamp_min(0.0)
+        # Image representation uncertainty.
+        ar = rv @ t.square().t()
+        br = (rv * r) @ t.t()
+        cr = (rv * r.square()).sum(dim=-1).unsqueeze(1)
 
-    rrho = r_rho.float().clamp_min(float(eps))
-    trho = t_rho.float().clamp_min(float(eps))
+        term_r = (
+            ar - 2.0 * dot * br + dot2 * cr
+        ).clamp_min(0.0)
+        term_r = term_r / rrho.square().unsqueeze(1)
 
-    dot = r @ t.t()  # [B, C]
+        # Text projection uncertainty.
+        at = r.square() @ tv.t()
+        bt = r @ (tv * t).t()
+        ct = (tv * t.square()).sum(dim=-1).unsqueeze(0)
 
-    # Random r side, query is t_c.
-    dir_r = (
-        t[None, :, :]
-        - dot[:, :, None] * r[:, None, :]
-    ) / rrho[:, None, None]
-    term_r = (dir_r.pow(2) * rv[:, None, :]).sum(dim=-1)
+        term_t = (
+            at - 2.0 * dot * bt + dot2 * ct
+        ).clamp_min(0.0)
+        term_t = term_t / trho.square().unsqueeze(0)
 
-    # Random t side, query is r_n.
-    dir_t = (
-        r[:, None, :]
-        - dot[:, :, None] * t[None, :, :]
-    ) / trho[None, :, None]
-    term_t = (dir_t.pow(2) * tv[None, :, :]).sum(dim=-1)
+        var = (float(tau) ** 2) * (term_r + term_t)
 
-    var = float(tau) * float(tau) * (term_r + term_t)
     return var.to(r_mean.dtype)
 
 
