@@ -10,11 +10,11 @@ OUTPUT_EFFICIENCY="${OUTPUT_EFFICIENCY:-output_efficiency}"
 
 SHOTS="${SHOTS:-16}"
 # 1 2 3
-SEEDS="${SEEDS:-1}"
+SEEDS="${SEEDS:-1 2 3}"
 #caltech101 eurosat fgvc_aircraft
-DATASETS="${DATASETS:-caltech101 }"
+DATASETS="${DATASETS:-fgvc_aircraft }"
 # MMRL BayesRTMMRL DetBayesRTMMRL
-METHODS="${METHODS:- DetBayesRTMMRL_CLAMP MMRL BayesRTMMRL }"
+METHODS="${METHODS:-  MMRL BayesRTMMRL DetBayesRTMMRL_CLAMP}"
 BACKBONE="${BACKBONE:-ViT-B/16}"
 PRETRAIN_EPOCHS="${PRETRAIN_EPOCHS:-0}"
 # 这里的STEPS不是epoch 而是batch

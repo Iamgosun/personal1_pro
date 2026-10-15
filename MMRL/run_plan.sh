@@ -21,8 +21,8 @@ PROTOCOL=${1:-FS}
 METHODS_ARG=${2:-  DetBayesRTMMRL_CLAMP }
 EXEC_MODE=${3:-online}
 
-DATASETS_ARG=${4:-"dtd  caltech101 fgvc_aircraft eurosat stanford_cars"}
-SHOTS_ARG=${5:-"1"}
+DATASETS_ARG=${4:-"caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   cifar_10"}
+SHOTS_ARG=${5:-"1 2 4 8 16 32"}
 SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
 
 # METHODS_ARG=${2:-  TipA }
@@ -45,7 +45,7 @@ TAG=${TAG:-}
 
 NGPU=${NGPU:-1}
 GPU_IDS=${GPU_IDS:-0 }
-JOBS_PER_GPU=${JOBS_PER_GPU:-4}
+JOBS_PER_GPU=${JOBS_PER_GPU:-3}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}
