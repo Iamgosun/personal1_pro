@@ -26,9 +26,11 @@ from run import _import_runtime_modules, _prepare_method_config_for_kplusval
 METHOD_FILES = {
     'MMRL': 'configs/methods/mmrl.yaml',
     'BayesRTMMRL': 'configs/methods/bayesrt_mmrl.yaml',
-    'DetBayesRTMMRL': 'configs/methods/det_bayesrt_mmrl.yaml',
+    'DetBayesRTMMRL_CLAMP': 'configs/methods/det_bayesrt_mmrl_clamp.yaml',
 }
-
+METHOD_ALIASES = {
+    'DetBayesRTMMRL_CLAMP': 'DetBayesRTMMRL',
+}
 
 def arguments():
     p = argparse.ArgumentParser(description=__doc__)
@@ -69,7 +71,7 @@ def make_cfg(a, out):
         protocol_config_file=a.protocol_config_file,
         runtime_config_file=a.runtime_config_file,
         exp_config=a.exp_config,
-        method=a.method, protocol='FS', exec_mode='online', seed=a.seed,
+        method=METHOD_ALIASES.get(a.method, a.method), protocol='FS', exec_mode='online', seed=a.seed,
         trainer='RefactorRunner', opts=opts,
     )
     for path in (args.dataset_config_file, args.method_config_file,
@@ -82,7 +84,9 @@ def make_cfg(a, out):
     finally:
         if sanitized:
             Path(sanitized).unlink(missing_ok=True)
-    if cfg.METHOD.NAME != a.method or cfg.METHOD.EXEC_MODE != 'online':
+
+    expected_method = METHOD_ALIASES.get(a.method, a.method)
+    if cfg.METHOD.NAME != expected_method or cfg.METHOD.EXEC_MODE != 'online':
         raise ValueError(f'Unexpected method/mode {cfg.METHOD.NAME}/{cfg.METHOD.EXEC_MODE}; check config')
     return cfg, args
 
