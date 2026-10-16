@@ -21,9 +21,9 @@ PROTOCOL=${1:-FS}
 METHODS_ARG=${2:-  DetBayesRTMMRL_CLAMP }
 EXEC_MODE=${3:-online}
 
-DATASETS_ARG=${4:-"caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   cifar_10"}
-SHOTS_ARG=${5:-"1 2 4 8 16 32"}
-SEEDS_ARG=${6:-${SEEDS:-"1 2 3 "}}
+DATASETS_ARG=${4:-"caltech101"}
+SHOTS_ARG=${5:-"1 "}
+SEEDS_ARG=${6:-${SEEDS:-"1 "}}
 
 # METHODS_ARG=${2:-  TipA }
 # DATASETS_ARG=${4:-" caltech101 "}
