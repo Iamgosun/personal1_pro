@@ -118,7 +118,7 @@ def summarize(output_root, profile):
         row = json.loads(f.read_text(encoding="utf-8"))
         if row.get("mode") not in METHODS or row.get("diagnostic_partial") or row.get("diagnostic_schema") != 5:
             continue
-        if profile != "all" and row.get("profile") != profile:
+        if row.get("profile") != "native":
             continue
         row = dict(row)
         folder = f.parent
@@ -157,13 +157,6 @@ def summarize(output_root, profile):
                 row[f"{split}_original_nll_difference_to_branch_mc"] = row[key] - branch[key]
             row["r_trace_ratio_to_branch_mc"] = row["r_trace"] / branch["r_trace"] if branch["r_trace"] else None
             row["t_trace_ratio_to_branch_mc"] = row["t_trace"] / branch["t_trace"] if branch["t_trace"] else None
-            if row["profile"] == "controlled":
-                row["train_fixed_original_reference_difference_to_branch_mc"] = (
-                    row["train_fixed_original_reference_loss"] - branch["train_fixed_original_reference_loss"]
-                )
-                row["test_original_reference_difference_to_branch_mc"] = (
-                    row["test_original_reference_loss"] - branch["test_original_reference_loss"]
-                )
             if row["mode"] != "branch_mc":
                 a, b = snapshot(row), snapshot(branch)
                 if a is not None and b is not None:
@@ -190,7 +183,7 @@ def summarize(output_root, profile):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--output-root", default="output_objective_fidelity_v3")
-    ap.add_argument("--profile", choices=("native", "controlled", "all"), default="all")
+    ap.add_argument("--profile", choices=("native",), default="native")
     args = ap.parse_args()
     summarize(args.output_root, args.profile)
 

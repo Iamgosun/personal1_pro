@@ -310,7 +310,7 @@ def main():
     p.add_argument("--dataset", required=True)
     p.add_argument("--shot", type=int, default=16)
     p.add_argument("--seed", type=int, default=1)
-    p.add_argument("--profile", choices=["native", "controlled"], default="native")
+    p.add_argument("--profile", choices=["native"], default="native", help="Only native is supported")
     p.add_argument("--gpu", default="0")
     p.add_argument("--samples", type=int, default=4096)
     p.add_argument("--chunk", type=int, default=16)

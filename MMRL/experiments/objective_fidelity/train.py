@@ -85,12 +85,7 @@ def build_run_args(options, mode, diagnostic=False):
     """Make a namespace matching repo.run.main/setup_cfg; keep original YAMLs."""
     from argparse import Namespace
 
-    if options.profile == "native":
-        method_yaml = DAVI_CFG if mode == "davi" else AVI_CFG
-    else:
-        # Truly controlled comparison with both ORIGINAL method/model classes:
-        # random_mmrl is unsupported by AVI, so use native shared self_proj_rep.
-        method_yaml = DAVI_CFG
+    method_yaml = DAVI_CFG if mode == "davi" else AVI_CFG
 
     dest = output_directory(options.output_root, options.profile, mode,
                             options.dataset, options.shot, options.seed)
@@ -99,8 +94,6 @@ def build_run_args(options, mode, diagnostic=False):
         "DATASET.SUBSAMPLE_CLASSES", "all",
         "HPO.ENABLED", "False",  # explicit: no HPO in this small comparison
     ]
-    if options.profile == "controlled":
-        overrides += ["BAYESRT_MMRL.R_PRIOR_MODE", "self_proj_rep"]
     if options.epochs is not None:
         overrides += ["OPTIM.MAX_EPOCH", str(options.epochs)]
     if options.mc_train is not None:
@@ -134,7 +127,7 @@ def main():
     p.add_argument("--dataset", required=True)
     p.add_argument("--shot", type=int, default=16)
     p.add_argument("--seed", type=int, default=1)
-    p.add_argument("--profile", choices=["native", "controlled"], default="native")
+    p.add_argument("--profile", choices=["native"], default="native", help="Only native is supported")
     p.add_argument("--epochs", type=int)
     p.add_argument("--mc-train", type=int)
     p.add_argument("--gpu", default="0")
@@ -160,8 +153,6 @@ def main():
     cfg = setup_cfg(args)
     if str(cfg.METHOD.NAME) != MODES[o.mode]:
         raise AssertionError(f"Unexpected METHOD.NAME: {cfg.METHOD.NAME}")
-    if o.profile == "controlled" and cfg.BAYESRT_MMRL.R_PRIOR_MODE != "self_proj_rep":
-        raise AssertionError("Controlled profile must share self_proj_rep initialization")
 
     eta, clamp = davi_diagnostic_params()
     # For native AVI/Original this is the DAVI surrogate used ONLY in diagnostics.

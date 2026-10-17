@@ -243,7 +243,7 @@ def make_plots(output_root, profile):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--output-root", default="output_objective_fidelity_v3")
-    ap.add_argument("--profile", choices=("native", "controlled", "all"), default="all")
+    ap.add_argument("--profile", choices=("native",), default="native")
     o = ap.parse_args()
     make_plots(o.output_root, o.profile)
 

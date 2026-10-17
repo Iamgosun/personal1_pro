@@ -5,7 +5,10 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 cd "$ROOT"
 
 GPU="${GPU:-0}"
-PROFILE="${PROFILE:-native}"
+if [[ -n "${PROFILE:-}" && "${PROFILE}" != "native" ]]; then
+  echo "Only PROFILE=native is supported" >&2; exit 2
+fi
+PROFILE="native"
 DATASETS="${DATASETS:-caltech101 }"
 SEEDS="${SEEDS:-1 }"
 MODES="${MODES:-original_mc branch_mc davi}"

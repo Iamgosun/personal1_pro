@@ -1,0 +1,169 @@
+% DAVI-Adapter supplemental section: rigorous scope of Jensen relaxations
+% Assumptions and notation follow main text; classification term is negative log-likelihood.
+\section{Fidelity of the Deterministic Training Surrogate}
+\label{app:objective_fidelity}
+For a fixed input $x$, target $y$, variational posterior $q_\psi(P_r,P_t)$,
+and deterministic prompt parameters $\Phi$, let $Z_c,Z_r\in\mathbb R^C$
+be the exact normalized posterior logits in the class-token and
+representation-token branches. Their random correct-class probabilities
+are $a=\operatorname{softmax}(Z_c)_y>0$ and
+$b=\operatorname{softmax}(Z_r)_y>0$. Put
+$\pi=(\alpha,1-\alpha)$, where $\alpha\in(0,1)$.
+The exact mixture negative log-likelihood and the branchwise objective are
+\begin{align}
+L_O&=\mathbb E_q[-\log(\alpha a+(1-\alpha)b)],\\
+L_B&=\alpha\mathbb E_q[-\log a]+(1-\alpha)\mathbb E_q[-\log b].
+\end{align}
+We use positive gaps for upward relaxations of the \emph{minimized} negative
+log-likelihood; the corresponding statements reverse direction for the
+maximized expected log-likelihood.
+
+\paragraph{Proposition 1 (exact mixture Jensen gap).}
+Let $m=\alpha a+(1-\alpha)b$ and $r=(\alpha a/m,(1-\alpha)b/m)$.
+Then
+\begin{equation}
+L_B-L_O=\mathbb E_q\big[\mathrm{KL}(\pi\Vert r)\big]\ge0.
+\label{eq:mix_exact}
+\end{equation}
+\emph{Proof.} Pointwise,
+$\alpha\log(\alpha/r_c)+(1-\alpha)\log((1-\alpha)/r_r)
+=\log m-\alpha\log a-(1-\alpha)\log b$.
+Taking $q$-expectations yields the claimed identity. Equality requires
+$a=b$ almost surely when $0<\alpha<1$. \hfill$\square$
+
+\paragraph{Proposition 2 (exact branchwise softmax Jensen gap).}
+For either branch $b\in\{c,r\}$ define
+$\mu_{bk}=\mathbb E Z_{bk}$,
+$A_{bk}=\log\mathbb E\exp(Z_{bk})$, and
+$T_b=\operatorname{LSE}(Z_b)$. Assume all exponential moments at one
+are finite. Set
+$L_{J,b}=\operatorname{LSE}(A_b)-\mu_{by}$ and
+$L_J=\sum_b\pi_b L_{J,b}$.
+Then
+\begin{equation}
+G_{\mathrm{soft}}:=L_J-L_B
+=\sum_b\pi_b\{\log\mathbb E e^{T_b}-\mathbb E T_b\}\ge0.
+\label{eq:soft_exact}
+\end{equation}
+Moreover, with $\delta_{bk}=A_{bk}-\mu_{bk}$,
+\begin{equation}
+0\le L_{J,b}-L_{B,b}\le\max_k\delta_{bk}.
+\label{eq:soft_upper_general}
+\end{equation}
+\emph{Proof.} Since $\exp(T_b)=\sum_k\exp Z_{bk}$,
+$\log\mathbb E\exp(T_b)=\operatorname{LSE}(A_b)$.
+Concavity of $\log$ proves \eqref{eq:soft_exact}. Convexity of
+$\operatorname{LSE}$ yields $\mathbb E T_b\ge\operatorname{LSE}(\mu_b)$;
+its $\ell_\infty$-Lipschitz property yields
+$\operatorname{LSE}(A_b)-\operatorname{LSE}(\mu_b)
+\le\max_k(A_{bk}-\mu_{bk})$. \hfill$\square$
+
+If each exact marginal logit is Gaussian,
+$A_{bk}=\mu_{bk}+v_{bk}/2$, and the familiar
+$G_{\mathrm{soft},b}\le\frac12\max_k v_{bk}$ follows. This \emph{Gaussian
+conditional} bound does not automatically apply to the exact normalized
+DAVI logits, whose distributions are generally non-Gaussian.
+
+\paragraph{Proposition 3 (signed Gaussian log-mgf substitution).}
+Write $v_{bk}=\operatorname{Var}(Z_{bk})$ and define
+\begin{equation}
+L_G=\sum_b\pi_b\{-\mu_{by}+
+\operatorname{LSE}(\mu_b+v_b/2)\}.
+\end{equation}
+The error $E_G=L_G-L_J$ need not have a fixed sign. Moreover,
+\begin{equation}
+|E_G|\le\sum_b\pi_b\max_k
+|A_{bk}-\mu_{bk}-v_{bk}/2|.
+\end{equation}
+\emph{Proof.} The true-mean terms cancel, and the claim follows
+from the $\ell_\infty$-Lipschitz property of $\operatorname{LSE}$.
+For bounded logits the cumulant-generating function
+$K(t)=\log\mathbb E\exp(tZ)$ has three derivatives on $[0,1]$,
+and Taylor's integral remainder shows
+$A-\mu-v/2=\frac12\int_0^1(1-t)^2 K'''(t)\,dt$. \hfill$\square$
+
+
+\paragraph{Proposition 4 (first-order normalized projection moments).}
+For $m\ne0$ the Jacobian of $g(a)=a/\|a\|_2$ is
+$Dg(m)=(I-uu^\top)/\rho$, where $u=m/\rho$, $\rho=\|m\|_2$.
+For independent image and text Gaussian projection perturbations,
+the first-order linearized representation logit is
+\begin{align}
+Z^{(1)}_{rk}=\tau\bigg[u_r^\top u_{tk}
++\frac{[(I-u_ru_r^\top)u_{tk}]^\top\epsilon_r}{\rho_r}
++\frac{[(I-u_{tk}u_{tk}^\top)u_r]^\top\epsilon_{tk}}{\rho_{tk}}\bigg].
+\end{align}
+It is Gaussian, but this statement only concerns the \emph{linearization},
+not the exact L2-normalized logits. Let $(\widetilde\mu_b,
+\widetilde v_b)$ be DAVI's first-order moments, prior to
+variance scaling and clipping. Define
+\begin{equation}
+L_P=\sum_b\pi_b\big[-\widetilde\mu_{by}
++\operatorname{LSE}(\widetilde\mu_b+\widetilde v_b/2)\big].
+\end{equation}
+Then the signed propagation error satisfies
+\begin{equation}
+|L_P-L_G|\le\sum_b\pi_b\Big[
+2\|\widetilde\mu_b-\mu_b\|_\infty+
+\tfrac12\|\widetilde v_b-v_b\|_\infty\Big].
+\end{equation}
+This conditional error bound does not guarantee that a first-order
+approximation is accurate for all variational posteriors. In particular,
+very low pre-normalization SNR may invalidate a useful linearization.
+
+\paragraph{Proposition 5 (explicit variance scale).}
+Let $\eta\ge0$ be the production variance scale and set
+\begin{equation}
+L_S=\sum_b\pi_b\big[-\widetilde\mu_{by}
++\operatorname{LSE}(\widetilde\mu_b+\eta\widetilde v_b/2)\big].
+\end{equation}
+For $\widetilde v_b\ge0$,
+$L_S-L_P\ge0$ when $\eta\ge1$, and $L_S-L_P\le0$
+when $0\le\eta\le1$. Furthermore,
+\begin{equation}
+|L_S-L_P|\le\frac{|\eta-1|}{2}
+\sum_b\pi_b\max_k\widetilde v_{bk}.
+\end{equation}
+This term is exactly zero when the production configuration sets $\eta=1$.
+
+\paragraph{Proposition 6 (production variance clipping).}
+Let $L_D$ replace $\widetilde v_{bk}$ in $L_S$ with
+$\min(\widetilde v_{bk},C)$ for $C>0$. For $\eta\ge0$,
+\begin{equation}
+-\frac\eta2\sum_b\pi_b\max_k(\widetilde v_{bk}-C)_+
+\le L_D-L_S\le0.
+\end{equation}
+For nonpositive configured clip thresholds the implementation disables
+clipping and this term is zero. Both variance scaling and clipping
+are part of the \emph{implemented} training surrogate, not separate
+rigorous Jensen relaxations.
+
+\paragraph{Theorem (exact six-term telescoping identity).}
+For any fixed model parameters, and population quantities $L_O,L_B,
+L_J,L_G,L_P,L_S,L_D$ defined above,
+\begin{align}
+\boxed{L_D-L_O={}&\underbrace{(L_B-L_O)}_{G_{\rm mix}\ge0}
++\underbrace{(L_J-L_B)}_{G_{\rm soft}\ge0}\notag\\
+&+\underbrace{(L_G-L_J)}_{E_{\rm Gaussian}\text{ signed}}
++\underbrace{(L_P-L_G)}_{E_{\rm prop}\text{ signed}}\notag\\
+&+\underbrace{(L_S-L_P)}_{E_{\rm scale}\text{ signed}}
++\underbrace{(L_D-L_S)}_{E_{\rm clip}\le0}.}
+\end{align}
+\emph{Proof.} Add and subtract intermediate objectives and telescope;
+the signs follow Propositions 1--6. \hfill$\square$
+
+This is an identity, not a claim that the implemented DAVI objective
+is a globally valid bound on the exact original AVI objective.
+Finite posterior MC approximates the population $L_O,L_B,L_J,L_G$:
+in particular, $\log[S^{-1}\sum_s e^{Z_k^{(s)}}]$ has finite-$S$
+bias and can be dominated by rare large logits. We report nested $S$
+convergence, independent posterior MC repetitions and minimum empirical
+exponential-weight ESS. Those repetitions quantify MC variability, not
+unobserved estimator bias. An exact $L_D$--$L_O$ comparison is made
+\emph{within the same checkpoint and input distribution}, not by
+subtracting objectives across different training methods.
+
+For per-image loss values $\ell_D(x),\ell_O(x)$, Table~A reports both
+$\mathbb E_x[\ell_D-\ell_O]$ and
+$\mathbb E_x|\ell_D-\ell_O|$; the latter cannot
+vanish through cancellation of positive and negative errors.

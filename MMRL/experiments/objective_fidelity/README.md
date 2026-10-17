@@ -1,125 +1,92 @@
-# Objective Fidelity V5 — 固定训练集 + 测试集双协议诊断
+# DAVI Objective Fidelity V5 — 第一阶段核心修订（native-only）
 
-本版本**只修改实验目录**，不改原始模型、训练器、KL、优化器和正式 `static_logit` 推理。以 V4 三方法包为基础，恢复并保留：
+此文件夹**完整保留 V5 的六个入口文件**：`train.py`、`evaluate.py`、`summarize.py`、`plot_results.py`、`run_study.sh`、`README.md`。保留 `original_mc`、`branch_mc`、`davi` 三种训练方法及原 V5 八类图，**不修改** `MMRL/methods/`、`MMRL/core/`、模型配置、先验、KL、优化器、checkpoint 或原来的 `fidelity.json`。
 
-| 方法 | 原有 / 实验类 | 用途 |
-|---|---|---|
-| `original_mc` | 小型 `FidelityOriginalMC(BayesRTMMRLMethod)` 子类 | 原始 Eq. (3) 概率混合目标的 Jensen 分解消融 |
-| `branch_mc` | 原生 `BayesRTMMRLMethod` | 两分支 MC 损失参照 |
-| `davi` | 原生 `DetBayesRTMMRLMethod` | 确定性矩近似 |
+## 第一阶段到底要回答什么
 
-## 最重要的 V5 修正
-
-1. `evaluate.py` **不再**把含随机裁剪、翻转的 `train_loader_x` 直接当参考集。它构造 `train_fixed`：保留 few-shot 训练图像和标签，但**强制使用原始 test loader 的确定性预处理**，顺序固定，无随机增广。`test` 直接取原始正式测试集图像/标签，使用相同确定性预处理。两个 split 都只用于 **checkpoint 离线评估**；不参与训练、超参选择或模型更新。
-2. 对 `train_fixed` 和 `test` **分别计算全部三个目标**：`original_nll`、`branch_nll`、`det_nll`，并计算 `mix_gap`、`det_gap`、`total_gap`。每个 gap 都是在**同一个 checkpoint、同一批输入、同一分布**上计算，不能跨方法相减解释为近似误差。
-3. 两个 split 都输出 `main_nll`、`rep_nll`、`main_accuracy`、`rep_accuracy`、`static_prob_accuracy`、`static_logit_accuracy`，使用足量的 MC 后验样本。`static_prob` 只用于比较，三种方法**正式测试仍用 `static_logit`**。
-4. 每个 split 记录 `input_sha256`（按固定遍历顺序对输入张量和标签哈希）。`summarize.py` 在计算跨 checkpoint 差异前核对同一数据集/seed/split 的哈希。不一致直接报错，不再默认为可比。
-5. 图表分别展示训练集和测试集的三目标、Main/Rep、误差分解、融合对照，不会把训练 NLL 当作测试指标。
-6. 修正 V4 的一个标注错误：`representation_learner()` 实际返回 **(text tokens, visual tokens)**；旧快照曾把这两类有效提示误标。V5 评估会重新生成正确标注的 `posterior_diagnostic.pt`。
-
-**注意**：`train_fixed` 的固定测试风格预处理与训练时的随机增广不是同一个输入分布。因此 `train_fixed` 指标用于可复现的后验和目标函数诊断，不应描述为“原始训练期随机增强目标的精确平均值”。`test` 参考目标是 held-out 数据上的估计，既不是训练过程使用的目标，也不是原生训练器输出的 `test_nll`。后者按最终 `static_logit` 预测计算。
-
-## 部署（完整覆盖 `experiments/objective_fidelity/`）
-
-将 `objective_fidelity_v5_fixed_train_test.zip` 上传到 `MMRL/` 根目录：
-
-```bash
-cd ~/autodl-tmp/MMRL
-cp -r experiments/objective_fidelity experiments/objective_fidelity_backup_v4
-unzip -o objective_fidelity_v5_fixed_train_test.zip -d experiments/
-```
-
-包含 6 个文件：`train.py`、`evaluate.py`、`summarize.py`、`plot_results.py`、`run_study.sh`、`README.md`。
-
-## 用已有 checkpoint 重新评估（无需重训）
-
-已有训练完成标志与 `experiment_manifest.json` 时，会自动跳过训练；**旧版 V4 fidelity.json 会强制重评**，因为数据协议已经改变。
-
-```bash
-GPU=0 PROFILE=native DATASETS="caltech101" SEEDS="1" \
-  SAMPLES=128 CHUNK=8 REF_BATCH=32 FEATURES=128 \
-  bash experiments/objective_fidelity/run_study.sh
-```
-
-用于最终论文统计时，再改为较大参考采样数：
-
-```bash
-GPU=0 PROFILE=native DATASETS="fgvc_aircraft eurosat food101" SEEDS="1 2 3" \
-  SAMPLES=4096 CHUNK=16 REF_BATCH=32 FEATURES=128 \
-  bash experiments/objective_fidelity/run_study.sh
-```
-
-建议先从少量采样调试并确认可运行，再提高到 4096。**双 split 都进行 MC 评估，总耗时将明显高于 V4**。不建议在最终论文参考数值使用 `--limit-batches`，其输出仅保存为 `fidelity_smoke.json`，不会被汇总。
-
-可以单独调用评估：
-
-```bash
-python experiments/objective_fidelity/evaluate.py \
-  --mode original_mc --profile native --dataset caltech101 \
-  --shot 16 --seed 1 --gpu 0 --samples 128 --chunk 8 \
-  --reference-batch-size 32 --features 128
-```
-
-## 输出与字段
-
-输出目录沿用 `output_objective_fidelity_v3/`（或自定义 `OUT`），原有三个 checkpoint 保留。
-
-```text
-OUT/native/original_mc/caltech101/shot_16/seed1/fidelity.json
-OUT/native/branch_mc/caltech101/shot_16/seed1/fidelity.json
-OUT/native/davi/caltech101/shot_16/seed1/fidelity.json
-OUT/objective_fidelity_three_method_native.csv
-OUT/plots/native/fig01_reference_objectives.png
-OUT/plots/native/fig02_branch_supervision_train_fixed.png
-OUT/plots/native/fig02_branch_supervision_test.png
-OUT/plots/native/fig03_gap_decomposition.png
-OUT/plots/native/fig04_fusion_diagnostic.png
-OUT/plots/native/fig05_test_accuracy_nll.png
-...
-```
-
-字段命名前缀严格区分 split：
-
-- `train_fixed_original_nll` / `test_original_nll`
-- `train_fixed_branch_nll` / `test_branch_nll`
-- `train_fixed_det_nll` / `test_det_nll`
-- `train_fixed_mix_gap` / `test_mix_gap`
-- `train_fixed_det_gap` / `test_det_gap`
-- `train_fixed_total_gap` / `test_total_gap`
-- `train_fixed_main_nll` / `test_main_nll`，`train_fixed_rep_nll` / `test_rep_nll`
-- `train_fixed_main_accuracy` / `test_main_accuracy`，`train_fixed_rep_accuracy` / `test_rep_accuracy`
-- `train_fixed_static_prob_accuracy` / `test_static_prob_accuracy`
-- `train_fixed_static_logit_accuracy` / `test_static_logit_accuracy`
-- `train_fixed_input_sha256` / `test_input_sha256`，`*_num_examples`
-
-`test_nll` 和 `test_accuracy` **不带“reference”语义**，是汇总时从原生训练器正式测试报告读取的指标；不要与新字段 `test_original_nll`、`test_static_logit_accuracy` 混淆（采样数和测试评估策略可能不同）。
-
-三个参考目标在同一个 checkpoint 上分别是：
+在**同一个已经训练好的 native checkpoint** 及同一批输入上，计算三个分类目标：
 
 \[
-L_o=\mathbb E_{q}[-\log(\alpha p_c(y)+(1-\alpha)p_r(y))],
-\quad
-L_b=\alpha\mathbb E_q[-\log p_c(y)]+(1-\alpha)\mathbb E_q[-\log p_r(y)],
+L_O=\mathbb E_{q(P_r,P_t)}[-\log(\alpha p_m(y)+(1-\alpha)p_r(y))],
+\quad L_B=\alpha\mathbb E_q[-\log p_m(y)]+(1-\alpha)\mathbb E_q[-\log p_r(y)],
 \]
-
 \[
-L_d=\alpha\,\mathrm{detCE}(\mu_c,v_c)+(1-\alpha)\,\mathrm{detCE}(\mu_r,v_r).
+L_D=\alpha\operatorname{detCE}(\widetilde\mu_m,\widetilde v_m)
++(1-\alpha)\operatorname{detCE}(\widetilde\mu_r,\widetilde v_r).
 \]
 
-\[
-\mathrm{mix\_gap}=L_b-L_o\ge 0,\quad
-\mathrm{det\_gap}=L_d-L_b,\quad
-\mathrm{total\_gap}=L_d-L_o.
-\]
+核心只报告：
 
-`det_gap`、`total_gap` 在当前近似矩和方差截断下不保证非负。KL 和 alignment 作为共同参考项添加到各目标，但 **test split 的 KL 使用原训练批次数归一化**，不按测试集 batch 数重新定义。只有 NLL 才是严格的 per-example 预测损失。
+- **Mix Gap** = `Branch - Original`，严格非负，反映第一次 Jensen 松弛。
+- **Det Gap** = `DAVI - Branch`，允许正负，反映 DAVI 实际确定性代理相对原生 Branch 目标的净误差。
+- **Total Gap** = `DAVI - Original`，允许正负。再报告逐图像的 `E|DAVI-Branch|` 避免正负抵消。
 
-## 原生配置与控制变量
+**特别重要**：两个严格 Jensen 不等式不代表代码中的 DAVI（归一化的 Taylor 近似 + `DET_VAR_CLAMP=50`）必然对原始 AVI 构成严格上界。附录的六项分解仅用来定位异常，**不是论文主表的六个中心问题**。
 
-`PROFILE=native`：DAVI 使用 `R_PRIOR_MODE=random_mmrl`，另外两种 MC 方法使用 `zero`。因此 DAVI 与 Branch-MC 的后验差异不能全部归因于目标函数。
+## 与真实模型和配置的关系
 
-`PROFILE=controlled`：三者统一使用原生两模型都支持的 `self_proj_rep`，并共享先验、KL 等配置。这是有意改变 DAVI 原生初始化的控制变量实验；不要与 native 结果混为一谈。
+- 使用你仓库的 **native 配置**：DAVI 的 `R_PRIOR_MODE=random_mmrl`；Branch/Original 为 `zero`；两侧 `SIGMA_MODE=output`；`T_TRAIN_MEAN=False`；`ALPHA=0.7`；`DET_VAR_SCALE=1.0`、`DET_VAR_CLAMP=50.0`。
+- 采样使用原始 `text_sample_features`、`rep_samples`、L2 归一化和共享文本投影样本。确定性部分复用原生 `forward_joint_moments` 的数学函数；在第一批数据中验证缓存前向的 logits/矩与原生前向是否一致，逐批核对 `det_jensen_ce`。
+- **第一阶段不训练新模型。** `stage1_evaluate.py` 从现有 `output_objective_fidelity_v3/native/<mode>/<dataset>/shot_<K>/seed<N>/` 读取 manifest 和 checkpoint，不会修改训练结果。原 V5 实验的 `--profile native` 兼容保留，`controlled` 不支持。
+- `train_fixed` 为训练图片但统一应用测试式确定性预处理；`test` 为正式 held-out 数据。均不是随机增广的训练 ELBO，也不同于 `static_logit` 推理指标。KL 和 cosine alignment 在同一 checkpoint 的三目标差分中相同而抵消，故 Table A 仅比较分类 NLL。
 
-## 检查结果与限制
+## 直接替换
 
-提交前进行了 Python 编译、Shell 语法、固定输入 loader 单元测试和模拟前向参考损失单元测试，以及汇总与绘图的离线烟雾测试。**由于当前环境没有 Dassl 和对应 CLIP checkpoint，没有声称运行了 GPU 端到端诊断。** 旧 V4 的训练集 CSV 数据不可直接和新 V5 的 `train_fixed` 数值比较，因为输入增广协议已经改变。
+将 ZIP 放在 `MMRL/` 下并备份旧目录：
+
+```bash
+mv experiments/objective_fidelity experiments/objective_fidelity_backup_$(date +%Y%m%d_%H%M%S)
+unzip -o DAVI_objective_fidelity_Phase1_CORE_FIXED.zip -d experiments/
+```
+
+## 推荐顺序（只需两步）
+
+首先执行 CPU 数值单元测试；此项不要求你重训模型：
+
+```bash
+python -m unittest discover -s experiments/objective_fidelity/tests -p 'test_stage1_*.py' -v
+```
+
+然后使用已有 Caltech101 seed1 **native checkpoint** 进行低成本检查：
+
+```bash
+GPU=0 DATASETS='caltech101' SEEDS='1' MODES='davi branch_mc' \
+SAMPLES=128 REPEATS=1 GRID='32,128' \
+bash experiments/objective_fidelity/run_phase1_native.sh
+```
+
+通过后，可用相同模型增大参考 MC 样本数，并逐步扩充数据集/seed：
+
+```bash
+GPU=0 DATASETS='caltech101' SEEDS='1' MODES='davi branch_mc' \
+SAMPLES=4096 REPEATS=1 GRID='64,256,1024,4096' \
+bash experiments/objective_fidelity/run_phase1_native.sh
+```
+
+论文报告建议在确认 S 收敛后使用 Aircraft、EuroSAT、Food101 × seed1,2,3。若怀疑小概率 tail 导致 MC 不稳定，可设 `REPEATS=3`，但这不是必要的默认实验。**不同 S 及 repeats 保存为不同文件**，不会覆盖旧 `fidelity.json`。已有相同文件时会拒绝静默覆盖。
+
+所有汇总输出统一位于 `OUT/phase1_summary/<split>/`，不再散落在 `MMRL/` 根目录。目录内包含：
+
+- `table_a_native_<split>.csv`、`.md`：主表。
+- `table_a_native_<split>_raw.csv`：完整数值诊断。
+- `table_a_native_<split>_convergence.csv`：不同 MC 样本数的汇总。
+- `figures/figure_A_det_gap_vs_variance.pdf` 和 `.png`：Det Gap 与近似 logit 方差的关系。
+- 只有存在至少两个不同的 MC 采样数，才绘制 `figures/figure_A_mc_convergence_<dataset>.pdf` 和 `.png`。
+
+每个 checkpoint 的原始 JSON 仍保存在 `OUT/native/<mode>/<dataset>/shot_<K>/seed<N>/phase1/`。图中全部采用 ASCII 英文标签，PDF 嵌入 TrueType 字体，并同时输出 PNG，避免部分服务器或 PDF 阅读器的符号乱码问题。
+
+**无需重跑 GPU 的重新汇总/绘图：** 若已有同一 S/R 的 `stage1_*.json`，替换代码后只执行：
+
+```bash
+OUT=output_objective_fidelity_v3 DATASETS=caltech101 SEEDS=1 MODES='branch_mc davi' \
+SAMPLES=10 REPEATS=1 RENDER_ONLY=1 \
+bash experiments/objective_fidelity/run_phase1_native.sh
+```
+
+上面的 `SAMPLES`、`REPEATS` 必须与原 JSON 文件名一致。原有散落在 `MMRL/` 根目录的旧 CSV/Markdown/图不会自动删除，可在核对新输出后自行清理。
+
+## 结果的学术边界
+
+同一 checkpoint 的 Gap 是目标近似关系的证据；不同 checkpoint 之间的 Gap 大小还受 learned posterior 所在区域影响。跨方法的后验距离、梯度、深度提示与预测校准属于下一阶段，不应该由 Table A 单独推出因果结论。
+
+本包已通过本地数学和脚本测试，但**尚未在你的完整 Dassl/CLIP/GPU/checkpoint 环境中运行**；真实运行中的 cache/native parity 和生产损失比较不通过时，评估会立即停止。
