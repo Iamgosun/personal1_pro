@@ -15,12 +15,12 @@ set -euo pipefail
 
 # dtd tinyimagenet oxford_flowers sun397 inaturalist lsun
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-"  DetBayesRTMMRL_CLAMP  "}
+METHODS_ARG=${2:-"  MMRL  BayesRTMMRL DetBayesRTMMRL_CLAMP  "}
 EXEC_MODE=${3:-online}
 ID_DATASET=${4:-cifar_10}
-OOD_DATASETS_ARG=${5:-"    dtd tinyimagenet oxford_flowers sun397 inaturalist lsun  "}
+OOD_DATASETS_ARG=${5:-"    dtd tinyimagenet oxford_flowers inaturalist lsun  "}
 SHOTS_ARG=${6:-"16 "}
-SEEDS_ARG=${7:-${SEEDS:-"1 2 3"}}
+SEEDS_ARG=${7:-${SEEDS:-"1"}}
 
 DATA_ROOT=${DATA_ROOT:-DATASETS}
 OUTPUT_ROOT=${OUTPUT_ROOT:-output_refactor}

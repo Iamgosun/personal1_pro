@@ -29,3 +29,19 @@ def register_trajectory():
                 from pathlib import Path
                 root=Path(self.cfg.OUTPUT_DIR)/'trajectory'
                 self.save_model(self.epoch,str(root),is_best=False)
+
+    # E3 needs only two intermediate checkpoints (e.g. epochs 5 and 25),
+    # rather than storing all 50. The snapshot is taken after the native epoch
+    # lifecycle and does not perform an extra forward pass or sample from q.
+    if 'SupplementSelectedRunner' not in names:
+        @TRAINER_REGISTRY.register()
+        class SupplementSelectedRunner(SupplementInitRunner):
+            def after_epoch(self):
+                super().after_epoch()
+                import os
+                from pathlib import Path
+                raw=os.environ.get('DAVI_SUPPLEMENT_E3_SAVE_EPOCHS','')
+                epochs={int(v) for v in raw.split(',') if v.strip()}
+                if self.epoch+1 in epochs:
+                    root=Path(self.cfg.OUTPUT_DIR)/'trajectory'
+                    self.save_model(self.epoch,str(root),is_best=False)

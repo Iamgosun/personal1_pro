@@ -94,7 +94,8 @@ def register_original():
 
 
 def make_args(dataset, method, shot, seed, output_root, study, data_root,
-              epochs=None, mc_train=None, extra=(), trajectory=False, init_snapshot=False):
+              epochs=None, mc_train=None, extra=(), trajectory=False, init_snapshot=False,
+              e3_snapshot_epochs=()):
     root = Path(data_root)
     if not root.is_absolute():
         root = ROOT / root
@@ -105,7 +106,10 @@ def make_args(dataset, method, shot, seed, output_root, study, data_root,
         opts += ['OPTIM.MAX_EPOCH', str(epochs)]
     if mc_train is not None:
         opts += ['BAYESRT_MMRL.N_MC_TRAIN', str(mc_train)]
-    trainer_name=('SupplementTrajectoryRunner' if trajectory else
+    if e3_snapshot_epochs and (trajectory or init_snapshot):
+        raise ValueError('E3 selected epoch snapshots must not be mixed with --trajectory/--init-snapshot')
+    trainer_name=('SupplementSelectedRunner' if e3_snapshot_epochs else
+                  'SupplementTrajectoryRunner' if trajectory else
                   'SupplementInitRunner' if init_snapshot else 'RefactorRunner')
     if trainer_name!='RefactorRunner':
         opts += ['TRAINER.NAME', trainer_name]
@@ -129,7 +133,8 @@ def setup(ns):
     from datasets.fair_val_protocol import install_kplusval_datasetbase_patch
     run._import_runtime_modules()
     register_original()
-    if any(x in ns.opts for x in ('SupplementInitRunner','SupplementTrajectoryRunner')):
+    if any(x in ns.opts for x in ('SupplementInitRunner','SupplementTrajectoryRunner',
+                                    'SupplementSelectedRunner')):
         from .runner import register_trajectory
         register_trajectory()
     original = ns.method_config_file
@@ -188,6 +193,12 @@ def checkpoint_path(run_dir, selection='best', epoch=None):
         root = run_dir/'trajectory'
         path = root/'refactor_model'/f'model.pth.tar-{epoch}'
         load_epoch = epoch
+    elif selection == 'time_curve':
+        if epoch not in (0,25,50,75,100):
+            raise ValueError('E5 time_curve phase must be one of 0,25,50,75,100')
+        root = run_dir/'time_curve'
+        path = root/'refactor_model'/f'model.pth.tar-{epoch}'
+        load_epoch = epoch
     elif selection == 'best':
         root = run_dir
         path = root/'refactor_model'/'model-best.pth.tar'
@@ -209,6 +220,39 @@ def checkpoint_path(run_dir, selection='best', epoch=None):
                 'or produce a genuine validation-best checkpoint.')
         raise FileNotFoundError(path)
     return root, path, load_epoch
+
+
+def e3_checkpoint_request(run_dir, request):
+    """Resolve an E3 epoch to a REAL checkpoint; never infer missing weights.
+
+    Returns (selection, epoch). `latest` remains the native final checkpoint;
+    a numeric final epoch also resolves to that file. Intermediate checkpoints
+    use snapshots from a prior DAVI run with --e3-snapshot-epochs or --trajectory.
+    """
+    run_dir=Path(run_dir)
+    if request=='latest':
+        checkpoint_path(run_dir,'latest')
+        return 'latest',None
+    if not str(request).isdecimal():
+        raise ValueError('E3_EPOCHS accepts only positive epoch numbers or latest')
+    epoch=int(request)
+    if epoch<1:
+        raise ValueError('E3_EPOCHS epoch numbers must be positive')
+    try:
+        _, _, last=checkpoint_path(run_dir,'latest')
+    except FileNotFoundError:
+        last=None
+    if epoch==last:
+        return 'latest',None
+    snapshot=run_dir/'trajectory'/'refactor_model'/f'model.pth.tar-{epoch}'
+    if snapshot.is_file():
+        return 'trajectory',epoch
+    raise FileNotFoundError(
+        f'E3 requested epoch {epoch} but checkpoint does not exist: {snapshot}. '
+        'The saved final epoch cannot reconstruct earlier weights. '
+        'Use a NEW OUT (e.g. output_supplementary_v7_e3epochs) with '
+        'E3_EPOCHS="5 25 latest" to train DAVI and save selected snapshots; '
+        'do not delete or overwrite the existing DAVI run.')
 
 
 def verify_checkpoint(model, checkpoint_file):
@@ -249,7 +293,9 @@ def restore(run_dir, gpu='0', selection='best', epoch=None):
     ns = make_args(meta['dataset'], meta['method'], meta['shot'], meta['seed'],
         meta['output_root'], meta['study'], meta['data_root'],
         meta['epochs_override'], meta['mc_train_override'], meta['extra'],
-        meta['trajectory'], meta.get('init_snapshot',False))
+        meta['trajectory'], (meta.get('init_snapshot',False) and
+                             not meta.get('e3_snapshot_epochs')),
+        meta.get('e3_snapshot_epochs',()))
     if Path(ns.output_dir).resolve() != run_dir:
         raise RuntimeError('Manifest output path does not match selected run')
     trainer, cfg = setup(ns)

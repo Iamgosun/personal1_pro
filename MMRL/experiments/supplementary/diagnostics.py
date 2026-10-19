@@ -42,6 +42,17 @@ def _running_mean_and_m2(old_n, old_mean, old_m2, chunk):
     return old_mean + delta*s/(old_n+s), old_m2 + within + delta.square()*old_n*s/(old_n+s)
 
 
+def mc_mean_logit_margin(mean_rep_logits, y):
+    """V7 E4: true-class minus strongest other class on MC-MEAN logits."""
+    if mean_rep_logits.ndim != 2 or y.ndim != 1 or len(y) != len(mean_rep_logits):
+        raise ValueError('E4 Rep mean-logit/label shape mismatch')
+    if mean_rep_logits.shape[1] < 2:
+        raise ValueError('E4 Rep margin requires >=2 classes')
+    mask = F.one_hot(y.long(), mean_rep_logits.shape[1]).bool()
+    return mean_rep_logits.gather(1, y.long()[:, None]).squeeze(1) - \
+        mean_rep_logits.masked_fill(mask, float('-inf')).max(-1).values
+
+
 def posterior_summary(method, initial_state=None):
     model = method.model
     r, t = model.image_encoder.bayes_proj_rep, model.text_posterior
@@ -168,19 +179,28 @@ def reference_diagnostics(trainer, loader, n_samples=1024, chunk=16, limit=None,
                 text_ref = F.normalize(method.text_features_clip[:classes].to(y.device).float(),-1)
                 if bi==0:
                     text_class_cos=F.cosine_similarity(text_mean,text_ref,-1).cpu().tolist()
-            # Match production single-branch output: log(mean_s softmax(z_s)).
-            # NOT the argmax/scale of mean sampled logits.
+            # E4 V7 metric: margin of MC-MEAN Rep logits, consistent with
+            # static_logit; it is not the mean of sampled margins or BMA margin.
+            true_mask=F.one_hot(y,classes).bool()
+            rep_margin=mc_mean_logit_margin(m_r,y)
+            # Separate, explicitly labeled BMA log-probability margin for
+            # legacy predictive analysis; NEVER use as Figure S4 logit margin.
             rep_logp=pr.clamp_min(1e-12).log()
-            rep_margin=rep_logp.gather(1,y[:,None]).squeeze(1)-rep_logp.masked_fill(
-                F.one_hot(y,classes).bool(),float('-inf')).max(-1).values
+            rep_logp_margin=rep_logp.gather(1,y[:,None]).squeeze(1)-rep_logp.masked_fill(
+                true_mask,float('-inf')).max(-1).values
             for i in range(len(y)):
                 z = dict(original_nll=float(o[i]), branch_nll=float(b[i]),
                     gap1=float(b[i]-o[i]), main_mc_ce=float(mc[i]), rep_mc_ce=float(mr[i]),
                     rho_rep=float(rho[i]), main_correct=int(pm[i].argmax()==y[i]),
                     rep_correct=int(pr[i].argmax()==y[i]), rep_margin=float(rep_margin[i]),
+                    rep_logp_margin=float(rep_logp_margin[i]),
                     visual_clip_cos=float(image_sim[i]), sampled_var=float(
                         (alpha*m2_c[i].mean()+(1-alpha)*m2_r[i].mean())/n),
-                    empirical_jensen_gap=float(empirical_j[i]-b[i]))
+                    empirical_jensen_gap=float(empirical_j[i]-b[i]),
+                    main_empirical_jensen_gap=float(jc[i]-mc[i]),
+                    rep_empirical_jensen_gap=float(jr[i]-mr[i]),
+                    main_sampled_var=float(m2_c[i].mean()/n),
+                    rep_sampled_var=float(m2_r[i].mean()/n))
                 if do_det:
                     gmain = det_ce_per_image(m_c[i:i+1].float(),(m2_c[i:i+1]/n).float(),y[i:i+1], 1.0, 0.0)
                     grep = det_ce_per_image(m_r[i:i+1].float(),(m2_r[i:i+1]/n).float(),y[i:i+1], 1.0, 0.0)
@@ -194,9 +214,7 @@ def reference_diagnostics(trainer, loader, n_samples=1024, chunk=16, limit=None,
                              gaussian_mgf_error=empirical_g-float(empirical_j[i]),
                              propagation_and_native_variance_error=float(dloss[i])-empirical_g,
                              main_abs_det_gap=float((dmain[i]-mc[i]).abs()),
-                             rep_abs_det_gap=float((drep[i]-mr[i]).abs()),
-                             main_sampled_var=float(m2_c[i].mean()/n),
-                             rep_sampled_var=float(m2_r[i].mean()/n))
+                             rep_abs_det_gap=float((drep[i]-mr[i]).abs()))
                 rows.append(z)
                 if vectors and do_det:
                     all_vectors.append({k:val[i].detach().cpu().float().tolist() for k,val in {
@@ -208,9 +226,11 @@ def reference_diagnostics(trainer, loader, n_samples=1024, chunk=16, limit=None,
     summary = {k:statistics.mean(row[k] for row in rows) for k in rows[0]}
     summary.update({'n_images':len(rows),'s_ref':n_samples,
                     'input_sha256':input_digest.hexdigest(),
-                    'rep_margin_type':'posterior_predictive_log_probability',
+                    'rep_margin_type':'mc_mean_logit',
+                    'rep_logp_margin_type':'posterior_predictive_log_probability',
                     'rho_rep_median':statistics.median(r['rho_rep'] for r in rows),
                     'rep_margin_median':statistics.median(r['rep_margin'] for r in rows),
+                    'rep_logp_margin_median':statistics.median(r['rep_logp_margin'] for r in rows),
                     'main_predictive_acc':100*summary['main_correct'],
                     'rep_predictive_acc':100*summary['rep_correct'],
                     'text_clip_cos_mean':statistics.mean(text_class_cos),
@@ -276,8 +296,80 @@ def native_predictions(trainer, split='test', limit=None):
             'eval_use_posterior_mean':bool(method.eval_use_posterior_mean)}
 
 
+def weighted_mc_gradient(total_samples, chunk, gradient_for_chunk):
+    """Average gradients of identically weighted MC draws, also for partial last chunks.
+
+    gradient_for_chunk(start,count) must return the *mean* gradient over those
+    specific draws. For exact parity tests, both partitions must see the same
+    pre-generated posterior samples rather than reseeding differently shaped draws.
+    """
+    if total_samples < 1 or chunk < 1:
+        raise ValueError('MC samples/chunk must be positive')
+    sum_grad = None
+    for start in range(0, total_samples, chunk):
+        count = min(chunk, total_samples-start)
+        gradient = gradient_for_chunk(start, count)
+        if not bool(torch.isfinite(gradient).all()):
+            raise RuntimeError('Nonfinite MC classification gradient')
+        sum_grad = gradient*count if sum_grad is None else sum_grad+gradient*count
+    return sum_grad / total_samples
+
+
+def check_mc_chunk_gradient_parity(trainer, batch, params, *, n_samples=4,
+                                   chunk=2, rtol=5.e-3, atol=5.e-4):
+    """Real native feature graph, exactly the SAME pre-drawn R/T posterior weights.
+
+    Compares vector gradients for full and chunked evaluation, not two different
+    random streams. This verifies the E3 weighted-microchunk estimator while
+    keeping the production models/optimizers unchanged.
+    """
+    model=trainer.method.model
+    y=batch['label'].long().to(trainer.method.device)
+    x=batch['img'].to(trainer.method.device)
+    alpha=float(trainer.method.cfg.BAYESRT_MMRL.ALPHA)
+    if n_samples<2 or chunk<1:raise ValueError('Invalid parity draws or chunk')
+    r_post=model.image_encoder.bayes_proj_rep
+    t_post=model.text_posterior
+    if r_post is None or t_post is None:
+        raise RuntimeError('Gradient parity needs native R and T posterior')
+    with torch.no_grad():
+        w_t=t_post.sample_many(n_samples).detach()
+        w_r=r_post.sample_many(n_samples).detach()
+
+    def eval_chunk(start,count):
+        from .core import cached_encode
+        cache=cached_encode(model,x,trainer.method.num_classes)
+        # Same ops as text_sample_features + rep_samples, except weights are
+        # explicitly shared across the two partitions for a valid parity check.
+        text=F.normalize(torch.einsum('cd,sdk->sck',cache['eot'].float(),
+                    w_t[start:start+count].to(cache['eot'].device)),dim=-1)
+        rep=F.normalize(torch.einsum('bd,sdk->sbk',cache['rep'],
+                    w_r[start:start+count].to(cache['rep'].dtype)),dim=-1)
+        text=text.to(cache['main'].dtype)
+        main=100.*torch.einsum('bd,scd->sbc',cache['main'],text)
+        logits_rep=100.*torch.einsum('sbd,scd->sbc',rep,text)
+        loss=sampled_ce(main,logits_rep,y,alpha)[1].mean()
+        grads=torch.autograd.grad(loss,params,allow_unused=True)
+        return torch.cat([(g.detach().float() if g is not None else
+            torch.zeros_like(p).float()).reshape(-1) for p,g in zip(params,grads)])
+
+    with torch.enable_grad():
+        one=eval_chunk(0,n_samples)
+        chunks=weighted_mc_gradient(n_samples,chunk,eval_chunk)
+    max_abs=float((one-chunks).abs().max())
+    cosine=float(F.cosine_similarity(one[None],chunks[None]))
+    rel=float((one-chunks).norm()/one.norm().clamp_min(1e-12))
+    valid=bool(torch.allclose(one,chunks,rtol=rtol,atol=atol))
+    if not valid:
+        raise RuntimeError(f'E3 identical-draw full/chunk gradient mismatch: '
+                           f'max_abs={max_abs:.4g}, cosine={cosine:.6g}, relative={rel:.4g}')
+    return {'checked':True,'samples':n_samples,'chunk':chunk,
+            'max_abs':max_abs,'cosine':cosine,'relative_error':rel,
+            'rtol':rtol,'atol':atol}
+
+
 def gradient_quality(trainer,batch,reference_samples=512,chunk=8,repeats=5,
-                     sizes=(1,5,10,50)):
+                     sizes=(1,5,10,50),check_parity=True):
     """E3: Φ classification gradients, high-S reference in independent streams.
 
     Recompute CLIP encoder per MC microchunk, avoid retaining S_ref computation graph.
@@ -301,16 +393,12 @@ def gradient_quality(trainer,batch,reference_samples=512,chunk=8,repeats=5,
              (1-alpha)*det_ce_per_image(data['mu_rep'],data['var_rep'],y,*varargs).mean()
         return vector(torch.autograd.grad(value,params,allow_unused=True))
     def mc_grad(s):
-        acc=None;n=0
-        while n<s:
-            k=min(chunk,s-n)
+        def block(_start, count):
             cache=cached_encode(model,x,method.num_classes)
-            m,r=cached_draw(cache,k)
+            m,r=cached_draw(cache,count)
             loss=sampled_ce(m,r,y,alpha)[1].mean()
-            grads=vector(torch.autograd.grad(loss,params,allow_unused=True))
-            acc=grads*k if acc is None else acc+grads*k
-            n+=k
-        return acc/s
+            return vector(torch.autograd.grad(loss,params,allow_unused=True))
+        return weighted_mc_gradient(s,chunk,block)
     devices=[x.device.index if x.device.index is not None else torch.cuda.current_device()] if x.is_cuda else []
     with torch.enable_grad(), torch.random.fork_rng(devices=devices):
         torch.manual_seed(71021)
@@ -322,7 +410,12 @@ def gradient_quality(trainer,batch,reference_samples=512,chunk=8,repeats=5,
         def quality(g):
             return {'cosine':float(F.cosine_similarity(g[None],ref[None])),
                     'relative_error':float((g-ref).norm()/ref.norm())}
+        # The parity check uses fixed pre-drawn posterior matrices and thus is
+        # independent of the chunk-size-dependent RNG consumption in mc_grad.
+        parity_result = (check_mc_chunk_gradient_parity(trainer,batch,params)
+                         if check_parity else {'checked':False})
         result={'reference_norm':float(ref.norm()),'reference_samples':reference_samples,
+                'chunk_gradient_parity':parity_result,
                 'reference_repeat_quality':quality(ref2),
                 'reference_stable':(quality(ref2)['cosine']>=0.95 and quality(ref2)['relative_error']<=0.25),
                 'davi':quality(det_grad()),'curve':[],'phi_numel':ref.numel(),
@@ -332,3 +425,66 @@ def gradient_quality(trainer,batch,reference_samples=512,chunk=8,repeats=5,
                 torch.manual_seed(81000+1000*s+repeat)
                 result['curve'].append({'samples':s,'repeat':repeat,**quality(mc_grad(s))})
     return result
+
+
+def mc_gradient_noise_by_group(trainer, batch, *, draws=10, seed=2027):
+    """E3 extension: independent per-draw Branch classification gradients.
+
+    Freeze inputs/weights (eval mode); only posterior R/T draws differ. Gradients
+    belong to four *native trainable* parameter groups. No KL or alignment.
+    Relative variance uses an unbiased J-1 sample numerator and a J-draw mean.
+    Mean pairwise cosine ignores zero-norm gradients, with count reported.
+    """
+    if draws < 2:
+        raise ValueError('At least two independent posterior draws are required')
+    method=trainer.method; model=method.model; cfg=method.cfg.BAYESRT_MMRL
+    x=batch['img'].to(method.device); y=batch['label'].long().to(method.device)
+    alpha=float(cfg.ALPHA)
+    named=list(model.named_parameters())
+    labels={
+        'phi':[p for name,p in named if name.startswith('representation_learner.') and p.requires_grad],
+        'r_mean':[p for name,p in named if name=='image_encoder.bayes_proj_rep.posterior_mean' and p.requires_grad],
+        'r_rho':[p for name,p in named if name=='image_encoder.bayes_proj_rep.posterior_rho' and p.requires_grad],
+        't_rho':[p for name,p in named if name=='text_posterior.posterior_rho' and p.requires_grad],
+    }
+    missing=[name for name,params in labels.items() if not params]
+    if missing:raise RuntimeError('Missing native trainable gradient groups: '+str(missing))
+    flat=[p for group in labels.values() for p in group]
+    model.eval()
+    devices=[x.device.index if x.device.index is not None else torch.cuda.current_device()] if x.is_cuda else []
+    by_group={name:[] for name in labels}
+    with torch.enable_grad(),torch.random.fork_rng(devices=devices):
+        torch.manual_seed(int(seed))
+        for j in range(draws):
+            cache=cached_encode(model,x,method.num_classes)
+            main,rep=cached_draw(cache,1)
+            classification=sampled_ce(main,rep,y,alpha)[1].mean()
+            derivatives=torch.autograd.grad(classification,flat,allow_unused=True)
+            offset=0
+            for name,params in labels.items():
+                gs=derivatives[offset:offset+len(params)];offset+=len(params)
+                v=torch.cat([(g.detach().float() if g is not None else torch.zeros_like(param).float()).flatten()
+                     for param,g in zip(params,gs)]).cpu().to(torch.float64)
+                if not bool(torch.isfinite(v).all()):
+                    raise RuntimeError(f'Nonfinite MC gradient in {name} at draw {j}')
+                by_group[name].append(v)
+    result={}
+    for name,vectors in by_group.items():
+        m=torch.stack(vectors,dim=0)
+        mean=m.mean(dim=0);norm=float(mean.norm())
+        variance=float((m-mean).square().sum()/(draws-1))
+        good=[v for v in vectors if float(v.norm())>1e-12]
+        pairs=len(good)*(len(good)-1)//2
+        if pairs:
+            normalized=torch.stack([v/v.norm() for v in good])
+            # sum_{i<j} cosine = (||sum_i normalized_i||^2 - n)/2
+            pairwise=float((normalized.sum(dim=0).square().sum()-len(good))/(2*pairs))
+        else:pairwise=None
+        result[name]={'relative_variance':variance/norm**2 if norm>1e-12 else None,
+            'absolute_variance':variance,'mean_gradient_norm':norm,
+            'pairwise_cosine':pairwise,'valid_cosine_pairs':pairs,
+            'total_possible_pairs':draws*(draws-1)//2,'numel':int(mean.numel())}
+    return {'draws':draws,'data_term_only':True,'groups':result,
+        'gradient_target':'native Branch-MC classification only',
+        'rng_seed':int(seed),'transform_protocol':'train_fixed deterministic',
+        'zero_mean_group_policy':'relative variance null when mean gradient norm <=1e-12'}

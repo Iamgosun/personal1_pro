@@ -7,8 +7,9 @@ set -euo pipefail
 # Usage:
 #   GPU_IDS="0 1" bash run_plan.sh FS "BayesRTMMRL 
 # BayesTextMMRL LPPLUSPLUS   VCRMMMRL MMRL BayesMMRL DetBayesRTMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
-#   GPU_IDS="0 1" bash run_plan.sh FS " SBEA_ARD DEBA_J HBA_LR DREAM_BAYES_ADAPTER PP_PROKER_ONEHOT ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
-#   online cache TR
+#   GPU_IDS="0 1" bash run_plan.sh FS " SBEA_ARD DEBA_J HBA_LR DREAM_BAYES_ADAPTER PP_PROKER_ONEHOT 
+# ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
+#   online cache TR BayesAdapter
 # Notes:clip_adapters_dream_bayes.yaml
 #   - Normal methods use their normal method config.
 #   - Adapter aliases map to specific configs/methods/clip_adapters_*.yaml.
@@ -18,11 +19,11 @@ set -euo pipefail
 # DipA TipA TipA-f- CrossModal  }
 # EXEC_MODE=${3:-online}TD + EuroSAT + Aircraft + SUN397 + UCF101
 PROTOCOL=${1:-FS}
-METHODS_ARG=${2:-  DetBayesRTMMRL_CLAMP }
+METHODS_ARG=${2:- MMRL BayesAdapter BayesRTMMRL DetBayesRTMMRL_CLAMP }
 EXEC_MODE=${3:-online}
 
-DATASETS_ARG=${4:-"caltech101"}
-SHOTS_ARG=${5:-"1 "}
+DATASETS_ARG=${4:-"cifar_10"}
+SHOTS_ARG=${5:-"16 "}
 SEEDS_ARG=${6:-${SEEDS:-"1 "}}
 
 # METHODS_ARG=${2:-  TipA }
@@ -45,7 +46,7 @@ TAG=${TAG:-}
 
 NGPU=${NGPU:-1}
 GPU_IDS=${GPU_IDS:-0 }
-JOBS_PER_GPU=${JOBS_PER_GPU:-3}
+JOBS_PER_GPU=${JOBS_PER_GPU:-4}
 
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 SLEEP_SEC=${SLEEP_SEC:-2}
