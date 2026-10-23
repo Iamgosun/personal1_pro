@@ -12,7 +12,7 @@ SHOTS="${SHOTS:-16}"
 # 1 2 3
 SEEDS="${SEEDS:-1 2 3}"
 #caltech101 eurosat fgvc_aircraft
-DATASETS="${DATASETS:-fgvc_aircraft }"
+DATASETS="${DATASETS:-caltech101 eurosat oxford_pets }"
 # MMRL BayesRTMMRL DetBayesRTMMRL
 METHODS="${METHODS:-  MMRL BayesRTMMRL DetBayesRTMMRL_CLAMP}"
 BACKBONE="${BACKBONE:-ViT-B/16}"

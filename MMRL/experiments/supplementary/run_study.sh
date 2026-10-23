@@ -75,7 +75,6 @@ case "$STAGE" in check|train|e1|e2|e3|e4|e5|report|all|all_no_e5|help) ;; *) usa
 if [[ "$STAGE" == help ]]; then usage;exit 0;fi
 
 GPU="${GPU:-0}"
-# caltech101 eurosat oxford_pets
 DATASETS="${DATASETS:-caltech101 eurosat oxford_pets}"
 SEEDS="${SEEDS:-1 2 3}"
 SHOTS="${SHOTS:-16}"
