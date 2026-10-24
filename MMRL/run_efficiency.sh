@@ -14,7 +14,7 @@ SEEDS="${SEEDS:-1 2 3}"
 #caltech101 eurosat fgvc_aircraft
 DATASETS="${DATASETS:-caltech101 eurosat oxford_pets }"
 # MMRL BayesRTMMRL DetBayesRTMMRL
-METHODS="${METHODS:-  MMRL BayesRTMMRL DetBayesRTMMRL_CLAMP}"
+METHODS="${METHODS:-MMRL BayesRTMMRL DetBayesRTMMRL_CLAMP BayesAdapter}"
 BACKBONE="${BACKBONE:-ViT-B/16}"
 PRETRAIN_EPOCHS="${PRETRAIN_EPOCHS:-0}"
 # 这里的STEPS不是epoch 而是batch

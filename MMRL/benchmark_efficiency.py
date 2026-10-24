@@ -41,8 +41,10 @@ METHOD_FILES = {
     'MMRL': 'configs/methods/mmrl.yaml',
     'BayesRTMMRL': 'configs/methods/bayesrt_mmrl.yaml',
     'DetBayesRTMMRL_CLAMP': 'configs/methods/det_bayesrt_mmrl_clamp.yaml',
+    'BayesAdapter': 'configs/methods/clip_adapters_bayes.yaml',
 }
-METHOD_ALIASES = {'DetBayesRTMMRL_CLAMP': 'DetBayesRTMMRL'}
+METHOD_ALIASES = {'DetBayesRTMMRL_CLAMP': 'DetBayesRTMMRL', 'BayesAdapter': 'ClipAdapters'}
+METHOD_EXEC_MODES = {'BayesAdapter': 'cache'}
 
 
 def arguments():
@@ -84,7 +86,7 @@ def make_cfg(a, out):
         runtime_config_file=a.runtime_config_file,
         exp_config=a.exp_config,
         method=METHOD_ALIASES.get(a.method, a.method),
-        protocol='FS', exec_mode='online', seed=a.seed,
+        protocol='FS', exec_mode=METHOD_EXEC_MODES.get(a.method, 'online'), seed=a.seed,
         trainer='RefactorRunner', opts=opts,
     )
     for path in (args.dataset_config_file, args.method_config_file,
@@ -98,17 +100,26 @@ def make_cfg(a, out):
         if sanitized:
             Path(sanitized).unlink(missing_ok=True)
     expected = METHOD_ALIASES.get(a.method, a.method)
-    if cfg.METHOD.NAME != expected or cfg.METHOD.EXEC_MODE != 'online':
+    expected_mode = METHOD_EXEC_MODES.get(a.method, 'online')
+    if cfg.METHOD.NAME != expected or cfg.METHOD.EXEC_MODE != expected_mode:
         raise ValueError(f'Unexpected method/mode: {cfg.METHOD.NAME}/{cfg.METHOD.EXEC_MODE}')
     return cfg, args
 
 
+def _train_loader_for_epoch(trainer):
+    # Matches the existing CacheExecutor epoch-wise augmented-feature sampling.
+    if trainer.cfg.METHOD.EXEC_MODE == 'cache':
+        return trainer.executor._epoch_loader(trainer)
+    return trainer.train_loader_x
+
+
 def epoch_batches(trainer, epoch):
     trainer.epoch = epoch
-    trainer.num_batches = len(trainer.train_loader_x)
+    loader = _train_loader_for_epoch(trainer)
+    trainer.num_batches = len(loader)
     if trainer.num_batches == 0:
         raise ValueError('Empty train loader')
-    for idx, batch in enumerate(trainer.train_loader_x):
+    for idx, batch in enumerate(loader):
         trainer.batch_idx = idx
         yield batch
 
@@ -156,26 +167,29 @@ def _forward_profile_markers(trainer):
     try:
         m = trainer.model
         method = trainer.method
-        patch(m.representation_learner, 'forward', 'ENC/tokens')
-        patch(m.text_encoder, 'forward_hidden', 'ENC/text')
-        patch(m.image_encoder, 'encode_hidden', 'ENC/visual')
-        patch(method.image_encoder_clip, 'forward', 'ENC/reference_visual')
-
-        if hasattr(m, 'forward_joint_moments') and method.method_name == 'DetBayesRTMMRL':
-            patch(m, 'forward_joint_moments', 'PROB/joint')
-            # det_jensen_ce is a module-level name imported in model.py.
-            det_module = importlib.import_module('methods.det_bayesrt_mmrl.model')
-            patch(det_module, 'det_jensen_ce', 'PROB/jensen_ce')
-        elif hasattr(m, 'forward_joint'):
-            patch(m, 'forward_joint', 'PROB/joint')
-            patch(method, '_expected_ce', 'PROB/expected_ce')
-            patch(method, '_branch_logits_from_stacks', 'PROB/aggregation')
-            patch(method, '_build_fusion_from_stacks', 'PROB/fusion')
+        if trainer.cfg.METHOD.EXEC_MODE == 'cache':
+            # No CLIP encoder is invoked during BA parameter updates.
+            patch(m, 'forward_features', 'PROB/bayes_head')
+            patch(method.loss, '_mc_supervised_ce', 'PROB/expected_ce')
+            patch(m.adapter, 'kl_divergence', 'PROB/kl')
         else:
-            # Plain MMRL: its model forward is encoding + deterministic logits.
-            # We label it ENC to avoid incorrectly treating it as Bayesian head.
-            patch(m, 'forward', 'ENC/mmrl_model')
-        patch(m, 'kl_terms', 'PROB/kl')
+            patch(m.representation_learner, 'forward', 'ENC/tokens')
+            patch(m.text_encoder, 'forward_hidden', 'ENC/text')
+            patch(m.image_encoder, 'encode_hidden', 'ENC/visual')
+            patch(method.image_encoder_clip, 'forward', 'ENC/reference_visual')
+
+            if hasattr(m, 'forward_joint_moments') and method.method_name == 'DetBayesRTMMRL':
+                patch(m, 'forward_joint_moments', 'PROB/joint')
+                det_module = importlib.import_module('methods.det_bayesrt_mmrl.model')
+                patch(det_module, 'det_jensen_ce', 'PROB/jensen_ce')
+            elif hasattr(m, 'forward_joint'):
+                patch(m, 'forward_joint', 'PROB/joint')
+                patch(method, '_expected_ce', 'PROB/expected_ce')
+                patch(method, '_branch_logits_from_stacks', 'PROB/aggregation')
+                patch(method, '_build_fusion_from_stacks', 'PROB/fusion')
+            else:
+                patch(m, 'forward', 'ENC/mmrl_model')
+            patch(m, 'kl_terms', 'PROB/kl')
         yield
     finally:
         for obj, name, original, had_own in reversed(changes):
@@ -267,13 +281,16 @@ def main():
     cfg, parsed = make_cfg(a, out)
     install_kplusval_datasetbase_patch(cfg)
     set_random_seed(a.seed)
+    setup_start = time.perf_counter()
     trainer = build_trainer(cfg)
+    torch.cuda.synchronize()
+    setup_wall_time_s = time.perf_counter() - setup_start
     trainer.model.train()
 
     max_epoch = int(trainer.max_epoch)
     if a.pretrain_epochs >= max_epoch:
         raise ValueError(f'pretrain-epochs={a.pretrain_epochs} must be < max_epoch={max_epoch}')
-    n_batches = len(trainer.train_loader_x)
+    n_batches = len(_train_loader_for_epoch(trainer))
     if n_batches <= 0:
         raise ValueError('Empty train loader')
     print(f'[benchmark] {a.method} {a.dataset} seed={a.seed}, '
@@ -327,22 +344,32 @@ def main():
     if a.profile_flops:
         # Separate post-timing optimizer updates; never contaminate latency.
         trainer.epoch = last_measured_epoch
-        loader_iter = iter(trainer.train_loader_x)
+        profile_loader = _train_loader_for_epoch(trainer)
+        loader_iter = iter(profile_loader)
         for i in range(a.profile_steps):
-            trainer.batch_idx = i % n_batches
-            if i and trainer.batch_idx == 0:
-                loader_iter = iter(trainer.train_loader_x)
+            if i and i % len(profile_loader) == 0:
+                profile_loader = _train_loader_for_epoch(trainer)
+                loader_iter = iter(profile_loader)
+            trainer.num_batches = len(profile_loader)
+            trainer.batch_idx = i % len(profile_loader)
             batch = next(loader_iter)
-            profile_batch_sizes.append(int(batch['img'].shape[0]))
+            tensor_key = 'features' if a.method == 'BayesAdapter' else 'img'
+            profile_batch_sizes.append(int(batch[tensor_key].shape[0]))
             profiled.append(profile_one_update(trainer, batch))
     parts = _mean_profile(profiled)
 
     result = {
         'dataset': a.dataset, 'method': a.method, 'seed': a.seed,
+        'exec_mode': str(cfg.METHOD.EXEC_MODE),
+        'setup_wall_time_s': setup_wall_time_s,
+        'feature_cache_reps': (int(cfg.CLIP_ADAPTERS.CACHE_REPS) if a.method == 'BayesAdapter' else None),
+        'feature_cache_epoch_subsample': (bool(cfg.CLIP_ADAPTERS.CACHE_POOL_EPOCH_SUBSAMPLE) if a.method == 'BayesAdapter' else None),
         'gpu': torch.cuda.get_device_name(0),
         'num_shots': int(cfg.DATASET.NUM_SHOTS),
         'batch_size': int(cfg.DATALOADER.TRAIN_X.BATCH_SIZE),
-        'n_mc_train': (int(trainer.method.n_mc_train) if a.method == 'BayesRTMMRL' else None),
+        'n_mc_train': (int(cfg.CLIP_ADAPTERS.N_SAMPLES) if a.method == 'BayesAdapter'
+                       else int(trainer.method.n_mc_train) if a.method == 'BayesRTMMRL'
+                       else None),
         'precision': str(trainer.method.get_precision()),
         'optimizer': str(cfg.OPTIM.NAME),
         'learning_rate': float(cfg.OPTIM.LR),
@@ -369,8 +396,11 @@ def main():
         'profile_batch_sizes': profile_batch_sizes,
         'flops_scope': 'Only profiler-recognized ATen operation FLOPs, incomplete backward and uncounted operations.',
         'component_scope': 'Encoding/head FLOPs and CUDA kernel durations are FORWARD ONLY; backward, optimizer, common losses and untagged operations are counted in other_including_backward. Non-additive wall clock: kernel duration sums, not latency.',
-        'timing_scope': 'CPU wall clock with CUDA synchronize, prefetched batch, full OnlineExecutor.forward_backward including metrics/logging',
-        'memory_scope': 'PyTorch CUDA process allocated/reserved high-water mark from after untimed warmup through timed steps',
+        'timing_scope': ('CPU wall clock with CUDA synchronize, prefetched cached-feature batch, full CacheExecutor.forward_backward including metrics/logging; excludes CLIP feature extraction'
+                         if a.method == 'BayesAdapter' else
+                         'CPU wall clock with CUDA synchronize, prefetched batch, full OnlineExecutor.forward_backward including metrics/logging'),
+        'setup_scope': 'build_trainer wall time includes model construction, text encoding and any feature-cache loading/extraction (cache-hit-dependent); excluded from ms_per_update',
+        'memory_scope': 'PyTorch CUDA process allocated/reserved high-water mark from after untimed warmup through timed steps; includes resident model and prior allocations',
         'epoch_scope': 'Actually pretrained full epochs using same OnlineExecutor and learning-rate scheduler as regular run',
         'hpo_scope': 'HPO disabled; one configured fit, no grid search',
         'note': 'timed benchmark stops mid-training; profiling (if enabled) runs extra post-timing optimizer updates',
