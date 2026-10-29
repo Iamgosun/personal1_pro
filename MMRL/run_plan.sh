@@ -1,15 +1,13 @@
 #!/bin/bash
 set -euo pipefail
-# SUMMARY_ONLY=1 bash run_plan.sh FS "DetBayesRTMMRL" 汇总实验
-
+# USE_MMRL_DATASET_PARAMS=1 SUMMARY_ONLY=1 bash run_plan.sh FS "DetBayesRTMMRL" 汇总实验
 
 
 # Usage:
 #   GPU_IDS="0 1" bash run_plan.sh FS "BayesRTMMRL 
 # BayesTextMMRL LPPLUSPLUS   VCRMMMRL MMRL BayesMMRL DetBayesRTMMRL" online "caltech101 oxford_pets" "1 2 4" "1 2 3"
-#   GPU_IDS="0 1" bash run_plan.sh FS " SBEA_ARD DEBA_J HBA_LR DREAM_BAYES_ADAPTER PP_PROKER_ONEHOT 
-# ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
-#   online cache TR BayesAdapter
+#   GPU_IDS="0 1" bash run_plan.sh FS " SBEA_ARD DEBA_J HBA_LR DREAM_BAYES_ADAPTER PP_PROKER_ONEHOT ECKA CLAP CAPEL VNC_CAPEL ZS RANDOM TR ClipA TipA TipA-f- CrossModal BayesAdapter" cache "caltech101" "1 2 4" "1 2 3"
+#   online cache TR
 # Notes:clip_adapters_dream_bayes.yaml
 #   - Normal methods use their normal method config.
 #   - Adapter aliases map to specific configs/methods/clip_adapters_*.yaml.
@@ -18,13 +16,16 @@ set -euo pipefail
 #  caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101   cifar_10
 # DipA TipA TipA-f- CrossModal  }
 # EXEC_MODE=${3:-online}TD + EuroSAT + Aircraft + SUN397 + UCF101
-PROTOCOL=${1:-FS}
-METHODS_ARG=${2:- MMRL BayesAdapter BayesRTMMRL DetBayesRTMMRL_CLAMP }
+
+
+# USE_MMRL_DATASET_PARAMS=1 控制 BayesRTMMRL DetBayesRTMMRL_CLAMP是否采用MMRL的配置，1采用
+PROTOCOL=${1:-FS}   # MMRL BayesRTMMRL DetBayesRTMMRL_CLAMP
+METHODS_ARG=${2:-   MMRLpp }
 EXEC_MODE=${3:-online}
 
-DATASETS_ARG=${4:-"cifar_10"}
-SHOTS_ARG=${5:-"16 "}
-SEEDS_ARG=${6:-${SEEDS:-"1 "}}
+DATASETS_ARG=${4:-"caltech101 oxford_pets dtd  food101 eurosat imagenet  oxford_flowers  sun397 fgvc_aircraft stanford_cars ucf101  "}
+SHOTS_ARG=${5:-"1 2 4 8 16 32 "}
+SEEDS_ARG=${6:-${SEEDS:-"1 2 3"}}
 
 # METHODS_ARG=${2:-  TipA }
 # DATASETS_ARG=${4:-" caltech101 "}
@@ -618,6 +619,23 @@ launch_one_case() {
         ;;
     esac
   fi
+
+  # Official MMRL++ few-shot optimizer settings
+  case "$method" in
+    MMRLpp|MMRLPP)
+      dataset_extra_opts+=(DATALOADER.NUM_WORKERS 8)
+
+      if [[ "$dataset" == "imagenet" ]]; then
+        dataset_extra_opts+=(OPTIM.MAX_EPOCH 5)
+        dataset_extra_opts+=(OPTIM.LR 0.001)
+      else
+        dataset_extra_opts+=(OPTIM.MAX_EPOCH 100)
+        dataset_extra_opts+=(OPTIM.LR 0.002)
+      fi
+      ;;
+  esac
+
+
 
   local phase subsample
   read -r phase subsample <<< "$(resolve_phase_semantics "$PROTOCOL")"

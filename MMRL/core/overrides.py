@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from typing import List
-
+import os
 VALID_TASKS = {'B2N', 'FS', 'CD'}
-VALID_METHODS = {'MMRL', 'MMRLpp', 'MMRLPP'}
 
+#VALID_METHODS = {'MMRL', 'MMRLpp', 'MMRLPP'}
+VALID_METHODS = {
+    'MMRL',
+    'MMRLpp',
+    'MMRLPP',
+    'BayesRTMMRL',
+    'DetBayesRTMMRL',
+}
 
 def _flatten_cfg(mapping: dict) -> List[str]:
     return [item for pair in mapping.items() for item in pair]
@@ -17,10 +24,22 @@ def resolve_method_dataset_overrides(method_name: str, dataset_name: str, protoc
 
     if protocol_name not in VALID_TASKS:
         raise AssertionError('The PROTOCOL/TASK must be either B2N, CD, or FS.')
-    if method_name not in VALID_METHODS:
+
+    # 统一控制四种方法是否启用数据集特定超参数
+    if os.environ.get('USE_MMRL_DATASET_PARAMS', '0') != '1':
         return []
 
-    if method_name == 'MMRL':
+
+    if method_name in {'MMRL', 'BayesRTMMRL', 'DetBayesRTMMRL'}:
+
+        # MMRL 始终使用原有的官方参数。
+        # AVI-B / DAVI 仅在开关开启时使用这些参数。
+        if method_name != 'MMRL':
+            if os.environ.get('USE_MMRL_DATASET_PARAMS', '0') != '1':
+                return []
+
+
+
         cfg = {
             'StanfordCars': {'MMRL.REG_WEIGHT': 7.0},
             'FGVCAircraft': {'MMRL.REG_WEIGHT': 6.0},
@@ -37,7 +56,18 @@ def resolve_method_dataset_overrides(method_name: str, dataset_name: str, protoc
                 'MMRL.REG_WEIGHT': 0.01,
             },
         }.get(dataset_name, {})
+
+
+        if method_name in {'BayesRTMMRL', 'DetBayesRTMMRL'}:
+            cfg = {
+                key.replace('MMRL.', 'BAYESRT_MMRL.', 1): value
+                for key, value in cfg.items()
+            }
+
         return _flatten_cfg(cfg)
+
+
+
 
     if protocol_name in {'B2N', 'FS'}:
         cfg = {
